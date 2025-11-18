@@ -1,50 +1,81 @@
-# Welcome to your Expo app 👋
+# ResQNow — Real-Time First Aid Assistant
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+ResQNow is a real-time first aid mobile application built with *React Native* and powered by *Firebase*.  
+The project delivers instant, reliable, and interactive first-aid guidance to help save lives during emergencies.
 
-## Get started
+---
 
-1. Install dependencies
+## 🚑 Features
 
-   ```bash
-   npm install
-   ```
+### 🆘 Real-Time First Aid Guidance
+Interactive visual + audio instructions for:
+- CPR  
+- Choking  
+- Bleeding  
+- Burns  
+- Fractures  
+- More emergency cases  
 
-2. Start the app
+### 📹 Live Video/Audio Support
+Connect with trained responders for real-time assistance.
 
-   ```bash
-   npx expo start
-   ```
+### 📍 Location-Based Alerts
+- GPS detection  
+- Alerts nearby volunteers  
+- Notifies emergency responders  
+- Opens a real-time incident session  
 
-In the output, you'll find options to open the app in a
+### 🤖 AI Symptom Checker
+Analyzes symptoms and recommends:
+- First-aid actions  
+- Urgency level  
+- Possible risks  
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### 🩹 First Aid Kit Scanner
+Camera-based detection of first-aid items and instructions.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### 📴 Offline Mode
+Critical first-aid instructions available without internet.
 
-## Get a fresh project
+### 🎙 Multilingual + Voice Commands
+Supports *Arabic, Hebrew, and English*.  
+Example: “Help me with CPR”, “How do I stop bleeding”.
 
-When you're ready, run:
+### ❤ Vitals Monitoring (optional)
+Integrates with device sensors to track:
+- Heart rate  
+- Breathing  
+- Movement  
 
-```bash
-npm run reset-project
-```
+### 📝 Incident Reports
+Automatically generates:
+- Summary of actions  
+- Timeline  
+- GPS  
+- Vitals  
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### 👥 Volunteer Responder Network
+Nearby volunteers receive emergency alerts and can respond quickly.
 
-## Learn more
+---
 
-To learn more about developing your project with Expo, look at the following resources:
+## 🛠 Tech Stack
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Frontend
+- React Native  
+- React Navigation  
+- JavaScript / TypeScript  
+- Context API / Redux (optional)
 
-## Join the community
+### Backend (Firebase)
+- Firebase Authentication  
+- Firestore Database  
+- Firebase Cloud Storage  
+- Firebase Cloud Functions  
+- Realtime Database (optional)  
+- Firebase Cloud Messaging (notifications)
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+### Tools
+- Visual Studio Code  
+- Android Studio / Xcode  
+- Git & GitHub
