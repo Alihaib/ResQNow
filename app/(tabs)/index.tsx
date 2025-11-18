@@ -9,11 +9,24 @@ export default function Home() {
   const { user, loading } = useAuth();
   const router = useRouter();
 
-  if (loading) return <Text>Loading...</Text>;
 
   useEffect(() => {
-    if (!user) router.replace("/auth/login");
-  }, [user]);
+    if (!loading && !user) {
+      router.replace("/auth/login");
+    }
+  }, [loading, user]);
+
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
+
+
+  if (!user) return null;
 
   const logout = async () => {
     await signOut(auth);
@@ -32,6 +45,11 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   container: { flex: 1, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 40, fontWeight: "bold", color: "#e63946" },
   logoutButton: {
