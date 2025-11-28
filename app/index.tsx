@@ -81,6 +81,14 @@ export default function HomePage() {
           <Text style={styles.emergencyText}>{t("emergency")}</Text>
         </TouchableOpacity>
 
+        {/* PROFILE BUTTON */}
+        <TouchableOpacity
+          style={styles.panelBtn}
+          onPress={() => router.push("/profile/profileindex")}
+        >
+          <Text style={styles.panelText}>{t("profile")}</Text>
+        </TouchableOpacity>
+
         {/* Doctor Dashboard */}
         {role === "doctor" && approved && (
           <TouchableOpacity
@@ -123,7 +131,7 @@ export default function HomePage() {
 }
 
 // ----------------------------
-// 🎨 STYLES (נקי + מסודר)
+// 🎨 STYLES
 // ----------------------------
 const styles = StyleSheet.create({
   container: {

@@ -1,3 +1,4 @@
+
 export default {
   loading: "Loading...",
   logout: "Logout",
@@ -74,5 +75,42 @@ vehicle_status_desc: "Check ambulance readiness and equipment status.",
 login_error_title: "Login Error",
 login_error_msg: "Check your email and password and try again.",
 coming_soon: "Coming soon",
+profile: "Profile",
+hello_user: "Hello",
+  manage_health_profile: "Manage your health profile",
+  personal_info: "Personal Info",
+  full_name: "Full Name",
+  age: "Age",
+  weight: "Weight (kg)",
+  height: "Height (cm)",
+  blood_type: "Blood Type",
+  medical_info: "Medical Info",
+  medical_history: "Medical Info / History",
+  diseases: "Diseases",
+  medications: "Medications / Vaccines",
+  sensitive_notes: "Sensitive Notes",
+  save_update_profile: "Save / Update Profile",
+  bmi_calculator: "BMI Calculator",
+  your_bmi: "Your BMI",
+  blood_type_info: "Blood Type Info",
+  your_blood_type: "Your Blood Type",
+  can_donate_to: "Can Donate To",
+  can_receive_from: "Can Receive From",
+  emergency_contact: "Emergency Contact",
+  contact_name: "Contact Name",
+  contact_phone: "Contact Phone",
+  calorie_calculator: "Calorie Calculator",
+  estimated_daily_calories: "Estimated Daily Calories to Maintain Weight",
+
+
+  // BMI categories
+  Underweight: "Underweight",
+  Normal: "Normal",
+  Overweight: "Overweight",
+  Obese: "Obese",
+
+  everyone: "Everyone",
+  
+ 
 
 };
