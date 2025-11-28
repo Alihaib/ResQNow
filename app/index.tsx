@@ -3,118 +3,170 @@ import { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../src/context/AuthContext";
 
-export default function Home() {
-const { user, role, approved, logout } = useAuth();
+export default function HomePage() {
   const router = useRouter();
+  const { user, role, approved, logout, loading } = useAuth();
 
-  // ניתוב אוטומטי לפי ROLE
+  // ניווט לפי סטטוס משתמש – רק אחרי שה־Auth נטען
   useEffect(() => {
-    if (!user) return; // לא מחובר → יראה כפתורי Login/Signup
-
-    if (role === "doctor" && approved === false) {
-      router.replace("/doctor/pending");
+    if (!loading) {
+      if (!user) {
+        router.replace("/auth/login");
+      } else if (role === "doctor" && approved === false) {
+        router.replace("/doctor/pending");
+      } else if (role === "ambulance" && approved === false) {
+        router.replace("/ambulance/pending");
+      }
     }
+  }, [loading, user, role, approved]);
 
-    if (role === "doctor" && approved === true) {
-      router.replace("/doctor/dashboard");
-    }
-
-    if (role === "admin") {
-      router.replace("/admin/panel");
-    }
-  }, [user, role, approved]);
-
-  // --- משתמש לא מחובר ---
-  if (!user) {
+  if (loading || !user) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>ResQNow</Text>
-        <Text style={styles.subtitle}>Smart First Aid Assistant</Text>
+      <View style={styles.loadingPage}>
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
 
+  return (
+    <View style={styles.container}>
+      {/* כותרת */}
+      <View style={styles.header}>
+        <Text style={styles.title}>ResQNow</Text>
+        <Text style={styles.subtitle}>Your Intelligent Emergency Assistant</Text>
+      </View>
+
+      {/* כפתורי פעולה */}
+      <View style={styles.buttonsContainer}>
         <TouchableOpacity
-          style={styles.button}
-          onPress={() => router.push("/auth/login")}
+          style={styles.mainButton}
+          onPress={() => alert("Emergency screen coming soon")}
         >
-          <Text style={styles.buttonText}>Login</Text>
+          <Text style={styles.mainButtonText}>🚨 Emergency</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.secondaryButton}
-          onPress={() => router.push("/auth/signup")}
+          onPress={() => alert("Profile coming soon")}
         >
-          <Text style={styles.secondaryButtonText}>Create Account</Text>
+          <Text style={styles.secondaryButtonText}>👤 Profile</Text>
         </TouchableOpacity>
+
+        {/* Doctor Dashboard – רק לרופא מאושר */}
+        {role === "doctor" && approved && (
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push("/doctor/dashboard")}
+          >
+            <Text style={styles.secondaryButtonText}>🩺 Doctor Dashboard</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Ambulance Dashboard – רק לאמבולנס מאושר */}
+        {role === "ambulance" && approved && (
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => router.push("/ambulance/dashboard")}
+          >
+            <Text style={styles.secondaryButtonText}>🚑 Ambulance Dashboard</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Admin Panel – רק לאדמין */}
+        {role === "admin" && (
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: "#e63946" }]}
+            onPress={() => router.push("/admin/panel")}
+          >
+            <Text style={[styles.secondaryButtonText, { color: "#e63946" }]}>
+              🔧 Admin Panel
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
-    );
-  }
 
-  // --- משתמש רגיל מחובר (ROLE = user) ---
-  if (role === "user") {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Welcome!</Text>
-        <Text style={styles.subtitle}>You are logged in as a regular user.</Text>
-
-      <TouchableOpacity style={styles.button} onPress={logout}>
-        <Text style={styles.buttonText}>Logout</Text>
+      {/* Logout */}
+      <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+        <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
-
-      </View>
-    );
-  }
-
-  // למקרה שלא זוהה ROLE (בעיית נתונים)
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Loading...</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  loadingPage: {
     flex: 1,
-    backgroundColor: "#f8f9fc",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 25,
+    backgroundColor: "#f8f9fa",
   },
-  title: {
-    fontSize: 40,
-    fontWeight: "bold",
-    color: "#e63946",
-    marginBottom: 10,
+  loadingText: { fontSize: 18, color: "#333" },
+
+  container: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+    padding: 20,
+    paddingTop: 60,
   },
-  subtitle: {
-    fontSize: 18,
-    color: "#1d3557",
+  header: {
+    alignItems: "center",
     marginBottom: 30,
   },
-  button: {
-    backgroundColor: "#e63946",
-    paddingVertical: 15,
-    width: "80%",
-    borderRadius: 12,
-    marginBottom: 15,
+  title: {
+    fontSize: 38,
+    fontWeight: "bold",
+    color: "#e63946",
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#457b9d",
+    marginTop: 6,
+  },
+  buttonsContainer: {
+    marginTop: 10,
+    width: "100%",
     alignItems: "center",
   },
-  buttonText: {
+  mainButton: {
+    width: "90%",
+    backgroundColor: "#e63946",
+    paddingVertical: 18,
+    borderRadius: 14,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  mainButtonText: {
     color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "700",
   },
   secondaryButton: {
+    width: "90%",
     backgroundColor: "#fff",
     borderWidth: 2,
-    borderColor: "#e63946",
-    paddingVertical: 15,
-    width: "80%",
-    borderRadius: 12,
+    borderColor: "#1d3557",
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
+    marginBottom: 12,
   },
   secondaryButtonText: {
+    color: "#1d3557",
+    fontSize: 17,
+    fontWeight: "600",
+  },
+  logoutButton: {
+    marginTop: 40,
+    alignSelf: "center",
+    borderColor: "#e63946",
+    borderWidth: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  logoutText: {
     color: "#e63946",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
   },
 });
