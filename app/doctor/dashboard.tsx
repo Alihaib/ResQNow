@@ -1,51 +1,117 @@
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useAuth } from "../../src/context/AuthContext";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
-import { signOut } from "firebase/auth";
-import { auth } from "../../src/firebase/config";
+import { useLanguage } from "../../src/context/LanguageContext";
 
 export default function DoctorDashboard() {
-  const { user } = useAuth();
   const router = useRouter();
-
-  const logout = async () => {
-    await signOut(auth);
-    router.replace("/auth/login");
-  };
+  const { lang, toggleLanguage, t } = useLanguage();
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Doctor Dashboard</Text>
-      <Text style={styles.subtitle}>Welcome Dr. {user?.email}</Text>
-
-      <TouchableOpacity style={styles.btn} onPress={() => router.push("/")}>
-        <Text style={styles.btnText}>← Back to Home</Text>
+      {/* 🌍 Language Switch */}
+      <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
+        <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-        <Text style={styles.logoutText}>Logout</Text>
+      <Text style={styles.logo}>🩺</Text>
+      <Text style={styles.title}>{t("doctor_dashboard_title")}</Text>
+      <Text style={styles.subtitle}>{t("doctor_dashboard_sub")}</Text>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => alert("Coming soon…")}
+        >
+          <Text style={styles.cardTitle}>{t("view_cases")}</Text>
+          <Text style={styles.cardDesc}>{t("view_cases_desc")}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => alert("Coming soon…")}
+        >
+          <Text style={styles.cardTitle}>{t("medical_guides")}</Text>
+          <Text style={styles.cardDesc}>{t("medical_guides_desc")}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => alert("Coming soon…")}
+        >
+          <Text style={styles.cardTitle}>{t("notifications")}</Text>
+          <Text style={styles.cardDesc}>{t("notifications_desc")}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      <TouchableOpacity
+        style={styles.homeBtn}
+        onPress={() => router.replace("/")}
+      >
+        <Text style={styles.homeText}>{t("backHome")}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20, backgroundColor: "#f8f9fa" },
-  title: { fontSize: 34, fontWeight: "700", textAlign: "center", color: "#1d3557" },
-  subtitle: { fontSize: 18, textAlign: "center", marginTop: 10, marginBottom: 30 },
-  btn: {
-    backgroundColor: "#457b9d",
-    padding: 14,
+  container: {
+    flex: 1,
+    backgroundColor: "#F8F9FA",
+    paddingTop: 60,
+    paddingHorizontal: 20,
+  },
+
+  languageBtn: {
+    position: "absolute",
+    top: 40,
+    right: 20,
+    backgroundColor: "#003049",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 10,
+    zIndex: 20,
+  },
+  languageText: { color: "#FFF", fontWeight: "700" },
+
+  logo: { fontSize: 55, textAlign: "center", marginBottom: 10 },
+
+  title: {
+    fontSize: 34,
+    fontWeight: "900",
+    color: "#003049",
+    textAlign: "center",
+  },
+  subtitle: {
+    textAlign: "center",
+    fontSize: 14,
+    color: "#6C757D",
+    marginBottom: 25,
+  },
+
+  scrollContent: { paddingBottom: 80 },
+
+  card: {
+    backgroundColor: "#FFF",
+    padding: 22,
+    borderRadius: 18,
+    elevation: 5,
+    marginBottom: 15,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#003049",
+    marginBottom: 4,
+  },
+  cardDesc: { color: "#6C757D", fontSize: 13 },
+
+  homeBtn: {
+    backgroundColor: "#D62828",
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
     marginBottom: 20,
+    marginTop: 10,
   },
-  btnText: { color: "white", fontSize: 18 },
-  logoutBtn: {
-    backgroundColor: "#e63946",
-    padding: 14,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  logoutText: { color: "white", fontSize: 18 },
+  homeText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
 });

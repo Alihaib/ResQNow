@@ -1,0 +1,86 @@
+export default {
+  // -------- GLOBAL -------
+  loading: "טוען...",
+  logout: "התנתקות",
+  backHome: "חזרה לעמוד הבית",
+
+  // -------- HOME --------
+  home_subtitle: "מערכת חירום חכמה לעזרה בזמן אמת",
+  login: "התחברות",
+  create_account: "יצירת חשבון",
+  emergency: "מצב חירום",
+  awaiting: "ממתין לאישור",
+  admin_panel: "פאנל ניהול",
+  doctor_dashboard: "לוח רופא",
+  ambulance_dashboard: "לוח אמבולנס",
+
+  // -------- LOGIN --------
+  login_title: "התחברות",
+  login_subtitle: "היכנס כדי להמשיך למערכת החירום",
+  email: "אימייל",
+  password: "סיסמה",
+  email_placeholder: "example@mail.com",
+  password_placeholder: "●●●●●●●●",
+  no_account: "אין לך חשבון? לחץ כאן",
+
+  // -------- SIGNUP --------
+  signup: "הרשמה",
+
+  signup_subtitle: "מלא את הפרטים כדי לפתוח חשבון חדש",
+
+
+  select_role: "בחר סוג חשבון",
+  user: "משתמש",
+  doctor: "רופא",
+  ambulance: "אמבולנס",
+  have_account: "יש לך חשבון? התחבר",
+  fillAllFields: "נא למלא את כל השדות",
+  signupFailed: "הרשמה נכשלה",
+
+ error: "שגיאה",
+
+  admin: "מנהל",
+  // -------- ADMIN PANEL --------
+  adminPanel: "פאנל ניהול",
+  loadingUsers: "טוען משתמשים...",
+  approved: "מאושר",
+  awaitingApproval: "ממתין לאישור",
+  approve: "אישור",
+  reject: "ביטול",
+  makeAdmin: "הפוך למנהל",
+
+  // -------- ROLE NAMES --------
+  doctor_role: "רופא",
+  ambulance_role: "אמבולנס",
+  user_role: "משתמש רגיל",
+  admin_role: "מנהל",
+pending_title_doctor: "ממתין לאישור",
+pending_subtitle_doctor: "חשבונך כרופא ממתין לאישור המערכת.",
+pending_message_doctor: "על מנהל המערכת לאמת את פרטיך לפני שתוכל להיכנס לדשבורד הרופא.",
+doctor_dashboard_title: "דשבורד רופא",
+doctor_dashboard_sub: "נהל מקרי חירום, קבל התראות וגישה למידע רפואי חשוב.",
+view_cases: "מקרי חירום",
+view_cases_desc: "ראה ונטר מקרי חירום בזמן אמת.",
+medical_guides: "הנחיות רפואיות",
+medical_guides_desc: "גישה להנחיות עזרה ראשונה.",
+notifications: "התראות",
+notifications_desc: "קבל התראות על מקרים חדשים.",
+pending_title_ambulance: "ממתין לאישור אמבולנס",
+pending_subtitle_ambulance: "החשבון שלך ממתין לאישור מנהל.",
+pending_message_ambulance: "לאחר האישור תוכל לראות קריאות חירום קרובות.",
+
+    forgot_password: "שכחת סיסמה?",
+    ambulance_dashboard_title: "דשבורד אמבולנס",
+ambulance_dashboard_sub: "גישה מהירה לקריאות חירום, מפות ומצב רכב.",
+live_calls: "קריאות חירום חיות",
+live_calls_desc: "ראה קריאות חירום בזמן אמת.",
+nearby_emergencies: "מקרי חירום קרובים",
+nearby_emergencies_desc: "ראה מה קורה באזור שלך.",
+vehicle_status: "מצב רכב",
+vehicle_status_desc: "בדוק מוכנות אמבולנס, ציוד ומצב מערכת.",
+
+login_error_title: "שגיאה בהתחברות",
+login_error_msg: "בדוק אימייל וסיסמה ונסה שוב.",
+coming_soon: "בקרוב",
+
+};

@@ -1,99 +1,202 @@
+import { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useAuth } from "../../src/context/AuthContext";
-import { auth } from "../../src/firebase/config";
+import { auth, db } from "../../src/firebase/config";
+import { doc, getDoc } from "firebase/firestore";
+import { useLanguage } from "../../src/context/LanguageContext";
 
 export default function Login() {
   const router = useRouter();
-  const { user, role, approved, loading } = useAuth();
+  const { t, lang, toggleLanguage } = useLanguage();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-
-  // אם כבר מחובר — נווט אוטומטית
-  useEffect(() => {
-    if (!loading && user) {
-      if (role === "doctor" && !approved) router.replace("/doctor/pending");
-      else if (role === "ambulance" && !approved) router.replace("/ambulance/pending");
-      else router.replace("/");
-    }
-  }, [loading, user, role, approved]);
 
   const login = async () => {
-    setError("");
-
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      // שאר הניווט יקרה אוטומטית ב־useEffect
+      const cred = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password.trim()
+      );
+
+      const ref = doc(db, "users", cred.user.uid);
+      const snap = await getDoc(ref);
+
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        const role = data.role;
+        const approved = data.approved;
+
+        if ((role === "doctor" || role === "ambulance") && approved === false) {
+          router.replace(role === "doctor" ? "/doctor/pending" : "/ambulance/pending");
+          return;
+        }
+      }
+
+      router.replace("/");
     } catch (e) {
-      console.log(e);
-      setError("Incorrect email or password.");
+      Alert.alert(t("login_error_title"), t("login_error_msg"));
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome Back</Text>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#777"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        placeholderTextColor="#777"
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      <TouchableOpacity style={styles.button} onPress={login}>
-        <Text style={styles.btnText}>Login</Text>
+      {/* 🌍 Language Switch */}
+      <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
+        <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => router.replace("/auth/signup")}>
-        <Text style={styles.link}>Don't have an account? Create one</Text>
-      </TouchableOpacity>
+      <Text style={styles.logo}>⛑</Text>
+      <Text style={styles.title}>{t("login_title")}</Text>
+      <Text style={styles.subtitle}>{t("login_subtitle")}</Text>
+
+      <View style={styles.card}>
+        {/* EMAIL */}
+        <Text style={styles.label}>{t("email")}</Text>
+        <TextInput
+          style={styles.input}
+          placeholder={t("email_placeholder")}
+          placeholderTextColor="#ADB5BD"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+        />
+
+        {/* PASSWORD */}
+        <Text style={styles.label}>{t("password")}</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="●●●●●●●●"
+          placeholderTextColor="#ADB5BD"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+
+        {/* LOGIN BUTTON */}
+        <TouchableOpacity style={styles.primaryBtn} onPress={login}>
+          <Text style={styles.primaryText}>{t("login")}</Text>
+        </TouchableOpacity>
+
+        {/* SIGNUP LINK */}
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => router.push("/auth/signup")}
+        >
+          <Text style={styles.secondaryText}>{t("no_account")}</Text>
+        </TouchableOpacity>
+
+        {/* FORGOT PASSWORD */}
+        <TouchableOpacity onPress={() => Alert.alert(t("coming_soon"))}>
+          <Text style={styles.forgotText}>{t("forgot_password")}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
-// ===== Styles =====
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 25, justifyContent: "center" },
-  title: { fontSize: 34, fontWeight: "bold", textAlign: "center", marginBottom: 25, color: "#e63946" },
+  container: {
+    flex: 1,
+    backgroundColor: "#F8F9FA",
+    paddingTop: 70,
+    paddingHorizontal: 20,
+  },
+
+  languageBtn: {
+    position: "absolute",
+    top: 40,
+    right: 20,
+    backgroundColor: "#003049",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    zIndex: 10,
+  },
+  languageText: { color: "#FFF", fontWeight: "700" },
+
+  logo: {
+    fontSize: 48,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+
+  title: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: "#003049",
+    textAlign: "center",
+  },
+
+  subtitle: {
+    fontSize: 14,
+    color: "#6C757D",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+
+  card: {
+    backgroundColor: "#FFFFFF",
+    padding: 22,
+    borderRadius: 20,
+    elevation: 5,
+  },
+
+  label: {
+    fontSize: 14,
+    color: "#495057",
+    marginBottom: 4,
+    marginTop: 10,
+  },
 
   input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    fontSize: 16,
-    backgroundColor: "#fff",
+    backgroundColor: "#F1F3F5",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    fontSize: 15,
+    color: "#212529",
   },
 
-  button: {
-    backgroundColor: "#1d3557",
+  primaryBtn: {
+    backgroundColor: "#D62828",
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: "center",
-    marginBottom: 10,
+    marginTop: 20,
   },
-  btnText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  primaryText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
 
-  link: { textAlign: "center", marginTop: 10, fontSize: 16, color: "#457b9d", fontWeight: "600" },
+  secondaryBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  secondaryText: {
+    color: "#003049",
+    fontWeight: "600",
+    fontSize: 14,
+  },
 
-  error: { color: "#e63946", textAlign: "center", marginBottom: 10, fontSize: 15 },
+  forgotText: {
+    marginTop: 10,
+    textAlign: "center",
+    color: "#6C757D",
+    fontSize: 13,
+  },
 });
+

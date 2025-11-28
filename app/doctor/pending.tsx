@@ -1,70 +1,109 @@
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useAuth } from "../../src/context/AuthContext";
+import { useLanguage } from "../../src/context/LanguageContext";
 
-export default function PendingDoctor() {
-  const { user } = useAuth();
+export default function DoctorPending() {
   const router = useRouter();
+  const { t, lang, toggleLanguage } = useLanguage();
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Awaiting Approval</Text>
-
-      <Text style={styles.text}>
-        Hello {user?.email}, your account is registered as a doctor,
-        but it still requires admin approval.
-      </Text>
-
-      <Text style={styles.subtext}>
-        You will be notified once the admin approves your account.
-      </Text>
-
-      <TouchableOpacity
-        style={styles.homeButton}
-        onPress={() => router.replace("/")}
-      >
-        <Text style={styles.homeButtonText}>← Back to Home</Text>
+      {/* 🌍 Language Button */}
+      <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
+        <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
       </TouchableOpacity>
+
+      <Text style={styles.logo}>⛑</Text>
+
+      <Text style={styles.title}>{t("pending_title_doctor")}</Text>
+      <Text style={styles.subtitle}>{t("pending_subtitle_doctor")}</Text>
+
+      <View style={styles.card}>
+        <Text style={styles.waitMessage}>{t("pending_message_doctor")}</Text>
+
+        <TouchableOpacity
+          style={styles.homeBtn}
+          onPress={() => router.replace("/")}
+        >
+          <Text style={styles.homeBtnText}>{t("backHome")}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
+// ----------------------------
+// 🎨 STYLES
+// ----------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 30,
+    backgroundColor: "#F8F9FA",
+    paddingTop: 70,
+    paddingHorizontal: 20,
   },
+
+  languageBtn: {
+    position: "absolute",
+    top: 40,
+    right: 20,
+    backgroundColor: "#003049",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    zIndex: 10,
+  },
+  languageText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  logo: {
+    fontSize: 50,
+    textAlign: "center",
+  },
+
   title: {
     fontSize: 32,
-    fontWeight: "bold",
-    color: "#e63946",
-    marginBottom: 20,
+    fontWeight: "900",
     textAlign: "center",
+    color: "#003049",
+    marginTop: 10,
   },
-  text: {
-    fontSize: 18,
-    color: "#1d3557",
+
+  subtitle: {
+    fontSize: 14,
+    color: "#6C757D",
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: 25,
   },
-  subtext: {
+
+  card: {
+    backgroundColor: "white",
+    padding: 25,
+    borderRadius: 20,
+    elevation: 6,
+  },
+
+  waitMessage: {
+    textAlign: "center",
     fontSize: 16,
-    color: "#457b9d",
-    textAlign: "center",
-    marginBottom: 40,
+    color: "#495057",
+    marginBottom: 20,
+    lineHeight: 24,
   },
-  homeButton: {
-    backgroundColor: "#1d3557",
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 10,
+
+  homeBtn: {
+    backgroundColor: "#D62828",
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    marginTop: 10,
   },
-  homeButtonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+  homeBtnText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16,
   },
 });
