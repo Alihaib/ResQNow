@@ -1,4 +1,4 @@
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "../firebase/config";
@@ -21,21 +21,28 @@ export const AuthProvider = ({ children }: any) => {
 
         if (snap.exists()) {
           const data = snap.data();
-          setRole(data.role ?? "user");
-          setApproved(data.approved ?? false);
+          setRole(data.role);
+          setApproved(data.approved);
         }
       } else {
         setUser(null);
         setRole(null);
         setApproved(null);
       }
-
       setLoading(false);
     });
   }, []);
 
+  // 🔥 פונקציית Logout אמיתית
+  const logout = async () => {
+    await signOut(auth);
+    setUser(null);
+    setRole(null);
+    setApproved(null);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, role, approved, loading }}>
+    <AuthContext.Provider value={{ user, role, approved, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );

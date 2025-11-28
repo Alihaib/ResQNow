@@ -1,14 +1,19 @@
 import { useRouter } from "expo-router";
 import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useAuth } from "../src/context/AuthContext";
-import { db, auth } from "../src/firebase/config";
-import { signOut } from "firebase/auth";
+import {
+    FlatList,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { useAuth } from "../../src/context/AuthContext";
+import { db } from "../../src/firebase/config";
 
 export default function AdminPanel() {
-  const { user, role } = useAuth();
   const router = useRouter();
+  const { role, logout } = useAuth();
 
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,13 +42,13 @@ export default function AdminPanel() {
 
   const rejectDoctor = async (id: string) => {
     await updateDoc(doc(db, "users", id), { approved: false });
-    alert("Doctor rejected!");
+    alert("Doctor rejected.");
     loadUsers();
   };
 
   const makeAdmin = async (id: string) => {
     await updateDoc(doc(db, "users", id), { role: "admin", approved: true });
-    alert("User is now an Admin!");
+    alert("User is now Admin!");
     loadUsers();
   };
 
@@ -51,32 +56,36 @@ export default function AdminPanel() {
     router.replace("/");
   };
 
-  const doLogout = async () => {
-    try {
-      await signOut(auth);
-      router.replace("/auth/login");
-    } catch (error) {
-      console.log("Logout error:", error);
-    }
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/auth/login");
   };
 
-  if (loading)
-    return <Text style={{ textAlign: "center", marginTop: 50 }}>Loading Users...</Text>;
+  if (loading) {
+    return (
+      <View style={styles.loadingPage}>
+        <Text style={styles.loadingText}>Loading users...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Admin Panel</Text>
+      {/* HEADER */}
+      <View style={styles.topRow}>
+        <Text style={styles.header}>Admin Panel</Text>
 
-      {/* כפתור חזרה לדף הבית */}
-      <TouchableOpacity style={styles.homeButton} onPress={goHome}>
-        <Text style={styles.homeButtonText}>← Back to Home</Text>
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Back to Home */}
+      <TouchableOpacity style={styles.backHomeBtn} onPress={goHome}>
+        <Text style={styles.backHomeText}>← Back to Home</Text>
       </TouchableOpacity>
 
-      {/* כפתור Logout */}
-      <TouchableOpacity style={styles.logoutButton} onPress={doLogout}>
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
-
+      {/* LIST OF USERS */}
       <FlatList
         data={users}
         keyExtractor={(item) => item.id}
@@ -90,7 +99,7 @@ export default function AdminPanel() {
             </Text>
 
             {item.role === "doctor" && (
-              <View style={styles.btnRow}>
+              <View style={styles.row}>
                 <TouchableOpacity
                   style={styles.approveBtn}
                   onPress={() => approveDoctor(item.id)}
@@ -123,76 +132,91 @@ export default function AdminPanel() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#f8f9fa" },
-  header: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#e63946",
-    textAlign: "center",
+  loadingPage: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+  },
+  loadingText: { fontSize: 18, color: "#333" },
+
+  container: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: "#f8f9fa",
+  },
+
+  topRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 15,
   },
 
-  homeButton: {
-    backgroundColor: "#457b9d",
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  homeButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
+  header: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#e63946",
   },
 
-  logoutButton: {
+  logoutBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 10,
     backgroundColor: "#e63946",
-    paddingVertical: 10,
+  },
+  logoutText: { color: "white", fontSize: 16, fontWeight: "600" },
+
+  backHomeBtn: {
+    backgroundColor: "#457b9d",
+    padding: 12,
     borderRadius: 10,
     alignItems: "center",
     marginBottom: 20,
   },
-  logoutText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  backHomeText: { color: "white", fontSize: 16, fontWeight: "600" },
 
   card: {
-    backgroundColor: "#fff",
-    padding: 15,
+    backgroundColor: "white",
+    padding: 18,
     borderRadius: 12,
     marginBottom: 15,
     elevation: 3,
   },
+
   email: { fontSize: 18, fontWeight: "600" },
-  role: { fontSize: 16, marginTop: 5 },
-  status: { fontSize: 16, marginTop: 5 },
-  btnRow: {
+  role: { marginTop: 6, fontSize: 16 },
+  status: { marginTop: 6, fontSize: 16 },
+
+  row: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 15,
   },
+
   approveBtn: {
+    width: "48%",
     backgroundColor: "#2a9d8f",
-    padding: 10,
+    padding: 12,
     borderRadius: 10,
-    width: "48%",
     alignItems: "center",
   },
+
   rejectBtn: {
-    backgroundColor: "#e63946",
-    padding: 10,
-    borderRadius: 10,
     width: "48%",
+    backgroundColor: "#e63946",
+    padding: 12,
+    borderRadius: 10,
     alignItems: "center",
   },
+
   adminBtn: {
+    marginTop: 15,
     backgroundColor: "#1d3557",
     padding: 12,
     borderRadius: 10,
-    marginTop: 15,
     alignItems: "center",
   },
-  btnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+
+  btnText: { color: "white", fontSize: 16, fontWeight: "600" },
 });
