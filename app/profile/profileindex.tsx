@@ -141,16 +141,18 @@ export default function Profile() {
       <View style={styles.profileRow}>
         <View style={styles.leftColumn}>
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("personal_info")}</Text>
+            <Text style={styles.cardTitle} >{t("personal_info")}</Text>
             <TextInput
               style={styles.input}
               placeholder={t("full_name")}
+              placeholderTextColor="#888888"
               value={profile.name}
               onChangeText={(text) => setProfile({ ...profile, name: text })}
             />
             <TextInput
               style={styles.input}
               placeholder={t("age")}
+              placeholderTextColor="#888888"
               value={profile.age}
               onChangeText={(text) => setProfile({ ...profile, age: text })}
               keyboardType="numeric"
@@ -158,6 +160,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("weight")}
+              placeholderTextColor="#888888"
               value={profile.weight}
               onChangeText={(text) => setProfile({ ...profile, weight: text })}
               keyboardType="numeric"
@@ -165,6 +168,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("height")}
+              placeholderTextColor="#888888"
               value={profile.height}
               onChangeText={(text) => setProfile({ ...profile, height: text })}
               keyboardType="numeric"
@@ -172,6 +176,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("blood_type")}
+              placeholderTextColor="#888888"
               value={profile.bloodType}
               onChangeText={(text) => setProfile({ ...profile, bloodType: text })}
             />
@@ -182,6 +187,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("medical_history")}
+              placeholderTextColor="#888888"
               value={profile.medicalInfo}
               onChangeText={(text) => setProfile({ ...profile, medicalInfo: text })}
               multiline
@@ -189,6 +195,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("diseases")}
+              placeholderTextColor="#888888"
               value={profile.diseases}
               onChangeText={(text) => setProfile({ ...profile, diseases: text })}
               multiline
@@ -196,6 +203,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("medications")}
+              placeholderTextColor="#888888"
               value={profile.medications}
               onChangeText={(text) => setProfile({ ...profile, medications: text })}
               multiline
@@ -203,6 +211,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("sensitive_notes")}
+              placeholderTextColor="#888888"
               value={profile.sensitiveNotes}
               onChangeText={(text) => setProfile({ ...profile, sensitiveNotes: text })}
               multiline
@@ -269,6 +278,7 @@ export default function Profile() {
             <TextInput
               style={styles.input}
               placeholder={t("contact_name")}
+              placeholderTextColor="#888888"
               value={profile.emergencyContactName}
               onChangeText={(text) => setProfile({ ...profile, emergencyContactName: text })}
             />
@@ -281,6 +291,7 @@ export default function Profile() {
               <TextInput
                 style={[styles.input, { color: "#e63946" }]}
                 placeholder={t("contact_phone")}
+                placeholderTextColor="#888888"
                 value={profile.emergencyContactPhone}
                 onChangeText={(text) => setProfile({ ...profile, emergencyContactPhone: text })}
                 keyboardType="phone-pad"
@@ -299,7 +310,8 @@ export default function Profile() {
   );
 }
 
-// ...styles remain the same
+// ... your existing styles remain the same
+
 
 
 const styles = StyleSheet.create({
@@ -351,15 +363,16 @@ const styles = StyleSheet.create({
     color: "#003049",
   },
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: "#fffbfbff",
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
+    borderColor: "#adc5e9ff",
     fontSize: 16,
     color: "#003049",
     marginBottom: 10,
     textAlignVertical: "top",
+  
   },
   button: {
     backgroundColor: "#D62828",
@@ -369,7 +382,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   buttonText: {
-    color: "#fff",
+    color: "#553b3bff",
     fontSize: 18,
     fontWeight: "700",
   },
