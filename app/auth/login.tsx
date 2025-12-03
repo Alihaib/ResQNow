@@ -1,17 +1,17 @@
+import { useRouter } from "expo-router";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
-  View,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
+  View,
 } from "react-native";
-import { useRouter } from "expo-router";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "../../src/firebase/config";
-import { doc, getDoc } from "firebase/firestore";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { auth, db } from "../../src/firebase/config";
 
 export default function Login() {
   const router = useRouter();
@@ -97,7 +97,7 @@ export default function Login() {
         </TouchableOpacity>
 
         {/* FORGOT PASSWORD */}
-        <TouchableOpacity onPress={() => Alert.alert(t("coming_soon"))}>
+        <TouchableOpacity onPress={() => router.push("/auth/forgotPassword")}>
           <Text style={styles.forgotText}>{t("forgot_password")}</Text>
         </TouchableOpacity>
       </View>
@@ -150,6 +150,7 @@ const styles = StyleSheet.create({
     padding: 22,
     borderRadius: 20,
     elevation: 5,
+    marginTop: 50,
   },
 
   label: {

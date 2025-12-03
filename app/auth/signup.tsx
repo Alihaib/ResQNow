@@ -1,17 +1,17 @@
+import { useRouter } from "expo-router";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
-  View,
+  Alert,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  Alert,
+  View,
 } from "react-native";
-import { useRouter } from "expo-router";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "../../src/firebase/config";
-import { doc, setDoc } from "firebase/firestore";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { auth, db } from "../../src/firebase/config";
 
 export default function Signup() {
   const router = useRouter();
@@ -182,6 +182,7 @@ const styles = StyleSheet.create({
     padding: 25,
     borderRadius: 20,
     elevation: 6,
+    
   },
 
   label: {

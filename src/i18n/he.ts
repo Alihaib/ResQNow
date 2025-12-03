@@ -117,4 +117,11 @@ hello_user: "שלום",
   Obese: "השמנה",
 
   everyone: "כולם",
+   forgot_password_sub: "הכנס את כתובת האימייל ונשלח אליך קישור לאיפוס הסיסמה.",
+  send_reset: "שלח קישור לאיפוס",
+  reset_password_sent: "אימייל לאיפוס סיסמה נשלח!",
+  reset_password_failed: "שליחת אימייל לאיפוס נכשלה.",
+  email_required: "נדרש להזין כתובת אימייל.",
+  back: "חזרה",
+  Success: "הצלחה",
 };

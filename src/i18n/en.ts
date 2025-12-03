@@ -110,6 +110,13 @@ hello_user: "Hello",
   Obese: "Obese",
 
   everyone: "Everyone",
+  forgot_password_sub: "Enter your email and we will send you a reset link.",
+  send_reset: "Send Reset Link",
+  reset_password_sent: "Password reset email sent!",
+  reset_password_failed: "Failed to send reset email.",
+  email_required: "Email is required.",
+  back: "Back",
+  Success: "Success",
   
  
 

@@ -310,8 +310,6 @@ export default function Profile() {
   );
 }
 
-// ... your existing styles remain the same
-
 
 
 const styles = StyleSheet.create({
@@ -327,28 +325,46 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8F9FA",
   },
   header: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "bold",
     color: "#003049",
     marginBottom: 5,
     textAlign: "center",
+    marginTop:40,
   },
   subHeader: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#6C757D",
     marginBottom: 20,
     textAlign: "center",
   },
-  profileRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  leftColumn: { flex: 2, marginRight: 15 },
-  rightColumn: { flex: 1 },
+
+  /** ⭐ MOBILE-FRIENDLY SINGLE COLUMN */
+ profileRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  flexWrap: "wrap",   // ← added
+},
+
+
+  /** ⭐ Columns now full width */
+  leftColumn: { 
+  flex: 1, 
+  minWidth: "100%",   // ← added
+  marginRight: 0      // ← ensures perfect centering
+},
+
+  rightColumn: { 
+  flex: 1, 
+  minWidth: "100%",    // ← added
+  marginTop: 20        // ← spacing
+},
+
+
   card: {
     backgroundColor: "#fff",
     borderRadius: 20,
-    padding: 20,
+    padding: 18,
     marginBottom: 15,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
@@ -357,12 +373,15 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   cardTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: "700",
     marginBottom: 12,
     color: "#003049",
   },
+
+  /** ⭐ Input responsive for all iPhones */
   input: {
+    width: "100%",
     backgroundColor: "#fffbfbff",
     padding: 14,
     borderRadius: 14,
@@ -372,34 +391,38 @@ const styles = StyleSheet.create({
     color: "#003049",
     marginBottom: 10,
     textAlignVertical: "top",
-  
   },
+
   button: {
     backgroundColor: "#D62828",
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: "center",
     marginBottom: 12,
+    width: "100%",
   },
   buttonText: {
     color: "#553b3bff",
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "700",
   },
+
   logoutButton: {
     borderWidth: 2,
     borderColor: "#D62828",
     paddingVertical: 12,
     borderRadius: 14,
     alignItems: "center",
+    width: "100%",
   },
   logoutText: {
     color: "#D62828",
     fontSize: 16,
     fontWeight: "700",
   },
+
   bmiText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
     marginBottom: 5,
     color: "#003049",
@@ -432,4 +455,3 @@ const styles = StyleSheet.create({
     color: "#003049",
   },
 });
-
