@@ -3,12 +3,12 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
-  Alert,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { auth, db } from "../../src/firebase/config";
@@ -120,84 +120,110 @@ const styles = StyleSheet.create({
     backgroundColor: "#003049",
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  languageText: { color: "#FFF", fontWeight: "700" },
+  languageText: { 
+    color: "#FFF", 
+    fontWeight: "700",
+    fontSize: 14,
+  },
 
   logo: {
-    fontSize: 48,
+    fontSize: 60,
     textAlign: "center",
-    marginBottom: 6,
+    marginBottom: 12,
   },
 
   title: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: "900",
     color: "#003049",
     textAlign: "center",
+    letterSpacing: -0.5,
+    marginBottom: 8,
   },
 
   subtitle: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#6C757D",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 32,
+    lineHeight: 22,
   },
 
   card: {
     backgroundColor: "#FFFFFF",
-    padding: 22,
-    borderRadius: 20,
-    elevation: 5,
-    marginTop: 50,
+    padding: 28,
+    borderRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
   },
 
   label: {
-    fontSize: 14,
-    color: "#495057",
-    marginBottom: 4,
-    marginTop: 10,
+    fontSize: 15,
+    color: "#212529",
+    marginBottom: 8,
+    fontWeight: "600",
+    marginTop: 4,
   },
 
   input: {
-    backgroundColor: "#F1F3F5",
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    fontSize: 15,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
     color: "#212529",
+    marginBottom: 4,
+    borderWidth: 1.5,
+    borderColor: "#E9ECEF",
   },
 
   primaryBtn: {
     backgroundColor: "#D62828",
-    paddingVertical: 14,
+    paddingVertical: 18,
     borderRadius: 14,
     alignItems: "center",
-    marginTop: 20,
+    marginTop: 24,
+    shadowColor: "#D62828",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   primaryText: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
 
   secondaryBtn: {
-    marginTop: 10,
-    paddingVertical: 10,
+    marginTop: 20,
+    paddingVertical: 8,
     alignItems: "center",
   },
   secondaryText: {
     color: "#003049",
     fontWeight: "600",
-    fontSize: 14,
+    fontSize: 15,
   },
 
   forgotText: {
-    marginTop: 10,
+    marginTop: 16,
     textAlign: "center",
     color: "#6C757D",
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: "500",
   },
 });
 

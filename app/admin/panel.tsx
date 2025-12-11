@@ -92,14 +92,27 @@ export default function AdminPanel() {
 
           return (
             <View style={styles.card}>
-              {/* EMAIL + ROLE */}
+              {/* NAME + ROLE */}
               <View style={styles.row}>
-                <Text style={styles.email}>{item.email}</Text>
+                <View style={styles.userInfo}>
+                  <Text style={styles.name}>{item.name || item.email}</Text>
+                  {item.name && (
+                    <Text style={styles.email}>{item.email}</Text>
+                  )}
+                </View>
 
                 <View style={[styles.roleTag, { backgroundColor: roleColor }]}>
                   <Text style={styles.roleTagText}>{displayRole}</Text>
                 </View>
               </View>
+
+              {/* PHONE NUMBER */}
+              {item.phoneNumber && (
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>{t("phoneNumber")}:</Text>
+                  <Text style={styles.infoValue}>{item.phoneNumber}</Text>
+                </View>
+              )}
 
               {/* STATUS */}
               <View style={styles.statusRow}>
@@ -225,11 +238,32 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  email: {
+  userInfo: {
+    flex: 1,
+  },
+  name: {
     fontSize: 16,
     fontWeight: "700",
     color: "#003049",
-    flex: 1,
+  },
+  email: {
+    fontSize: 13,
+    color: "#6C757D",
+    marginTop: 2,
+  },
+  infoRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  infoLabel: {
+    color: "#6C757D",
+    fontSize: 13,
+  },
+  infoValue: {
+    color: "#212529",
+    fontSize: 13,
+    fontWeight: "600",
   },
 
   roleTag: {

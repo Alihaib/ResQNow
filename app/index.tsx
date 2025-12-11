@@ -1,14 +1,57 @@
-import { useRouter } from "expo-router";
+import { useRouter, useSegments } from "expo-router";
+import { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../src/context/AuthContext";
 import { useLanguage } from "../src/context/LanguageContext";
 
 export default function HomePage() {
-  const { user, role, approved, loading, logout } = useAuth();
+  const { user, role, approved, loading } = useAuth();
   const { lang, setLang, t } = useLanguage();
   const toggleLanguage = () => setLang(lang === "he" ? "en" : "he");
-
   const router = useRouter();
+  const segments = useSegments();
+
+  // Handle navigation redirects
+  useEffect(() => {
+    if (loading) return;
+
+    if (!user) {
+      // User not logged in - stay on index
+      if (segments.length > 0 && segments[0] !== "auth") {
+        // Already on auth, do nothing
+      }
+      return;
+    }
+
+    // User is logged in - redirect based on role
+    const inAuthGroup = segments[0] === "auth";
+    const inTabsGroup = segments[0] === "(tabs)";
+    const inAdminGroup = segments[0] === "admin";
+    const inDoctorGroup = segments[0] === "doctor";
+    const inAmbulanceGroup = segments[0] === "ambulance";
+
+    if (role === "admin" && !inAdminGroup) {
+      router.replace("/admin/panel");
+      return;
+    }
+
+    if ((role === "doctor" || role === "ambulance") && approved === false) {
+      if (role === "doctor" && !inDoctorGroup) {
+        router.replace("/doctor/pending");
+        return;
+      }
+      if (role === "ambulance" && !inAmbulanceGroup) {
+        router.replace("/ambulance/pending");
+        return;
+      }
+      return;
+    }
+
+    // Regular users and approved doctors/ambulance go to tabs
+    if (!inTabsGroup && !inAdminGroup && !inDoctorGroup && !inAmbulanceGroup) {
+      router.replace("/(tabs)");
+    }
+  }, [user, role, approved, loading, segments]);
 
   // ⏳ Loading state
   if (loading)
@@ -54,78 +97,10 @@ export default function HomePage() {
     );
   }
 
-  // -------------------------
-  // USER LOGGED IN
-  // -------------------------
+  // Show loading while redirecting
   return (
-    <View style={styles.container}>
-      {/* Language Switch */}
-      <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
-        <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.logo}>⛑</Text>
-      <Text style={styles.title}>ResQNow</Text>
-
-      {/* ROLE DISPLAY */}
-      <Text style={styles.role}>
-        {t(role!)}
-        {["doctor", "ambulance"].includes(role!) && approved === false ? (
-          <Text style={styles.pending}> — {t("awaiting")}</Text>
-        ) : null}
-      </Text>
-
-      <View style={styles.card}>
-        {/* 🚨 EMERGENCY */}
-        <TouchableOpacity style={styles.emergencyBtn}>
-          <Text style={styles.emergencyText}>{t("emergency")}</Text>
-        </TouchableOpacity>
-
-        {/* PROFILE BUTTON */}
-        <TouchableOpacity
-          style={styles.panelBtn}
-          onPress={() => router.push("/profile/profileindex")}
-        >
-          <Text style={styles.panelText}>{t("profile")}</Text>
-        </TouchableOpacity>
-
-        {/* Doctor Dashboard */}
-        {role === "doctor" && approved && (
-          <TouchableOpacity
-            style={styles.panelBtn}
-            onPress={() => router.push("/doctor/dashboard")}
-          >
-            <Text style={styles.panelText}>{t("doctor_dashboard")}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Ambulance Dashboard */}
-        {role === "ambulance" && approved && (
-          <TouchableOpacity
-            style={styles.panelBtn}
-            onPress={() => router.push("/ambulance/dashboard")}
-          >
-            <Text style={styles.panelText}>{t("ambulance_dashboard")}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Admin Panel */}
-        {role === "admin" && (
-          <TouchableOpacity
-            style={[styles.panelBtn, { borderColor: "#D62828" }]}
-            onPress={() => router.push("/admin/panel")}
-          >
-            <Text style={[styles.panelText, { color: "#D62828" }]}>
-              {t("admin_panel")}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* LOGOUT */}
-      <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-        <Text style={styles.logoutText}>{t("logout")}</Text>
-      </TouchableOpacity>
+    <View style={styles.center}>
+      <Text style={styles.loading}>{t("loading")}</Text>
     </View>
   );
 }
