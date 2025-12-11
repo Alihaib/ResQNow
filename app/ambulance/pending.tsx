@@ -1,10 +1,17 @@
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 
 export default function AmbulancePending() {
   const router = useRouter();
+  const { logout } = useAuth();
   const { t, lang, toggleLanguage } = useLanguage();
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/");
+  };
 
   return (
     <View style={styles.container}>
@@ -22,10 +29,10 @@ export default function AmbulancePending() {
         <Text style={styles.waitText}>{t("pending_message_ambulance")}</Text>
 
         <TouchableOpacity
-          style={styles.homeBtn}
-          onPress={() => router.replace("/")}
+          style={styles.logoutBtn}
+          onPress={handleLogout}
         >
-          <Text style={styles.homeBtnText}>{t("backHome")}</Text>
+          <Text style={styles.logoutBtnText}>{t("logout")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -81,12 +88,12 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
 
-  homeBtn: {
+  logoutBtn: {
     marginTop: 20,
     backgroundColor: "#D62828",
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: "center",
   },
-  homeBtnText: { color: "#FFF", fontWeight: "700", fontSize: 16 },
+  logoutBtnText: { color: "#FFF", fontWeight: "700", fontSize: 16 },
 });
