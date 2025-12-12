@@ -1,7 +1,10 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { db } from "../../../src/firebase/config";
 
 interface Contact {
   id: string;
@@ -12,15 +15,143 @@ interface Contact {
 
 export default function EmergencyContactsScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { t } = useLanguage();
-  const [contacts, setContacts] = useState<Contact[]>([
-    { id: "1", name: "John Doe", phone: "+972-50-123-4567", relationship: "Spouse" },
-    { id: "2", name: "Jane Smith", phone: "+972-50-987-6543", relationship: "Doctor" },
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newContact, setNewContact] = useState({ name: "", phone: "", relationship: "" });
 
-  const addContact = () => {
-    // Placeholder - would open add contact modal
+  // Load existing emergency contacts
+  useEffect(() => {
+    if (!user) return;
+
+    const loadContacts = async () => {
+      try {
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const savedContacts = data.emergencyContacts || [];
+          setContacts(savedContacts);
+        }
+      } catch (error) {
+        console.error("Error loading contacts:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadContacts();
+  }, [user]);
+
+  const saveContacts = async (showSuccess = false) => {
+    if (!user) {
+      Alert.alert(t("error"), "User not logged in");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          emergencyContacts: contacts,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      if (showSuccess) {
+        Alert.alert(t("Success"), t("saveChanges") + " " + t("Success"));
+      }
+      setShowAddForm(false);
+    } catch (error) {
+      console.error("Error saving contacts:", error);
+      Alert.alert(t("error"), "Failed to save contacts");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const addContact = async () => {
+    if (!newContact.name.trim() || !newContact.phone.trim()) {
+      Alert.alert(t("error"), t("fillAllFields"));
+      return;
+    }
+
+    const contact: Contact = {
+      id: Date.now().toString(),
+      name: newContact.name.trim(),
+      phone: newContact.phone.trim(),
+      relationship: newContact.relationship.trim() || "Contact",
+    };
+
+    const updatedContacts = [...contacts, contact];
+    setContacts(updatedContacts);
+    setNewContact({ name: "", phone: "", relationship: "" });
+    setShowAddForm(false);
+    
+    // Save to database
+    if (user) {
+      setSaving(true);
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            emergencyContacts: updatedContacts,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        console.error("Error saving contact:", error);
+        Alert.alert(t("error"), "Failed to save contact");
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  const deleteContact = (id: string) => {
+    Alert.alert(
+      t("deleteAccount"),
+      "Are you sure you want to delete this contact?",
+      [
+        { text: t("cancel"), style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const updated = contacts.filter((c) => c.id !== id);
+            setContacts(updated);
+            if (user) {
+              try {
+                await setDoc(
+                  doc(db, "users", user.uid),
+                  {
+                    emergencyContacts: updated,
+                    updatedAt: new Date().toISOString(),
+                  },
+                  { merge: true }
+                );
+              } catch (error) {
+                console.error("Error deleting contact:", error);
+              }
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.loadingText}>{t("loading")}</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -30,11 +161,58 @@ export default function EmergencyContactsScreen() {
         </TouchableOpacity>
         <View style={styles.titleRow}>
           <Text style={styles.title}>{t("emergency_contact")}</Text>
-          <TouchableOpacity style={styles.addBtn} onPress={addContact}>
+          <TouchableOpacity 
+            style={styles.addBtn} 
+            onPress={() => setShowAddForm(!showAddForm)}
+          >
             <Text style={styles.addBtnText}>+ {t("add")}</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Add Contact Form */}
+      {showAddForm && (
+        <View style={styles.addForm}>
+          <Text style={styles.formTitle}>{t("add")} {t("emergency_contact")}</Text>
+          <TextInput
+            style={styles.formInput}
+            placeholder={t("contact_name")}
+            value={newContact.name}
+            onChangeText={(text) => setNewContact({ ...newContact, name: text })}
+          />
+          <TextInput
+            style={styles.formInput}
+            placeholder={t("contact_phone")}
+            value={newContact.phone}
+            onChangeText={(text) => setNewContact({ ...newContact, phone: text })}
+            keyboardType="phone-pad"
+          />
+          <TextInput
+            style={styles.formInput}
+            placeholder="Relationship (optional)"
+            value={newContact.relationship}
+            onChangeText={(text) => setNewContact({ ...newContact, relationship: text })}
+          />
+          <View style={styles.formButtons}>
+            <TouchableOpacity 
+              style={styles.cancelBtn} 
+              onPress={() => {
+                setShowAddForm(false);
+                setNewContact({ name: "", phone: "", relationship: "" });
+              }}
+            >
+              <Text style={styles.cancelBtnText}>{t("cancel")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.saveFormBtn} 
+              onPress={addContact}
+              disabled={saving}
+            >
+              <Text style={styles.saveFormBtnText}>{t("add")}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {contacts.map((contact) => (
         <View key={contact.id} style={styles.contactCard}>
@@ -48,9 +226,17 @@ export default function EmergencyContactsScreen() {
             <Text style={styles.contactRelationship}>{contact.relationship}</Text>
             <Text style={styles.contactPhone}>{contact.phone}</Text>
           </View>
-          <TouchableOpacity style={styles.callBtn}>
-            <Text style={styles.callBtnText}>📞</Text>
-          </TouchableOpacity>
+          <View style={styles.contactActions}>
+            <TouchableOpacity 
+              style={styles.deleteBtn}
+              onPress={() => deleteContact(contact.id)}
+            >
+              <Text style={styles.deleteBtnText}>🗑️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.callBtn}>
+              <Text style={styles.callBtnText}>📞</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       ))}
 
@@ -176,6 +362,81 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: 16,
     color: "#ADB5BD",
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 18,
+    color: "#6C757D",
+  },
+  addForm: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  formTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#003049",
+    marginBottom: 16,
+  },
+  formInput: {
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: "#E9ECEF",
+  },
+  formButtons: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: "#E9ECEF",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  cancelBtnText: {
+    color: "#6C757D",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  saveFormBtn: {
+    flex: 1,
+    backgroundColor: "#D62828",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  saveFormBtnText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  contactActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  deleteBtn: {
+    padding: 8,
+  },
+  deleteBtnText: {
+    fontSize: 20,
   },
 });
 
