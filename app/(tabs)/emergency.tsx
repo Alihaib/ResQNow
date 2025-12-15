@@ -1,6 +1,8 @@
+import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,9 +17,57 @@ export default function EmergencyScreen() {
   const [emergencyActive, setEmergencyActive] = useState(false);
   const [countdown, setCountdown] = useState(5);
 
-  const handleEmergencyPress = () => {
+  const handleEmergencyPress = async () => {
     if (!emergencyActive) {
       setEmergencyActive(true);
+      
+      // Request location permission and get current location
+      let locationData = null;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            t("error") || "Permission Denied",
+            t("locationPermissionDenied") || "Location permission is required for emergency services."
+          );
+        } else {
+          // Get current location
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          
+          // Get address from coordinates (reverse geocoding)
+          try {
+            const [address] = await Location.reverseGeocodeAsync({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            });
+            
+            locationData = {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              accuracy: location.coords.accuracy,
+              address: address
+                ? `${address.street || ""} ${address.streetNumber || ""}, ${address.city || ""}, ${address.country || ""}`.trim()
+                : null,
+              timestamp: new Date().toISOString(),
+            };
+          } catch (geocodeError) {
+            // If reverse geocoding fails, still use coordinates
+            locationData = {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              accuracy: location.coords.accuracy,
+              address: null,
+              timestamp: new Date().toISOString(),
+            };
+          }
+        }
+      } catch (error) {
+        console.error("Error getting location:", error);
+        // Continue with emergency even if location fails
+      }
+      
       // Simulate countdown
       let timer = 5;
       const interval = setInterval(() => {
@@ -25,7 +75,11 @@ export default function EmergencyScreen() {
         setCountdown(timer);
         if (timer === 0) {
           clearInterval(interval);
-          router.push("/(tabs)/emergency/active");
+          // Pass location data to active screen
+          router.push({
+            pathname: "/(tabs)/emergency/active",
+            params: locationData ? { locationData: JSON.stringify(locationData) } : {},
+          });
         }
       }, 1000);
     }
