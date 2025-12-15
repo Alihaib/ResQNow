@@ -1,21 +1,104 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { db } from "../../../src/firebase/config";
 
 export default function MedicalProfileScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { t } = useLanguage();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
   const [bloodType, setBloodType] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
 
+  // Load existing profile data
+  useEffect(() => {
+    if (!user) return;
+
+    const loadProfile = async () => {
+      try {
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setName(data.name || "");
+          setAge(data.age || "");
+          setBloodType(data.bloodType || "");
+          setWeight(data.weight || "");
+          setHeight(data.height || "");
+        }
+      } catch (error) {
+        console.error("Error loading profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [user]);
+
+  const saveProfile = async () => {
+    if (!user) {
+      Alert.alert(t("error"), "User not logged in");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          name: name.trim(),
+          age: age.trim(),
+          bloodType: bloodType,
+          weight: weight.trim(),
+          height: height.trim(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      Alert.alert(t("Success"), t("saveChanges") + " " + t("Success"));
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/(tabs)/profile");
+      }
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      Alert.alert(t("error"), "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.loadingText}>{t("loading")}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/profile");
+            }
+          }} 
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹ {t("back")}</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{t("personalInformation")}</Text>
@@ -89,8 +172,14 @@ export default function MedicalProfileScreen() {
         />
       </View>
 
-      <TouchableOpacity style={styles.saveBtn}>
-        <Text style={styles.saveBtnText}>{t("saveChanges")}</Text>
+      <TouchableOpacity 
+        style={[styles.saveBtn, saving && styles.saveBtnDisabled]} 
+        onPress={saveProfile}
+        disabled={saving}
+      >
+        <Text style={styles.saveBtnText}>
+          {saving ? t("loading") : t("saveChanges")}
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -181,6 +270,18 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "800",
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 18,
+    color: "#6C757D",
   },
 });
 

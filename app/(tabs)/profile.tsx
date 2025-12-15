@@ -1,12 +1,98 @@
 import { useRouter } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { doc, getDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { Alert, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { db } from "../../src/firebase/config";
 
 export default function ProfileTab() {
   const { user, role } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
+  const [sharing, setSharing] = useState(false);
+  const [israeliId, setIsraeliId] = useState<string | null>(null);
+
+  // Load Israeli ID from Firestore
+  useEffect(() => {
+    if (!user) return;
+    
+    const loadIsraeliId = async () => {
+      try {
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setIsraeliId(data.israeliId || null);
+        }
+      } catch (error) {
+        console.error("Error loading Israeli ID:", error);
+      }
+    };
+    
+    loadIsraeliId();
+  }, [user]);
+
+  const shareMedicalInfo = async () => {
+    if (!user) {
+      Alert.alert(t("error"), "User not logged in");
+      return;
+    }
+
+    setSharing(true);
+    try {
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+      
+      if (!docSnap.exists()) {
+        Alert.alert(t("error"), "No medical information found");
+        setSharing(false);
+        return;
+      }
+
+      const data = docSnap.data();
+      
+      // Format medical information for sharing
+      const medicalInfo = `
+⛑ ResQNow Medical Information
+
+👤 Personal Information:
+${data.name ? `Name: ${data.name}` : ""}
+${data.age ? `Age: ${data.age}` : ""}
+${data.bloodType ? `Blood Type: ${data.bloodType}` : ""}
+${data.weight ? `Weight: ${data.weight} kg` : ""}
+${data.height ? `Height: ${data.height} cm` : ""}
+
+🏥 Medical History:
+${data.diseases ? `Diseases: ${data.diseases}` : ""}
+${data.medications ? `Medications: ${data.medications}` : ""}
+${data.allergies ? `Allergies: ${data.allergies}` : ""}
+${data.sensitiveNotes ? `Notes: ${data.sensitiveNotes}` : ""}
+
+📞 Emergency Contacts:
+${data.emergencyContacts && data.emergencyContacts.length > 0
+  ? data.emergencyContacts.map((c: any) => `${c.name}: ${c.phone}`).join("\n")
+  : "No emergency contacts"}
+
+---
+Shared from ResQNow App
+      `.trim();
+
+      const result = await Share.share({
+        message: medicalInfo,
+        title: t("shareMedicalProfile"),
+      });
+
+      if (result.action === Share.sharedAction) {
+        Alert.alert(t("Success"), "Medical information shared successfully");
+      }
+    } catch (error) {
+      console.error("Error sharing medical info:", error);
+      Alert.alert(t("error"), "Failed to share medical information");
+    } finally {
+      setSharing(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -24,11 +110,32 @@ export default function ProfileTab() {
         </View>
         <Text style={styles.userName}>{user?.email || t("user")}</Text>
         <Text style={styles.userRole}>{t(role || "user")}</Text>
+        
+        {/* Patient ID for Emergency Access */}
+        {israeliId && (
+          <View style={styles.patientIdCard}>
+            <Text style={styles.patientIdLabel}>{t("patientIdForEmergency")}:</Text>
+            <Text style={styles.patientIdValue}>{israeliId}</Text>
+            <Text style={styles.patientIdNote}>
+              {t("sharePatientIdNote")}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Medical Profile Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("medicalProfile")}</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("medicalProfile")}</Text>
+          <TouchableOpacity
+            style={styles.shareBtn}
+            onPress={shareMedicalInfo}
+            disabled={sharing}
+          >
+            <Text style={styles.shareIcon}>📤</Text>
+            <Text style={styles.shareText}>{t("shareMedicalProfile")}</Text>
+          </TouchableOpacity>
+        </View>
         
         <TouchableOpacity
           style={styles.menuCard}
@@ -158,15 +265,68 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6C757D",
     textTransform: "capitalize",
+    marginBottom: 16,
+  },
+  patientIdCard: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#D62828",
+    borderStyle: "dashed",
+  },
+  patientIdLabel: {
+    fontSize: 12,
+    color: "#6C757D",
+    fontWeight: "600",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  patientIdValue: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#D62828",
+    textAlign: "center",
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
+  patientIdNote: {
+    fontSize: 11,
+    color: "#6C757D",
+    textAlign: "center",
+    fontStyle: "italic",
   },
   section: {
     marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: "800",
     color: "#003049",
-    marginBottom: 16,
+  },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#D62828",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  shareIcon: {
+    fontSize: 16,
+  },
+  shareText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
   menuCard: {
     backgroundColor: "#FFFFFF",

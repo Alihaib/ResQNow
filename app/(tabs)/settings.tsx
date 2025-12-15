@@ -5,15 +5,20 @@ import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 
 export default function SettingsScreen() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { t, lang, toggleLanguage } = useLanguage();
   const router = useRouter();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
 
   const handleLogout = async () => {
-    await logout();
-    router.replace("/");
+    try {
+      await logout();
+      // Navigate directly to login page after logout
+      router.replace("/auth/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   return (

@@ -19,7 +19,11 @@ export default function ForgotPassword() {
     try {
       await sendPasswordResetEmail(auth, email.trim());
       Alert.alert(t("success"), t("reset_password_sent"));
-      router.back();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/auth/login");
+      }
     } catch (e) {
       Alert.alert(t("error"), t("reset_password_failed"));
     }

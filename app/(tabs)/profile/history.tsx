@@ -1,20 +1,101 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { db } from "../../../src/firebase/config";
 
 export default function MedicalHistoryScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { t } = useLanguage();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [diseases, setDiseases] = useState("");
   const [medications, setMedications] = useState("");
   const [allergies, setAllergies] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Load existing medical history
+  useEffect(() => {
+    if (!user) return;
+
+    const loadHistory = async () => {
+      try {
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setDiseases(data.diseases || "");
+          setMedications(data.medications || "");
+          setAllergies(data.allergies || "");
+          setNotes(data.sensitiveNotes || "");
+        }
+      } catch (error) {
+        console.error("Error loading medical history:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadHistory();
+  }, [user]);
+
+  const saveHistory = async () => {
+    if (!user) {
+      Alert.alert(t("error"), "User not logged in");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          diseases: diseases.trim(),
+          medications: medications.trim(),
+          allergies: allergies.trim(),
+          sensitiveNotes: notes.trim(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      Alert.alert(t("Success"), t("saveChanges") + " " + t("Success"));
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/(tabs)/profile");
+      }
+    } catch (error) {
+      console.error("Error saving medical history:", error);
+      Alert.alert(t("error"), "Failed to save medical history");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.loadingText}>{t("loading")}</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/profile");
+            }
+          }} 
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹ {t("back")}</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{t("medical_history")}</Text>
@@ -68,8 +149,14 @@ export default function MedicalHistoryScreen() {
         />
       </View>
 
-      <TouchableOpacity style={styles.saveBtn}>
-        <Text style={styles.saveBtnText}>{t("saveChanges")}</Text>
+      <TouchableOpacity 
+        style={[styles.saveBtn, saving && styles.saveBtnDisabled]} 
+        onPress={saveHistory}
+        disabled={saving}
+      >
+        <Text style={styles.saveBtnText}>
+          {saving ? t("loading") : t("saveChanges")}
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -136,6 +223,18 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "800",
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 18,
+    color: "#6C757D",
   },
 });
 

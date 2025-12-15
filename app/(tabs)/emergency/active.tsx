@@ -1,20 +1,78 @@
 import { useRouter } from "expo-router";
+import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Alert,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { db } from "../../../src/firebase/config";
 
 export default function ActiveEmergencyScreen() {
-  const { t } = useLanguage();
+  const { user } = useAuth();
+  const { t: translate } = useLanguage();
   const router = useRouter();
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [location] = useState("");
+
+  const shareMedicalInfo = async () => {
+    if (!user) {
+      Alert.alert(translate("error"), "User not logged in");
+      return;
+    }
+
+    try {
+      const docRef = doc(db, "users", user.uid);
+      const docSnap = await getDoc(docRef);
+      
+      if (!docSnap.exists()) {
+        Alert.alert(translate("error"), "No medical information found");
+        return;
+      }
+
+      const data = docSnap.data();
+      
+      // Format medical information for sharing
+      const medicalInfo = `
+⛑ ResQNow Medical Information - EMERGENCY
+
+👤 Personal Information:
+${data.name ? `Name: ${data.name}` : ""}
+${data.age ? `Age: ${data.age}` : ""}
+${data.bloodType ? `Blood Type: ${data.bloodType}` : ""}
+${data.weight ? `Weight: ${data.weight} kg` : ""}
+${data.height ? `Height: ${data.height} cm` : ""}
+
+🏥 Medical History:
+${data.diseases ? `Diseases: ${data.diseases}` : ""}
+${data.medications ? `Medications: ${data.medications}` : ""}
+${data.allergies ? `Allergies: ${data.allergies}` : ""}
+${data.sensitiveNotes ? `Notes: ${data.sensitiveNotes}` : ""}
+
+📞 Emergency Contacts:
+${data.emergencyContacts && data.emergencyContacts.length > 0
+  ? data.emergencyContacts.map((c: any) => `${c.name}: ${c.phone}`).join("\n")
+  : "No emergency contacts"}
+
+---
+Shared from ResQNow App - Emergency Situation
+      `.trim();
+
+      await Share.share({
+        message: medicalInfo,
+        title: translate("shareMedicalProfile"),
+      });
+    } catch (error) {
+      console.error("Error sharing medical info:", error);
+      Alert.alert(translate("error"), "Failed to share medical information");
+    }
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -30,12 +88,18 @@ export default function ActiveEmergencyScreen() {
   };
 
   const endEmergency = () => {
-    Alert.alert(t("endEmergency"), t("endEmergencyConfirm"), [
-      { text: t("cancel"), style: "cancel" },
+    Alert.alert(translate("endEmergency"), translate("endEmergencyConfirm"), [
+      { text: translate("cancel"), style: "cancel" },
       {
-        text: t("endEmergency"),
+        text: translate("endEmergency"),
         style: "destructive",
-        onPress: () => router.back(),
+        onPress: () => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/(tabs)/emergency");
+          }
+        },
       },
     ]);
   };
@@ -45,13 +109,13 @@ export default function ActiveEmergencyScreen() {
       {/* Status Bar */}
       <View style={styles.statusBar}>
         <View style={styles.statusIndicator} />
-        <Text style={styles.statusText}>{t("emergencyActive")}</Text>
+        <Text style={styles.statusText}>{translate("emergencyActive")}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Timer */}
         <View style={styles.timerContainer}>
-          <Text style={styles.timerLabel}>{t("timeElapsed")}</Text>
+          <Text style={styles.timerLabel}>{translate("timeElapsed")}</Text>
           <Text style={styles.timer}>{formatTime(timeElapsed)}</Text>
         </View>
 
@@ -59,31 +123,31 @@ export default function ActiveEmergencyScreen() {
         <View style={styles.infoCard}>
           <Text style={styles.infoIcon}>📍</Text>
           <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>{t("yourLocation")}</Text>
-            <Text style={styles.infoValue}>{t("locationLoading")}</Text>
+            <Text style={styles.infoLabel}>{translate("yourLocation")}</Text>
+            <Text style={styles.infoValue}>{translate("locationLoading")}</Text>
           </View>
         </View>
 
         {/* Instructions */}
         <View style={styles.instructionsCard}>
-          <Text style={styles.instructionsTitle}>{t("stayCalmTitle")}</Text>
+          <Text style={styles.instructionsTitle}>{translate("stayCalmTitle")}</Text>
           <Text style={styles.instructionsText}>
-            {t("helpOnWay")}{'\n'}
-            {t("stayWhereYouAre")}{'\n'}
-            {t("keepPhoneNearby")}{'\n'}
-            {t("followInstructions")}
+            {translate("helpOnWay")}{'\n'}
+            {translate("stayWhereYouAre")}{'\n'}
+            {translate("keepPhoneNearby")}{'\n'}
+            {translate("followInstructions")}
           </Text>
         </View>
 
-        {/* Medical Info */}
+        {/* Medical Info Share */}
         <TouchableOpacity
           style={styles.actionCard}
-          onPress={() => router.push("/(tabs)/profile")}
+          onPress={shareMedicalInfo}
         >
           <Text style={styles.actionIcon}>📋</Text>
           <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>{t("shareMedicalProfile")}</Text>
-            <Text style={styles.actionSubtitle}>{t("sendMedicalInfo")}</Text>
+            <Text style={styles.actionTitle}>{translate("shareMedicalProfile")}</Text>
+            <Text style={styles.actionSubtitle}>{translate("sendMedicalInfo")}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
@@ -95,8 +159,8 @@ export default function ActiveEmergencyScreen() {
         >
           <Text style={styles.actionIcon}>⛑</Text>
           <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>{t("medical_guides")}</Text>
-            <Text style={styles.actionSubtitle}>{t("getGuidance")}</Text>
+            <Text style={styles.actionTitle}>{translate("medical_guides")}</Text>
+            <Text style={styles.actionSubtitle}>{translate("getGuidance")}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
@@ -105,7 +169,7 @@ export default function ActiveEmergencyScreen() {
       {/* End Emergency Button */}
       <View style={styles.footer}>
         <TouchableOpacity style={styles.endBtn} onPress={endEmergency}>
-          <Text style={styles.endBtnText}>{t("endEmergency")}</Text>
+          <Text style={styles.endBtnText}>{translate("endEmergency")}</Text>
         </TouchableOpacity>
       </View>
     </View>

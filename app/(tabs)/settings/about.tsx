@@ -9,7 +9,16 @@ export default function AboutScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/settings");
+            }
+          }} 
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹ {t("back")}</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{t("about")}</Text>
