@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { doc, getDoc } from "firebase/firestore";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
@@ -11,6 +11,27 @@ export default function ProfileTab() {
   const { t } = useLanguage();
   const router = useRouter();
   const [sharing, setSharing] = useState(false);
+  const [israeliId, setIsraeliId] = useState<string | null>(null);
+
+  // Load Israeli ID from Firestore
+  useEffect(() => {
+    if (!user) return;
+    
+    const loadIsraeliId = async () => {
+      try {
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setIsraeliId(data.israeliId || null);
+        }
+      } catch (error) {
+        console.error("Error loading Israeli ID:", error);
+      }
+    };
+    
+    loadIsraeliId();
+  }, [user]);
 
   const shareMedicalInfo = async () => {
     if (!user) {
@@ -89,6 +110,17 @@ Shared from ResQNow App
         </View>
         <Text style={styles.userName}>{user?.email || t("user")}</Text>
         <Text style={styles.userRole}>{t(role || "user")}</Text>
+        
+        {/* Patient ID for Emergency Access */}
+        {israeliId && (
+          <View style={styles.patientIdCard}>
+            <Text style={styles.patientIdLabel}>{t("patientIdForEmergency")}:</Text>
+            <Text style={styles.patientIdValue}>{israeliId}</Text>
+            <Text style={styles.patientIdNote}>
+              {t("sharePatientIdNote")}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Medical Profile Section */}
@@ -233,6 +265,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6C757D",
     textTransform: "capitalize",
+    marginBottom: 16,
+  },
+  patientIdCard: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#D62828",
+    borderStyle: "dashed",
+  },
+  patientIdLabel: {
+    fontSize: 12,
+    color: "#6C757D",
+    fontWeight: "600",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  patientIdValue: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#D62828",
+    textAlign: "center",
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
+  patientIdNote: {
+    fontSize: 11,
+    color: "#6C757D",
+    textAlign: "center",
+    fontStyle: "italic",
   },
   section: {
     marginBottom: 24,

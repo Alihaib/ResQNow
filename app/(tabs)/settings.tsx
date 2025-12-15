@@ -15,7 +15,6 @@ export default function SettingsScreen() {
     try {
       await logout();
       // Navigate directly to login page after logout
-      router.dismissAll();
       router.replace("/auth/login");
     } catch (error) {
       console.error("Logout error:", error);

@@ -62,7 +62,11 @@ export default function MedicalHistoryScreen() {
         { merge: true }
       );
       Alert.alert(t("Success"), t("saveChanges") + " " + t("Success"));
-      router.back();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/(tabs)/profile");
+      }
     } catch (error) {
       console.error("Error saving medical history:", error);
       Alert.alert(t("error"), "Failed to save medical history");
@@ -82,7 +86,16 @@ export default function MedicalHistoryScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/profile");
+            }
+          }} 
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹ {t("back")}</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{t("medical_history")}</Text>

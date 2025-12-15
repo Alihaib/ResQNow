@@ -81,14 +81,12 @@ export default function AdminPanel() {
   };
 
   const goHome = () => {
-    router.dismissAll();
     router.replace("/(tabs)");
   };
 
   const handleLogout = async () => {
     try {
       await logout();
-      router.dismissAll();
       router.replace("/auth/login");
     } catch (error) {
       console.error("Logout error:", error);

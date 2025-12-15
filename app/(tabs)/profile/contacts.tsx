@@ -1,7 +1,7 @@
 import { useRouter } from "expo-router";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
@@ -145,6 +145,45 @@ export default function EmergencyContactsScreen() {
     );
   };
 
+  const makePhoneCall = (phoneNumber: string) => {
+    // Clean the phone number - remove any non-digit characters except +
+    const cleaned = phoneNumber.replace(/[^\d+]/g, "");
+    
+    // Check if phone number is valid
+    if (!cleaned || cleaned.length < 7) {
+      Alert.alert(t("error"), t("invalidPhoneNumber") || "Invalid phone number");
+      return;
+    }
+
+    // Format phone number for calling
+    // If it starts with +972, use as is
+    // If it starts with 0, convert to +972 format
+    // Otherwise, assume it's already in correct format
+    let phoneToCall = cleaned;
+    if (cleaned.startsWith("0")) {
+      // Convert Israeli local format (05xxxxxxxx) to international (+9725xxxxxxxx)
+      phoneToCall = `+972${cleaned.substring(1)}`;
+    } else if (!cleaned.startsWith("+")) {
+      // If no + prefix, add it (assuming it's an international number)
+      phoneToCall = `+${cleaned}`;
+    }
+
+    // Open phone dialer
+    const phoneUrl = `tel:${phoneToCall}`;
+    Linking.canOpenURL(phoneUrl)
+      .then((supported) => {
+        if (supported) {
+          return Linking.openURL(phoneUrl);
+        } else {
+          Alert.alert(t("error"), "Phone calls are not supported on this device");
+        }
+      })
+      .catch((error) => {
+        console.error("Error making phone call:", error);
+        Alert.alert(t("error"), "Failed to make phone call");
+      });
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -156,7 +195,16 @@ export default function EmergencyContactsScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/profile");
+            }
+          }} 
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹ {t("back")}</Text>
         </TouchableOpacity>
         <View style={styles.titleRow}>
@@ -233,7 +281,10 @@ export default function EmergencyContactsScreen() {
             >
               <Text style={styles.deleteBtnText}>🗑️</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.callBtn}>
+            <TouchableOpacity 
+              style={styles.callBtn}
+              onPress={() => makePhoneCall(contact.phone)}
+            >
               <Text style={styles.callBtnText}>📞</Text>
             </TouchableOpacity>
           </View>

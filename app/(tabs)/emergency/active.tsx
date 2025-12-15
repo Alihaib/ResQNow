@@ -93,7 +93,13 @@ Shared from ResQNow App - Emergency Situation
       {
         text: translate("endEmergency"),
         style: "destructive",
-        onPress: () => router.back(),
+        onPress: () => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/(tabs)/emergency");
+          }
+        },
       },
     ]);
   };

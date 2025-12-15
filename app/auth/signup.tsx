@@ -4,6 +4,9 @@ import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
     Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -21,6 +24,7 @@ export default function Signup() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [israeliId, setIsraeliId] = useState("");
 
   // role: user | doctor | ambulance
   const [role, setRole] = useState<"user" | "doctor" | "ambulance">("user");
@@ -44,14 +48,25 @@ export default function Signup() {
     return mobilePattern.test(local) || landlinePattern.test(local);
   };
 
+  // Israeli ID validation - exactly 9 digits
+  const validateIsraeliId = (id: string): boolean => {
+    const digits = id.replace(/\D/g, "");
+    return digits.length === 9 && /^\d{9}$/.test(digits);
+  };
+
   const signup = async () => {
-    if (!name || !phoneNumber || !email || !password) {
+    if (!name || !phoneNumber || !email || !password || !israeliId) {
       Alert.alert(t("error"), t("fillAllFields"));
       return;
     }
 
     if (!validatePhoneNumber(phoneNumber)) {
       Alert.alert(t("error"), t("invalidPhoneNumber"));
+      return;
+    }
+
+    if (!validateIsraeliId(israeliId)) {
+      Alert.alert(t("error"), t("invalidIsraeliId") || "Israeli ID must be exactly 9 digits");
       return;
     }
 
@@ -69,6 +84,7 @@ export default function Signup() {
         name: name.trim(),
         phoneNumber: phoneNumber.trim(),
         email: email.trim(),
+        israeliId: israeliId.replace(/\D/g, ""), // Store only digits
         role,
         approved: !needApproval, // regular users approved immediately
         createdAt: new Date().toISOString(),
@@ -87,17 +103,26 @@ export default function Signup() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* 🌍 Language Switch */}
-      <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
-        <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
-      </TouchableOpacity>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* 🌍 Language Switch */}
+        <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
+          <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
+        </TouchableOpacity>
 
-      <Text style={styles.logo}>⛑</Text>
-      <Text style={styles.title}>{t("create_account")}</Text>
-      <Text style={styles.subtitle}>{t("signup_subtitle")}</Text>
+        <Text style={styles.logo}>⛑</Text>
+        <Text style={styles.title}>{t("create_account")}</Text>
+        <Text style={styles.subtitle}>{t("signup_subtitle")}</Text>
 
-      <View style={styles.card}>
+        <View style={styles.card}>
         {/* FULL NAME */}
         <Text style={styles.label}>{t("fullName")}</Text>
         <TextInput
@@ -118,6 +143,22 @@ export default function Signup() {
           value={phoneNumber}
           keyboardType="phone-pad"
           onChangeText={setPhoneNumber}
+        />
+
+        {/* ISRAELI ID */}
+        <Text style={[styles.label, { marginTop: 16 }]}>{t("israeliId")}</Text>
+        <TextInput
+          style={styles.input}
+          placeholder={t("israeliId_placeholder") || "123456789"}
+          placeholderTextColor="#ADB5BD"
+          value={israeliId}
+          keyboardType="number-pad"
+          maxLength={9}
+          onChangeText={(text) => {
+            // Only allow digits
+            const digits = text.replace(/\D/g, "");
+            setIsraeliId(digits);
+          }}
         />
 
         {/* EMAIL */}
@@ -180,7 +221,8 @@ export default function Signup() {
           <Text style={styles.secondaryText}>{t("have_account")}</Text>
         </TouchableOpacity>
       </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -191,8 +233,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",
+  },
+  scrollContent: {
     paddingTop: 70,
     paddingHorizontal: 20,
+    paddingBottom: 40,
   },
 
   languageBtn: {
