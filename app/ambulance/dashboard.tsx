@@ -1,14 +1,26 @@
+import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { collection, getDocs } from "firebase/firestore";
-import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 
-const liveCalls = [
-  { id: "1", type: "Cardiac", distance: "2.3 km", priority: "High", time: "5 min ago" },
-  { id: "2", type: "Accident", distance: "5.1 km", priority: "Medium", time: "8 min ago" },
-];
+interface Emergency {
+  id: string;
+  userId: string;
+  location: {
+    latitude: number;
+    longitude: number;
+    accuracy: number | null;
+    address: string | null;
+  };
+  timestamp: string;
+  status: string;
+  userInfo?: any;
+  distance?: number;
+  timeAgo?: string;
+}
 
 export default function AmbulanceDashboard() {
   const router = useRouter();
@@ -16,6 +28,152 @@ export default function AmbulanceDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [patientData, setPatientData] = useState<any>(null);
+  const [emergencies, setEmergencies] = useState<Emergency[]>([]);
+  const [loadingEmergencies, setLoadingEmergencies] = useState(true);
+  const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Get ambulance location
+  useEffect(() => {
+    const getAmbulanceLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === "granted") {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+          setAmbulanceLocation({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          });
+        }
+      } catch (error) {
+        console.error("Error getting ambulance location:", error);
+      }
+    };
+    getAmbulanceLocation();
+  }, []);
+
+  // Calculate distance between two coordinates (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Radius of the Earth in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) *
+        Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // Format time ago
+  const formatTimeAgo = (timestamp: string): string => {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return `${diffInSeconds} sec ago`;
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} min ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hour${Math.floor(diffInSeconds / 3600) > 1 ? "s" : ""} ago`;
+    return `${Math.floor(diffInSeconds / 86400)} day${Math.floor(diffInSeconds / 86400) > 1 ? "s" : ""} ago`;
+  };
+
+  // Fetch user info for emergency
+  const fetchUserInfo = async (userId: string) => {
+    try {
+      const userDoc = await getDoc(doc(db, "users", userId));
+      if (userDoc.exists()) {
+        return { id: userId, ...userDoc.data() };
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching user info:", error);
+      return null;
+    }
+  };
+
+  // Listen to active emergencies
+  useEffect(() => {
+    setLoadingEmergencies(true);
+    const emergenciesRef = collection(db, "emergencies");
+    const q = query(emergenciesRef, where("status", "==", "active"));
+    
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const emergenciesList: Emergency[] = [];
+      
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const emergency: Emergency = {
+          id: docSnap.id,
+          userId: data.userId,
+          location: data.location,
+          timestamp: data.timestamp,
+          status: data.status,
+        };
+
+        // Fetch user info
+        const userInfo = await fetchUserInfo(data.userId);
+        if (userInfo) {
+          emergency.userInfo = userInfo;
+        }
+
+        // Calculate distance if ambulance location is available
+        if (ambulanceLocation && emergency.location) {
+          emergency.distance = calculateDistance(
+            ambulanceLocation.latitude,
+            ambulanceLocation.longitude,
+            emergency.location.latitude,
+            emergency.location.longitude
+          );
+        }
+
+        // Calculate time ago
+        emergency.timeAgo = formatTimeAgo(emergency.timestamp);
+
+        emergenciesList.push(emergency);
+      }
+
+      // Sort by distance (closest first) or by time (newest first)
+      emergenciesList.sort((a, b) => {
+        if (a.distance && b.distance) {
+          return a.distance - b.distance;
+        }
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+
+      setEmergencies(emergenciesList);
+      setLoadingEmergencies(false);
+    }, (error) => {
+      console.error("Error listening to emergencies:", error);
+      setLoadingEmergencies(false);
+    });
+
+    return () => unsubscribe();
+  }, [ambulanceLocation]);
+
+  // Open navigation to emergency location
+  const openNavigation = (emergency: Emergency) => {
+    const { latitude, longitude } = emergency.location;
+    const url = Platform.select({
+      ios: `maps://maps.apple.com/?daddr=${latitude},${longitude}`,
+      android: `google.navigation:q=${latitude},${longitude}`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
+    });
+
+    Linking.canOpenURL(url || "").then((supported) => {
+      if (supported) {
+        Linking.openURL(url || "");
+      } else {
+        // Fallback to Google Maps web
+        Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`);
+      }
+    }).catch((error) => {
+      console.error("Error opening navigation:", error);
+      Alert.alert(t("error") || "Error", "Failed to open navigation");
+    });
+  };
 
   const handleSearchPatient = async () => {
     if (!searchQuery.trim()) {
@@ -30,23 +188,21 @@ export default function AmbulanceDashboard() {
       
       // Search by Israeli ID or name or email
       const usersSnapshot = await getDocs(collection(db, "users"));
-      let foundPatient = null;
-
-      usersSnapshot.forEach((docSnap) => {
+      
+      // Use find() to stop searching once we find a match
+      const foundDoc = usersSnapshot.docs.find((docSnap) => {
         const data = docSnap.data();
-        const userId = docSnap.id;
         
         // Check if search matches Israeli ID, name, or email
-        if (
+        return (
           data.israeliId === queryDigits ||
           data.name?.toLowerCase().includes(queryLower) ||
           data.email?.toLowerCase().includes(queryLower)
-        ) {
-          foundPatient = { id: userId, ...data };
-        }
+        );
       });
 
-      if (foundPatient) {
+      if (foundDoc) {
+        const foundPatient = { id: foundDoc.id, ...foundDoc.data() };
         setPatientData(foundPatient);
       } else {
         Alert.alert(t("error"), t("patientNotFound") || "Patient not found");
@@ -91,7 +247,7 @@ export default function AmbulanceDashboard() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholderTextColor="#ADB5BD"
-              keyboardType="number-pad"
+              keyboardType="default"
             />
             <TouchableOpacity
               style={styles.searchBtn}
@@ -187,22 +343,73 @@ export default function AmbulanceDashboard() {
           )}
         </View>
 
-        {/* Live Calls */}
+        {/* Live Emergency Calls */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("live_calls")}</Text>
-          {liveCalls.map((call) => (
-            <TouchableOpacity key={call.id} style={styles.callCard}>
-              <View style={styles.callHeader}>
-                <View style={[styles.priorityBadge, { backgroundColor: call.priority === "High" ? "#DC2626" : "#F59E0B" }]}>
-                  <Text style={styles.priorityText}>{call.priority}</Text>
+          <Text style={styles.sectionTitle}>{t("live_calls") || "Live Emergency Calls"}</Text>
+          {loadingEmergencies ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>{t("loading") || "Loading emergencies..."}</Text>
+            </View>
+          ) : emergencies.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>🚑</Text>
+              <Text style={styles.emptyText}>{t("noActiveEmergencies") || "No active emergencies"}</Text>
+            </View>
+          ) : (
+            emergencies.map((emergency) => (
+              <TouchableOpacity
+                key={emergency.id}
+                style={styles.callCard}
+                onPress={() => router.push({
+                  pathname: "/ambulance/emergency-detail",
+                  params: { emergencyId: emergency.id }
+                })}
+              >
+                <View style={styles.callHeader}>
+                  <View style={[styles.priorityBadge, { backgroundColor: "#DC2626" }]}>
+                    <Text style={styles.priorityText}>{t("emergency") || "EMERGENCY"}</Text>
+                  </View>
+                  <Text style={styles.callTime}>{emergency.timeAgo || "Just now"}</Text>
                 </View>
-                <Text style={styles.callTime}>{call.time}</Text>
-              </View>
-              <Text style={styles.callType}>{call.type}</Text>
-              <Text style={styles.callDistance}>📍 {call.distance} away</Text>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          ))}
+                <Text style={styles.callType}>
+                  {emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
+                </Text>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    openNavigation(emergency);
+                  }}
+                  style={styles.locationRow}
+                >
+                  <Text style={styles.callDistance}>
+                    📍 {emergency.location.address || `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
+                  </Text>
+                  {emergency.distance !== undefined && emergency.distance !== null ? (
+                    <Text style={styles.distanceText}>
+                      {emergency.distance < 1 
+                        ? `${(emergency.distance * 1000).toFixed(0)}m away`
+                        : `${emergency.distance.toFixed(1)}km away`}
+                    </Text>
+                  ) : null}
+                </TouchableOpacity>
+                {emergency.userInfo && (
+                  <View style={styles.quickInfo}>
+                    {emergency.userInfo.bloodType ? (
+                      <Text style={styles.quickInfoText}>
+                        🩸 {t("blood_type") || "Blood"}: {emergency.userInfo.bloodType}
+                      </Text>
+                    ) : null}
+                    {emergency.userInfo.age ? (
+                      <Text style={styles.quickInfoText}>
+                        👤 {t("age") || "Age"}: {emergency.userInfo.age}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
 
         {/* Vehicle Status */}
@@ -230,7 +437,10 @@ export default function AmbulanceDashboard() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
           
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={() => router.push("/ambulance/nearby-emergencies")}
+          >
             <Text style={styles.actionIcon}>🗺️</Text>
             <View style={styles.actionContent}>
               <Text style={styles.actionTitle}>{t("nearby_emergencies")}</Text>
@@ -447,7 +657,6 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     flexDirection: "row",
-    gap: 8,
     marginBottom: 16,
   },
   searchInput: {
@@ -458,6 +667,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1.5,
     borderColor: "#E9ECEF",
+    marginRight: 8,
   },
   searchBtn: {
     backgroundColor: "#D62828",
@@ -556,5 +766,50 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#D62828",
     fontWeight: "700",
+  },
+  loadingContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#6C757D",
+  },
+  emptyContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 40,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#6C757D",
+    marginTop: 8,
+  },
+  locationRow: {
+    marginTop: 8,
+  },
+  distanceText: {
+    fontSize: 14,
+    color: "#D62828",
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  quickInfo: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
+  quickInfoText: {
+    fontSize: 12,
+    color: "#6C757D",
+    backgroundColor: "#F8F9FA",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 8,
+    marginBottom: 4,
   },
 });
