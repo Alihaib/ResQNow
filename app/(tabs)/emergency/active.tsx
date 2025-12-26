@@ -3,13 +3,12 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  Linking,
-  ScrollView,
+  Linking, Platform, ScrollView,
   Share,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
@@ -330,7 +329,7 @@ Shared from ResQNow App - Emergency Situation
 
     try {
       // Ensure we have valid coordinates
-      if (!location.latitude || !location.longitude) {
+      if (!location || !location.latitude || !location.longitude) {
         Alert.alert(
           translate("error") || "Error",
           translate("locationNotAvailable") || "Location coordinates are not available."
