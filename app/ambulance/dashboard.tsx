@@ -17,6 +17,8 @@ interface Emergency {
   };
   timestamp: string;
   status: string;
+  victimType?: string;
+  otherPersonName?: string;
   userInfo?: any;
   distance?: number;
   timeAgo?: string;
@@ -94,6 +96,21 @@ export default function AmbulanceDashboard() {
     }
   };
 
+  // Search for a user by name (used when victimType === 'other')
+  const fetchUserInfoByName = async (name: string) => {
+    try {
+      const nameLower = name.trim().toLowerCase();
+      const usersSnap = await getDocs(collection(db, "users"));
+      const match = usersSnap.docs.find((d) =>
+        d.data().name?.toLowerCase().includes(nameLower)
+      );
+      return match ? { id: match.id, ...match.data() } : null;
+    } catch (error) {
+      console.error("Error fetching user info by name:", error);
+      return null;
+    }
+  };
+
   // Listen to active emergencies
   useEffect(() => {
     setLoadingEmergencies(true);
@@ -101,50 +118,60 @@ export default function AmbulanceDashboard() {
     const q = query(emergenciesRef, where("status", "==", "active"));
     
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const emergenciesList: Emergency[] = [];
-      
-      for (const docSnap of snapshot.docs) {
-        const data = docSnap.data();
-        const emergency: Emergency = {
-          id: docSnap.id,
-          userId: data.userId,
-          location: data.location,
-          timestamp: data.timestamp,
-          status: data.status,
-        };
+      try {
+        const emergenciesList: Emergency[] = [];
 
-        // Fetch user info
-        const userInfo = await fetchUserInfo(data.userId);
-        if (userInfo) {
-          emergency.userInfo = userInfo;
+        for (const docSnap of snapshot.docs) {
+          const data = docSnap.data();
+          const emergency: Emergency = {
+            id: docSnap.id,
+            userId: data.userId,
+            location: data.location,
+            timestamp: data.timestamp,
+            status: data.status,
+            victimType: data.victimType || 'me',
+            otherPersonName: data.otherPersonName || '',
+          };
+
+          // Fetch victim info: if 'other', search by name; otherwise use caller's profile
+          const userInfo =
+            data.victimType === 'other' && data.otherPersonName?.trim()
+              ? await fetchUserInfoByName(data.otherPersonName)
+              : await fetchUserInfo(data.userId);
+          if (userInfo) {
+            emergency.userInfo = userInfo;
+          }
+
+          // Calculate distance if ambulance location is available
+          if (ambulanceLocation && emergency.location) {
+            emergency.distance = calculateDistance(
+              ambulanceLocation.latitude,
+              ambulanceLocation.longitude,
+              emergency.location.latitude,
+              emergency.location.longitude
+            );
+          }
+
+          // Calculate time ago
+          emergency.timeAgo = formatTimeAgo(emergency.timestamp);
+
+          emergenciesList.push(emergency);
         }
 
-        // Calculate distance if ambulance location is available
-        if (ambulanceLocation && emergency.location) {
-          emergency.distance = calculateDistance(
-            ambulanceLocation.latitude,
-            ambulanceLocation.longitude,
-            emergency.location.latitude,
-            emergency.location.longitude
-          );
-        }
+        // Sort by distance (closest first) or by time (newest first)
+        emergenciesList.sort((a, b) => {
+          if (a.distance && b.distance) {
+            return a.distance - b.distance;
+          }
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
 
-        // Calculate time ago
-        emergency.timeAgo = formatTimeAgo(emergency.timestamp);
-
-        emergenciesList.push(emergency);
+        setEmergencies(emergenciesList);
+        setLoadingEmergencies(false);
+      } catch (error) {
+        console.error("Error processing emergencies snapshot:", error);
+        setLoadingEmergencies(false);
       }
-
-      // Sort by distance (closest first) or by time (newest first)
-      emergenciesList.sort((a, b) => {
-        if (a.distance && b.distance) {
-          return a.distance - b.distance;
-        }
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      });
-
-      setEmergencies(emergenciesList);
-      setLoadingEmergencies(false);
     }, (error) => {
       console.error("Error listening to emergencies:", error);
       setLoadingEmergencies(false);
@@ -372,8 +399,15 @@ export default function AmbulanceDashboard() {
                   <Text style={styles.callTime}>{emergency.timeAgo || "Just now"}</Text>
                 </View>
                 <Text style={styles.callType}>
-                  {emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
+                  {emergency.victimType === 'other' && emergency.otherPersonName
+                    ? emergency.otherPersonName
+                    : emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
                 </Text>
+                {emergency.victimType === 'other' && emergency.otherPersonName && (
+                  <Text style={styles.reporterLabel}>
+                    {t("sosReportingFor")}: {emergency.userInfo?.name || emergency.userInfo?.email || "—"}
+                  </Text>
+                )}
                 <TouchableOpacity
                   onPress={(e) => {
                     e.stopPropagation();
@@ -572,6 +606,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#003049",
     marginBottom: 8,
+  },
+  reporterLabel: {
+    fontSize: 12,
+    color: "#6C757D",
+    marginBottom: 6,
   },
   callDistance: {
     fontSize: 14,

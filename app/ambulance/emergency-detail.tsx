@@ -1,6 +1,6 @@
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useLanguage } from "../../src/context/LanguageContext";
@@ -17,6 +17,8 @@ interface Emergency {
   };
   timestamp: string;
   status: string;
+  victimType?: string;
+  otherPersonName?: string;
 }
 
 export default function EmergencyDetailScreen() {
@@ -25,6 +27,7 @@ export default function EmergencyDetailScreen() {
   const params = useLocalSearchParams<{ emergencyId: string }>();
   const [emergency, setEmergency] = useState<Emergency | null>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
+  const [callerInfo, setCallerInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
 
@@ -52,13 +55,28 @@ export default function EmergencyDetailScreen() {
           location: emergencyData.location,
           timestamp: emergencyData.timestamp,
           status: emergencyData.status,
+          victimType: emergencyData.victimType || 'me',
+          otherPersonName: emergencyData.otherPersonName || '',
         };
         setEmergency(emergencyObj);
 
-        // Fetch user info
-        const userDoc = await getDoc(doc(db, "users", emergencyData.userId));
-        if (userDoc.exists()) {
-          setUserInfo({ id: userDoc.id, ...userDoc.data() });
+        // Always fetch the caller's info
+        const callerDoc = await getDoc(doc(db, "users", emergencyData.userId));
+        const caller = callerDoc.exists() ? { id: callerDoc.id, ...callerDoc.data() } : null;
+
+        if (emergencyData.victimType === 'other' && emergencyData.otherPersonName?.trim()) {
+          // Save caller separately for reference
+          setCallerInfo(caller);
+
+          // Search for the victim by name
+          const nameLower = emergencyData.otherPersonName.trim().toLowerCase();
+          const usersSnap = await getDocs(collection(db, "users"));
+          const match = usersSnap.docs.find((d) =>
+            d.data().name?.toLowerCase().includes(nameLower)
+          );
+          setUserInfo(match ? { id: match.id, ...match.data() } : null);
+        } else {
+          setUserInfo(caller);
         }
       } catch (error) {
         console.error("Error loading emergency:", error);
@@ -182,6 +200,16 @@ export default function EmergencyDetailScreen() {
             <Text style={styles.statusText}>🚨 {t("activeEmergency") || "ACTIVE EMERGENCY"}</Text>
           </View>
           <Text style={styles.timeText}>{formatTimeAgo(emergency.timestamp)}</Text>
+          {emergency.victimType === 'other' && emergency.otherPersonName && (
+            <Text style={styles.victimBadge}>
+              {t("sosReportingFor")}: {emergency.otherPersonName}
+            </Text>
+          )}
+          {emergency.victimType === 'other' && callerInfo && (
+            <Text style={styles.callerBadge}>
+              📞 {t("caller") || "Caller"}: {callerInfo.name || callerInfo.email || "—"}
+            </Text>
+          )}
         </View>
 
         {/* Location Section */}
@@ -205,6 +233,18 @@ export default function EmergencyDetailScreen() {
             <Text style={styles.navigateText}>🗺️ Tap to open navigation</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Victim not found in system */}
+        {emergency.victimType === 'other' && !userInfo && emergency.otherPersonName && (
+          <View style={styles.section}>
+            <View style={styles.notFoundCard}>
+              <Text style={styles.notFoundTitle}>👤 {emergency.otherPersonName}</Text>
+              <Text style={styles.notFoundText}>
+                {t("patientNotFound") || "Patient not found in system. No medical records available."}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* User Information */}
         {userInfo && (
@@ -382,6 +422,36 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     opacity: 0.9,
+  },
+  victimBadge: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+  callerBadge: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 13,
+    marginTop: 4,
+  },
+  notFoundCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: "#E9ECEF",
+    alignItems: "center",
+  },
+  notFoundTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#003049",
+    marginBottom: 8,
+  },
+  notFoundText: {
+    fontSize: 14,
+    color: "#6C757D",
+    textAlign: "center",
   },
   section: {
     marginBottom: 24,

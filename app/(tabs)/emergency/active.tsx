@@ -33,7 +33,7 @@ export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
   const { t: translate } = useLanguage();
   const router = useRouter();
-  const params = useLocalSearchParams<{ locationData?: string }>();
+  const params = useLocalSearchParams<{ locationData?: string; victimType?: string; otherPersonName?: string }>();
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [location, setLocation] = useState<LocationData | null>(null);
   const [locationDisplay, setLocationDisplay] = useState<string>("");
@@ -124,7 +124,9 @@ Shared from ResQNow App - Emergency Situation
         
         // Save location to Firestore for emergency record
         if (user) {
-          saveEmergencyLocation(locationData);
+          saveEmergencyLocation(locationData).catch((e) =>
+            console.error("Emergency save error:", e)
+          );
         }
       } catch (error) {
         console.error("Error parsing location data:", error);
@@ -283,7 +285,7 @@ Shared from ResQNow App - Emergency Situation
 
   const saveEmergencyLocation = async (locationData: LocationData) => {
     if (!user) return;
-    
+
     try {
       const emergencyRef = doc(db, "emergencies", `${user.uid}_${Date.now()}`);
       await setDoc(emergencyRef, {
@@ -296,6 +298,8 @@ Shared from ResQNow App - Emergency Situation
         },
         timestamp: locationData.timestamp,
         status: "active",
+        victimType: params.victimType || 'me',
+        otherPersonName: params.otherPersonName || '',
       });
     } catch (error) {
       console.error("Error saving emergency location:", error);
