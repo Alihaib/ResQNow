@@ -6,7 +6,7 @@ import { useLanguage } from "../../src/context/LanguageContext";
 export default function AmbulancePending() {
   const router = useRouter();
   const { logout } = useAuth();
-  const { t, lang, toggleLanguage } = useLanguage();
+  const { t } = useLanguage();
 
   const handleLogout = async () => {
     await logout();
@@ -15,11 +15,6 @@ export default function AmbulancePending() {
 
   return (
     <View style={styles.container}>
-      {/* Language Switch */}
-      <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
-        <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
-      </TouchableOpacity>
-
       <Text style={styles.logo}>🚑</Text>
 
       <Text style={styles.title}>{t("pending_title_ambulance")}</Text>
@@ -46,16 +41,6 @@ const styles = StyleSheet.create({
     paddingTop: 70,
     paddingHorizontal: 20,
   },
-  languageBtn: {
-    position: "absolute",
-    top: 40,
-    right: 20,
-    backgroundColor: "#003049",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-  },
-  languageText: { color: "#FFF", fontWeight: "800" },
 
   logo: { fontSize: 55, textAlign: "center" },
 

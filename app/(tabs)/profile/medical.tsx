@@ -91,11 +91,8 @@ export default function MedicalProfileScreen() {
       <View style={styles.header}>
         <TouchableOpacity 
           onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)/profile");
-            }
+            // Always return to Profile tab from Profile sub-screens
+            router.replace("/(tabs)/profile");
           }} 
           style={styles.backBtn}
         >

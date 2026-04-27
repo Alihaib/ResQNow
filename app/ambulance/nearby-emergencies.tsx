@@ -17,6 +17,7 @@ interface Emergency {
   };
   timestamp: string;
   status: string;
+  victimType?: "me" | "other";
   userInfo?: any;
   distance?: number;
   timeAgo?: string;
@@ -107,7 +108,7 @@ export default function NearbyEmergenciesScreen() {
 
     setLoading(true);
     const emergenciesRef = collection(db, "emergencies");
-    const q = query(emergenciesRef, where("status", "==", "active"));
+    const q = query(emergenciesRef, where("sessionStatus", "==", "active"));
     
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const emergenciesList: Emergency[] = [];
@@ -120,6 +121,7 @@ export default function NearbyEmergenciesScreen() {
           location: data.location,
           timestamp: data.timestamp,
           status: data.status,
+          victimType: data.victimType === "other" ? "other" : "me",
         };
 
         // Calculate distance in meters
@@ -136,10 +138,12 @@ export default function NearbyEmergenciesScreen() {
             emergency.distance = distanceMeters / 1000; // Convert to km for display
             emergency.timeAgo = formatTimeAgo(emergency.timestamp);
 
-            // Fetch user info
-            const userInfo = await fetchUserInfo(data.userId);
-            if (userInfo) {
-              emergency.userInfo = userInfo;
+            // Privacy: if victimType is "other", do NOT fetch or display medical profile data.
+            if (emergency.victimType !== "other") {
+              const userInfo = await fetchUserInfo(data.userId);
+              if (userInfo) {
+                emergency.userInfo = userInfo;
+              }
             }
 
             emergenciesList.push(emergency);
@@ -190,7 +194,13 @@ export default function NearbyEmergenciesScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace("/ambulance/dashboard");
+          }}
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("nearby_emergencies") || "Nearby Emergencies"}</Text>
@@ -244,7 +254,9 @@ export default function NearbyEmergenciesScreen() {
                 </View>
 
                 <Text style={styles.userName}>
-                  {emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
+                  {emergency.victimType === "other"
+                    ? "Someone else"
+                    : emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
                 </Text>
 
                 <TouchableOpacity
@@ -265,7 +277,7 @@ export default function NearbyEmergenciesScreen() {
                   ) : null}
                 </TouchableOpacity>
 
-                {emergency.userInfo && (
+                {emergency.victimType !== "other" && emergency.userInfo && (
                   <View style={styles.quickInfo}>
                     {emergency.userInfo.bloodType ? (
                       <Text style={styles.quickInfoText}>

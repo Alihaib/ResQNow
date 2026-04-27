@@ -16,7 +16,7 @@ export default function ProfileTab() {
   // Load Israeli ID from Firestore
   useEffect(() => {
     if (!user) return;
-    
+
     const loadIsraeliId = async () => {
       try {
         const docRef = doc(db, "users", user.uid);
@@ -29,7 +29,7 @@ export default function ProfileTab() {
         console.error("Error loading Israeli ID:", error);
       }
     };
-    
+
     loadIsraeliId();
   }, [user]);
 

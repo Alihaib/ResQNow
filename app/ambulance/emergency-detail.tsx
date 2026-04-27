@@ -1,8 +1,9 @@
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { arrayUnion, doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 
@@ -12,24 +13,42 @@ interface Emergency {
   location: {
     latitude: number;
     longitude: number;
-    accuracy: number | null;
+    accuracy?: number | null;
     address: string | null;
+  };
+  patientLocation?: {
+    latitude: number;
+    longitude: number;
+    address?: string | null;
   };
   timestamp: string;
   status: string;
-  victimType?: string;
-  otherPersonName?: string;
+  sessionStatus?: "active" | "resolved" | "cancelled";
+  victimType?: "me" | "other";
+  assignedAmbulanceId?: string | null;
+  ambulanceLocation?: { latitude?: number; longitude?: number } | null;
 }
+
+const AMBULANCE_STATUSES = [
+  { key: "en_route", label: "En route" },
+  { key: "arrived_patient", label: "Arrived at patient" },
+  { key: "patient_picked", label: "Patient picked up" },
+  { key: "en_route_hospital", label: "Transporting to hospital" },
+  { key: "completed", label: "Completed" },
+] as const;
 
 export default function EmergencyDetailScreen() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ emergencyId: string }>();
   const [emergency, setEmergency] = useState<Emergency | null>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
-  const [callerInfo, setCallerInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [tracking, setTracking] = useState(false);
+  const trackingSubRef = useRef<Location.LocationSubscription | null>(null);
+  const lastWriteAtRef = useRef<number>(0);
 
   useEffect(() => {
     const loadEmergency = async () => {
@@ -40,44 +59,22 @@ export default function EmergencyDetailScreen() {
       }
 
       try {
-        // Fetch emergency
+        // Initial fetch (so UI can render quickly) + then realtime subscription below
         const emergencyDoc = await getDoc(doc(db, "emergencies", params.emergencyId));
-        if (!emergencyDoc.exists()) {
-          Alert.alert(t("error") || "Error", "Emergency not found");
-          router.back();
-          return;
-        }
-
-        const emergencyData = emergencyDoc.data();
-        const emergencyObj: Emergency = {
+        if (!emergencyDoc.exists()) throw new Error("Emergency not found");
+        const data = emergencyDoc.data() as any;
+        setEmergency({
           id: emergencyDoc.id,
-          userId: emergencyData.userId,
-          location: emergencyData.location,
-          timestamp: emergencyData.timestamp,
-          status: emergencyData.status,
-          victimType: emergencyData.victimType || 'me',
-          otherPersonName: emergencyData.otherPersonName || '',
-        };
-        setEmergency(emergencyObj);
-
-        // Always fetch the caller's info
-        const callerDoc = await getDoc(doc(db, "users", emergencyData.userId));
-        const caller = callerDoc.exists() ? { id: callerDoc.id, ...callerDoc.data() } : null;
-
-        if (emergencyData.victimType === 'other' && emergencyData.otherPersonName?.trim()) {
-          // Save caller separately for reference
-          setCallerInfo(caller);
-
-          // Search for the victim by name
-          const nameLower = emergencyData.otherPersonName.trim().toLowerCase();
-          const usersSnap = await getDocs(collection(db, "users"));
-          const match = usersSnap.docs.find((d) =>
-            d.data().name?.toLowerCase().includes(nameLower)
-          );
-          setUserInfo(match ? { id: match.id, ...match.data() } : null);
-        } else {
-          setUserInfo(caller);
-        }
+          userId: data.userId,
+          location: data.location,
+          patientLocation: data.patientLocation,
+          timestamp: data.timestamp,
+          status: data.status,
+          sessionStatus: data.sessionStatus,
+          victimType: data.victimType === "other" ? "other" : "me",
+          assignedAmbulanceId: data.assignedAmbulanceId ?? null,
+          ambulanceLocation: data.ambulanceLocation ?? null,
+        });
       } catch (error) {
         console.error("Error loading emergency:", error);
         Alert.alert(t("error") || "Error", "Failed to load emergency details");
@@ -88,6 +85,43 @@ export default function EmergencyDetailScreen() {
     };
 
     loadEmergency();
+  }, [params.emergencyId]);
+
+  // Realtime subscribe to emergency doc (status + assignment + patient/ambulance locations)
+  useEffect(() => {
+    if (!params.emergencyId) return;
+    const ref = doc(db, "emergencies", params.emergencyId);
+    const unsub = onSnapshot(
+      ref,
+      async (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as any;
+        const next: Emergency = {
+          id: snap.id,
+          userId: data.userId,
+          location: data.location,
+          patientLocation: data.patientLocation,
+          timestamp: data.timestamp,
+          status: data.status,
+          sessionStatus: data.sessionStatus,
+          victimType: data.victimType === "other" ? "other" : "me",
+          assignedAmbulanceId: data.assignedAmbulanceId ?? null,
+          ambulanceLocation: data.ambulanceLocation ?? null,
+        };
+        setEmergency(next);
+
+        // Privacy: if victimType is "other", do NOT load any medical profile data.
+        if (next.victimType !== "other" && next.userId) {
+          const callerDoc = await getDoc(doc(db, "users", next.userId));
+          const caller = callerDoc.exists() ? { id: callerDoc.id, ...callerDoc.data() } : null;
+          setUserInfo(caller);
+        } else {
+          setUserInfo(null);
+        }
+      },
+      (err) => console.error("Ambulance emergency onSnapshot error:", err)
+    );
+    return () => unsub();
   }, [params.emergencyId]);
 
   useEffect(() => {
@@ -110,6 +144,110 @@ export default function EmergencyDetailScreen() {
     getAmbulanceLocation();
   }, []);
 
+  const isAssignedToMe = useMemo(() => {
+    if (!user?.uid) return false;
+    if (!emergency?.assignedAmbulanceId) return false;
+    return emergency.assignedAmbulanceId === user.uid;
+  }, [user?.uid, emergency?.assignedAmbulanceId]);
+
+  const claimIfUnassigned = async () => {
+    if (!user?.uid || !emergency?.id) return;
+    if (emergency.assignedAmbulanceId) return;
+    await updateDoc(doc(db, "emergencies", emergency.id), {
+      assignedAmbulanceId: user.uid,
+      updatedAt: new Date().toISOString(),
+      timeline: arrayUnion({
+        status: "assigned_ambulance",
+        ambulanceId: user.uid,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+  };
+
+  const startTracking = async () => {
+    if (!user?.uid || !emergency?.id) {
+      Alert.alert(t("error") || "Error", "You must be logged in to track.");
+      return;
+    }
+    if (trackingSubRef.current) return;
+
+    await claimIfUnassigned();
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(t("error") || "Permission Denied", t("locationPermissionDenied") || "Location permission is required.");
+      return;
+    }
+
+    setTracking(true);
+    trackingSubRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 5000,
+        distanceInterval: 10,
+      },
+      async (loc) => {
+        setAmbulanceLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
+
+        // Throttle Firestore writes (avoid spamming)
+        const now = Date.now();
+        if (now - lastWriteAtRef.current < 4500) return;
+        lastWriteAtRef.current = now;
+
+        try {
+          // Only the assigned ambulance should publish location
+          const assigned = emergency?.assignedAmbulanceId;
+          if (assigned && assigned !== user.uid) return;
+
+          await updateDoc(doc(db, "emergencies", emergency.id), {
+            assignedAmbulanceId: assigned ?? user.uid,
+            ambulanceLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.error("Failed to update ambulanceLocation:", e);
+        }
+      }
+    );
+  };
+
+  const stopTracking = () => {
+    trackingSubRef.current?.remove();
+    trackingSubRef.current = null;
+    setTracking(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      trackingSubRef.current?.remove();
+      trackingSubRef.current = null;
+    };
+  }, []);
+
+  const updateCaseStatus = async (nextStatus: (typeof AMBULANCE_STATUSES)[number]["key"]) => {
+    if (!user?.uid || !emergency?.id) return;
+
+    await claimIfUnassigned();
+
+    // If assigned to someone else, block updates
+    if (emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user.uid) {
+      Alert.alert(t("error") || "Error", "This case is assigned to another ambulance.");
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    await updateDoc(doc(db, "emergencies", emergency.id), {
+      status: nextStatus,
+      sessionStatus: nextStatus === "completed" ? "resolved" : "active",
+      updatedAt: nowIso,
+      timeline: arrayUnion({
+        status: nextStatus,
+        ambulanceId: user.uid,
+        timestamp: nowIso,
+      }),
+    });
+  };
+
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
     const R = 6371; // Radius of the Earth in km
     const dLat = (lat2 - lat1) * (Math.PI / 180);
@@ -127,7 +265,8 @@ export default function EmergencyDetailScreen() {
   const openNavigation = () => {
     if (!emergency) return;
 
-    const { latitude, longitude } = emergency.location;
+    const baseLoc = emergency.patientLocation ?? emergency.location;
+    const { latitude, longitude } = baseLoc;
     const url = Platform.select({
       ios: `maps://maps.apple.com/?daddr=${latitude},${longitude}`,
       android: `google.navigation:q=${latitude},${longitude}`,
@@ -173,12 +312,13 @@ export default function EmergencyDetailScreen() {
     );
   }
 
-  const distance = ambulanceLocation && emergency.location
+  const baseLoc = emergency.patientLocation ?? emergency.location;
+  const distance = ambulanceLocation && baseLoc
     ? calculateDistance(
         ambulanceLocation.latitude,
         ambulanceLocation.longitude,
-        emergency.location.latitude,
-        emergency.location.longitude
+        baseLoc.latitude,
+        baseLoc.longitude
       )
     : null;
 
@@ -186,7 +326,13 @@ export default function EmergencyDetailScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace("/ambulance/dashboard");
+          }}
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("emergencyDetails") || "Emergency Details"}</Text>
@@ -200,16 +346,61 @@ export default function EmergencyDetailScreen() {
             <Text style={styles.statusText}>🚨 {t("activeEmergency") || "ACTIVE EMERGENCY"}</Text>
           </View>
           <Text style={styles.timeText}>{formatTimeAgo(emergency.timestamp)}</Text>
-          {emergency.victimType === 'other' && emergency.otherPersonName && (
-            <Text style={styles.victimBadge}>
-              {t("sosReportingFor")}: {emergency.otherPersonName}
-            </Text>
+          {emergency.victimType === "other" && (
+            <Text style={styles.victimBadge}>🆘 Helping someone else</Text>
           )}
-          {emergency.victimType === 'other' && callerInfo && (
+          <Text style={styles.callerBadge}>
+            🚑 Case status: {emergency.status || "dispatched"}
+          </Text>
+          {emergency.assignedAmbulanceId ? (
             <Text style={styles.callerBadge}>
-              📞 {t("caller") || "Caller"}: {callerInfo.name || callerInfo.email || "—"}
+              Assigned: {isAssignedToMe ? "You" : emergency.assignedAmbulanceId}
             </Text>
+          ) : (
+            <Text style={styles.callerBadge}>Unassigned</Text>
           )}
+        </View>
+
+        {/* Ambulance controls */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🚑 Live Updates</Text>
+          <View style={styles.infoCard}>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.navigateButton, { flex: 1, backgroundColor: tracking ? "#6C757D" : "#D62828" }]}
+                onPress={tracking ? stopTracking : startTracking}
+              >
+                <Text style={styles.navigateButtonText}>
+                  {tracking ? "Stop GPS" : "Start GPS"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.navigateText}>
+              GPS updates are published every few seconds while enabled.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📢 Update Case Status</Text>
+          <View style={styles.infoCard}>
+            {AMBULANCE_STATUSES.map((s) => (
+              <TouchableOpacity
+                key={s.key}
+                style={[styles.actionStatusBtn, emergency.status === s.key && styles.actionStatusBtnActive]}
+                onPress={() => updateCaseStatus(s.key)}
+              >
+                <Text
+                  style={[
+                    styles.actionStatusBtnText,
+                    emergency.status === s.key && { color: "#FFFFFF" },
+                  ]}
+                >
+                  {s.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Location Section */}
@@ -217,11 +408,10 @@ export default function EmergencyDetailScreen() {
           <Text style={styles.sectionTitle}>📍 {t("location") || "Location"}</Text>
           <TouchableOpacity style={styles.locationCard} onPress={openNavigation}>
             <Text style={styles.locationAddress}>
-              {emergency.location.address || 
-               `${emergency.location.latitude.toFixed(6)}, ${emergency.location.longitude.toFixed(6)}`}
+              {baseLoc.address || `${baseLoc.latitude.toFixed(6)}, ${baseLoc.longitude.toFixed(6)}`}
             </Text>
             <Text style={styles.locationCoords}>
-              {emergency.location.latitude.toFixed(6)}, {emergency.location.longitude.toFixed(6)}
+              {baseLoc.latitude.toFixed(6)}, {baseLoc.longitude.toFixed(6)}
             </Text>
             {distance && (
               <Text style={styles.distanceText}>
@@ -234,20 +424,20 @@ export default function EmergencyDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Victim not found in system */}
-        {emergency.victimType === 'other' && !userInfo && emergency.otherPersonName && (
+        {/* Privacy message for "other" */}
+        {emergency.victimType === "other" && (
           <View style={styles.section}>
             <View style={styles.notFoundCard}>
-              <Text style={styles.notFoundTitle}>👤 {emergency.otherPersonName}</Text>
+              <Text style={styles.notFoundTitle}>🔒 Privacy Mode</Text>
               <Text style={styles.notFoundText}>
-                {t("patientNotFound") || "Patient not found in system. No medical records available."}
+                Medical profile details are not shown when the caller is helping someone else.
               </Text>
             </View>
           </View>
         )}
 
-        {/* User Information */}
-        {userInfo && (
+        {/* User Information (only when victimType is "me") */}
+        {emergency.victimType !== "other" && userInfo && (
           <>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>👤 {t("patientInformation") || "Patient Information"}</Text>
@@ -599,6 +789,25 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "900",
+  },
+  actionStatusBtn: {
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: "#E9ECEF",
+    marginBottom: 10,
+  },
+  actionStatusBtnActive: {
+    backgroundColor: "#D62828",
+    borderColor: "#D62828",
+  },
+  actionStatusBtnText: {
+    color: "#003049",
+    fontSize: 14,
+    fontWeight: "800",
+    textAlign: "center",
   },
   loadingText: {
     fontSize: 18,

@@ -6,7 +6,7 @@ import { useLanguage } from "../../src/context/LanguageContext";
 export default function DoctorPending() {
   const router = useRouter();
   const { logout } = useAuth();
-  const { t, lang, toggleLanguage } = useLanguage();
+  const { t } = useLanguage();
 
   const handleLogout = async () => {
     await logout();
@@ -15,11 +15,6 @@ export default function DoctorPending() {
 
   return (
     <View style={styles.container}>
-      {/* 🌍 Language Button */}
-      <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
-        <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
-      </TouchableOpacity>
-
       <Text style={styles.logo}>⛑</Text>
 
       <Text style={styles.title}>{t("pending_title_doctor")}</Text>
@@ -48,22 +43,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8F9FA",
     paddingTop: 70,
     paddingHorizontal: 20,
-  },
-
-  languageBtn: {
-    position: "absolute",
-    top: 40,
-    right: 20,
-    backgroundColor: "#003049",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    zIndex: 10,
-  },
-  languageText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "700",
   },
 
   logo: {

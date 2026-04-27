@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -11,6 +11,7 @@ import {
   View
 } from "react-native";
 import { useAuth } from "../../../src/context/AuthContext";
+import { useEmergency } from "../../../src/context/EmergencyContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
 
@@ -31,9 +32,12 @@ interface Contact {
 
 export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
+  const { currentEmergency, setCurrentEmergency } = useEmergency();
   const { t: translate } = useLanguage();
   const router = useRouter();
-  const params = useLocalSearchParams<{ locationData?: string; victimType?: string; otherPersonName?: string }>();
+  const params = useLocalSearchParams<{ locationData?: string; victimType?: string }>();
+  const initialVictimType = params.victimType === "other" ? "other" : "me";
+  const victimType = currentEmergency?.victimType ?? initialVictimType;
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [location, setLocation] = useState<LocationData | null>(null);
   const [locationDisplay, setLocationDisplay] = useState<string>("");
@@ -41,6 +45,7 @@ export default function ActiveEmergencyScreen() {
   const [emergencyContacts, setEmergencyContacts] = useState<Contact[]>([]);
 
   const shareMedicalInfo = async () => {
+    if (victimType === "other") return;
     if (!user) {
       Alert.alert(translate("error"), "User not logged in");
       return;
@@ -100,11 +105,11 @@ Shared from ResQNow App - Emergency Situation
 
   useEffect(() => {
     // Load user preferences and emergency contacts
-    if (user) {
+    if (user && victimType === "me") {
       loadUserPreferences();
       loadEmergencyContacts();
     }
-  }, [user]);
+  }, [user, victimType]);
 
   useEffect(() => {
     // Parse location data from params
@@ -122,20 +127,45 @@ Shared from ResQNow App - Emergency Situation
           );
         }
         
-        // Save location to Firestore for emergency record
-        if (user) {
-          saveEmergencyLocation(locationData).catch((e) =>
-            console.error("Emergency save error:", e)
-          );
-        }
       } catch (error) {
         console.error("Error parsing location data:", error);
         setLocationDisplay(translate("locationLoading") || "Loading location...");
       }
     } else {
-      setLocationDisplay(translate("locationNotAvailable") || "Location not available");
+      // If no params, try to restore location from the active emergency doc (global state)
+      if (currentEmergency?.id) {
+        (async () => {
+          try {
+            const snap = await getDoc(doc(db, "emergencies", currentEmergency.id));
+            if (snap.exists()) {
+              const data = snap.data() as any;
+              const loc = data.location;
+              if (loc?.latitude && loc?.longitude) {
+                const restored: LocationData = {
+                  latitude: loc.latitude,
+                  longitude: loc.longitude,
+                  accuracy: null,
+                  address: loc.address ?? null,
+                  timestamp: data.timestamp ?? new Date().toISOString(),
+                };
+                setLocation(restored);
+                setLocationDisplay(
+                  restored.address ||
+                    `${restored.latitude.toFixed(6)}, ${restored.longitude.toFixed(6)}`
+                );
+                return;
+              }
+            }
+          } catch (e) {
+            console.error("Error restoring emergency location:", e);
+          }
+          setLocationDisplay(translate("locationNotAvailable") || "Location not available");
+        })();
+      } else {
+        setLocationDisplay(translate("locationNotAvailable") || "Location not available");
+      }
     }
-  }, [params.locationData, user]);
+  }, [params.locationData, currentEmergency?.id]);
 
   const loadUserPreferences = async () => {
     if (!user) return;
@@ -283,28 +313,7 @@ Shared from ResQNow App - Emergency Situation
     return { success: successCount, total: totalContacts, names: contactNames };
   };
 
-  const saveEmergencyLocation = async (locationData: LocationData) => {
-    if (!user) return;
-
-    try {
-      const emergencyRef = doc(db, "emergencies", `${user.uid}_${Date.now()}`);
-      await setDoc(emergencyRef, {
-        userId: user.uid,
-        location: {
-          latitude: locationData.latitude,
-          longitude: locationData.longitude,
-          accuracy: locationData.accuracy,
-          address: locationData.address,
-        },
-        timestamp: locationData.timestamp,
-        status: "active",
-        victimType: params.victimType || 'me',
-        otherPersonName: params.otherPersonName || '',
-      });
-    } catch (error) {
-      console.error("Error saving emergency location:", error);
-    }
-  };
+  // NOTE: Emergency documents are created via the SOS flow (startEmergency). This screen is display-only.
 
   const shareLocation = async () => {
     // Check if we have location data
@@ -343,7 +352,6 @@ Shared from ResQNow App - Emergency Situation
 
       // Create map links for different platforms
       const googleMapsLink = `https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
-      const appleMapsLink = `https://maps.apple.com/?ll=${location.latitude},${location.longitude}`;
       
       // Format location message with all available information
       const addressText = location.address || locationDisplay || "Address not available";
@@ -351,7 +359,16 @@ Shared from ResQNow App - Emergency Situation
         ? new Date(location.timestamp).toLocaleString()
         : new Date().toLocaleString();
       
-      const locationMessage = `
+      const locationMessage =
+        victimType === "other"
+          ? `
+Emergency Alert 🚨
+Someone needs help at this location:
+${googleMapsLink}
+
+Time: ${timestampText}
+          `.trim()
+          : `
 🚨 EMERGENCY LOCATION 🚨
 
 📍 Location:
@@ -367,7 +384,16 @@ Time: ${timestampText}
 
 ---
 Shared from ResQNow Emergency App
-      `.trim();
+          `.trim();
+
+      // If helping someone else, avoid loading/using contacts or preferences.
+      if (victimType === "other") {
+        await Share.share({
+          message: locationMessage,
+          title: translate("shareLocation") || "Share Emergency Location",
+        });
+        return;
+      }
 
       // Check if we have emergency contacts to share with
       if (emergencyContacts.length === 0) {
@@ -464,11 +490,30 @@ Shared from ResQNow Emergency App
         text: translate("endEmergency"),
         style: "destructive",
         onPress: () => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace("/(tabs)/emergency");
-          }
+          (async () => {
+            try {
+              if (currentEmergency?.id) {
+                await updateDoc(doc(db, "emergencies", currentEmergency.id), {
+                  sessionStatus: "cancelled",
+                  status: "cancelled",
+                  updatedAt: new Date().toISOString(),
+                  timeline: arrayUnion({
+                    status: "cancelled",
+                    timestamp: new Date().toISOString(),
+                  }),
+                });
+              }
+            } catch (e) {
+              console.error("Error ending emergency:", e);
+            } finally {
+              await setCurrentEmergency(null);
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(tabs)/emergency");
+              }
+            }
+          })();
         },
       },
     ]);
@@ -487,6 +532,13 @@ Shared from ResQNow Emergency App
         <View style={styles.timerContainer}>
           <Text style={styles.timerLabel}>{translate("timeElapsed")}</Text>
           <Text style={styles.timer}>{formatTime(timeElapsed)}</Text>
+        </View>
+
+        {/* Victim label */}
+        <View style={styles.victimLabelCard}>
+          <Text style={styles.victimLabelText}>
+            {victimType === "me" ? "You are receiving help" : "Helping someone else"}
+          </Text>
         </View>
 
         {/* Location */}
@@ -524,18 +576,20 @@ Shared from ResQNow Emergency App
           </Text>
         </View>
 
-        {/* Medical Info Share */}
-        <TouchableOpacity
-          style={styles.actionCard}
-          onPress={shareMedicalInfo}
-        >
-          <Text style={styles.actionIcon}>📋</Text>
-          <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>{translate("shareMedicalProfile")}</Text>
-            <Text style={styles.actionSubtitle}>{translate("sendMedicalInfo")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
+        {/* Medical Info Share (only when victim is the user) */}
+        {victimType === "me" && (
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={shareMedicalInfo}
+          >
+            <Text style={styles.actionIcon}>📋</Text>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>{translate("shareMedicalProfile")}</Text>
+              <Text style={styles.actionSubtitle}>{translate("sendMedicalInfo")}</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        )}
 
         {/* First Aid */}
         <TouchableOpacity
@@ -599,6 +653,20 @@ const styles = StyleSheet.create({
   timerContainer: {
     alignItems: "center",
     marginBottom: 30,
+  },
+  victimLabelCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: "#E9ECEF",
+  },
+  victimLabelText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#003049",
+    textAlign: "center",
   },
   timerLabel: {
     fontSize: 16,

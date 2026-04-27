@@ -26,14 +26,11 @@ export default function EmergencyHistoryScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)/profile");
-            }
-          }} 
+            // Always return to Profile tab from Profile sub-screens
+            router.replace("/(tabs)/profile");
+          }}
           style={styles.backBtn}
         >
           <Text style={styles.backText}>‹ {t("back")}</Text>

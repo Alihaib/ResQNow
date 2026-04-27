@@ -1,38 +1,116 @@
 import { useRouter } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { doc, onSnapshot } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { db } from "../../../src/firebase/config";
 
-const records = [
-  {
-    id: "1",
-    date: "2024-01-10",
-    type: "Doctor Visit",
-    doctor: "Dr. Sarah Cohen",
-    notes: "Routine checkup",
-  },
-  {
-    id: "2",
-    date: "2023-12-20",
-    type: "Lab Test",
-    doctor: "Lab Center",
-    notes: "Blood test results",
-  },
-];
+type MedicalRecordRow = {
+  id: string;
+  date: string;
+  type: string;
+  doctor: string;
+  notes: string;
+};
 
 export default function MedicalRecordsScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const { t } = useLanguage();
+  const [loading, setLoading] = useState(true);
+  const [records, setRecords] = useState<MedicalRecordRow[]>([]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const ref = doc(db, "users", user.uid);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) {
+          setRecords([]);
+          setLoading(false);
+          return;
+        }
+
+        const data = snap.data() as any;
+        const notProvided = "Not provided";
+
+        const contactsSummary =
+          Array.isArray(data.emergencyContacts) && data.emergencyContacts.length > 0
+            ? data.emergencyContacts
+                .slice(0, 3)
+                .map((c: any) => `${c.name || "—"}: ${c.phone || "—"}`)
+                .join(", ")
+            : "No data available";
+
+        const rows: MedicalRecordRow[] = [
+          { id: "name", date: "", type: "Full Name", doctor: data.name || notProvided, notes: "" },
+          { id: "age", date: "", type: "Age", doctor: data.age ? String(data.age) : notProvided, notes: "" },
+          { id: "bloodType", date: "", type: "Blood Type", doctor: data.bloodType || notProvided, notes: "" },
+          { id: "height", date: "", type: "Height", doctor: data.height ? `${data.height} cm` : notProvided, notes: "" },
+          { id: "weight", date: "", type: "Weight", doctor: data.weight ? `${data.weight} kg` : notProvided, notes: "" },
+          {
+            id: "diseases",
+            date: "",
+            type: "Medical Conditions",
+            doctor: data.diseases?.trim?.() ? data.diseases : notProvided,
+            notes: "",
+          },
+          {
+            id: "medications",
+            date: "",
+            type: "Medications",
+            doctor: data.medications?.trim?.() ? data.medications : notProvided,
+            notes: "",
+          },
+          {
+            id: "allergies",
+            date: "",
+            type: "Allergies",
+            doctor: data.allergies?.trim?.() ? data.allergies : notProvided,
+            notes: "",
+          },
+          {
+            id: "emergencyContacts",
+            date: "",
+            type: "Emergency Contacts",
+            doctor: contactsSummary,
+            notes:
+              Array.isArray(data.emergencyContacts) && data.emergencyContacts.length > 3
+                ? `+${data.emergencyContacts.length - 3} more`
+                : "",
+          },
+        ];
+
+        setRecords(rows);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("medical-records onSnapshot error:", err);
+        setRecords([]);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [user?.uid]);
+
+  const hasAnyData = useMemo(() => records.length > 0, [records.length]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <TouchableOpacity 
           onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)/profile");
-            }
+            // Always return to Profile tab from Profile sub-screens
+            router.replace("/(tabs)/profile");
           }} 
           style={styles.backBtn}
         >
@@ -41,15 +119,20 @@ export default function MedicalRecordsScreen() {
         <Text style={styles.title}>{t("medicalRecords")}</Text>
       </View>
 
-      {records.length > 0 ? (
+      {loading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color="#D62828" />
+          <Text style={[styles.emptyText, { marginTop: 16 }]}>{t("loading")}</Text>
+        </View>
+      ) : hasAnyData ? (
         records.map((record) => (
           <TouchableOpacity key={record.id} style={styles.recordCard}>
             <View style={styles.recordHeader}>
               <Text style={styles.recordType}>{record.type}</Text>
-              <Text style={styles.recordDate}>{record.date}</Text>
+              {!!record.date && <Text style={styles.recordDate}>{record.date}</Text>}
             </View>
             <Text style={styles.recordDoctor}>{record.doctor}</Text>
-            <Text style={styles.recordNotes}>{record.notes}</Text>
+            {!!record.notes && <Text style={styles.recordNotes}>{record.notes}</Text>}
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
         ))

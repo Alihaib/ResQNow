@@ -6,8 +6,7 @@ import { useLanguage } from "../src/context/LanguageContext";
 
 export default function HomePage() {
   const { user, role, approved, loading } = useAuth();
-  const { lang, setLang, t } = useLanguage();
-  const toggleLanguage = () => setLang(lang === "he" ? "en" : "he");
+  const { t } = useLanguage();
   const router = useRouter();
   const segments = useSegments();
 
@@ -67,11 +66,6 @@ export default function HomePage() {
   if (!user) {
     return (
       <View style={styles.container}>
-        {/* 🌍 Language Switch */}
-        <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
-          <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
-        </TouchableOpacity>
-
         <Text style={styles.logo}>⛑</Text>
         <Text style={styles.title}>ResQNow</Text>
         <Text style={styles.subtitle}>{t("home_subtitle")}</Text>
@@ -114,23 +108,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8F9FA",
     paddingTop: 70,
     paddingHorizontal: 20,
-  },
-
-  // language button
-  languageBtn: {
-    position: "absolute",
-    top: 40,
-    right: 20,
-    backgroundColor: "#003049",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    zIndex: 10,
-  },
-  languageText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "700",
   },
 
   // Logo + Titles

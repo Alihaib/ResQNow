@@ -12,13 +12,12 @@ interface Emergency {
   location: {
     latitude: number;
     longitude: number;
-    accuracy: number | null;
+    accuracy?: number | null;
     address: string | null;
   };
   timestamp: string;
   status: string;
-  victimType?: string;
-  otherPersonName?: string;
+  victimType?: "me" | "other";
   userInfo?: any;
   distance?: number;
   timeAgo?: string;
@@ -26,7 +25,7 @@ interface Emergency {
 
 export default function AmbulanceDashboard() {
   const router = useRouter();
-  const { t, lang, toggleLanguage } = useLanguage();
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [patientData, setPatientData] = useState<any>(null);
@@ -96,29 +95,15 @@ export default function AmbulanceDashboard() {
     }
   };
 
-  // Search for a user by name (used when victimType === 'other')
-  const fetchUserInfoByName = async (name: string) => {
-    try {
-      const nameLower = name.trim().toLowerCase();
-      const usersSnap = await getDocs(collection(db, "users"));
-      const match = usersSnap.docs.find((d) =>
-        d.data().name?.toLowerCase().includes(nameLower)
-      );
-      return match ? { id: match.id, ...match.data() } : null;
-    } catch (error) {
-      console.error("Error fetching user info by name:", error);
-      return null;
-    }
-  };
-
   // Listen to active emergencies
   useEffect(() => {
     setLoadingEmergencies(true);
     const emergenciesRef = collection(db, "emergencies");
-    const q = query(emergenciesRef, where("status", "==", "active"));
+    const q = query(emergenciesRef, where("sessionStatus", "==", "active"));
     
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       try {
+        console.log("[AmbulanceDashboard] emergencies snapshot:", snapshot.size);
         const emergenciesList: Emergency[] = [];
 
         for (const docSnap of snapshot.docs) {
@@ -129,17 +114,15 @@ export default function AmbulanceDashboard() {
             location: data.location,
             timestamp: data.timestamp,
             status: data.status,
-            victimType: data.victimType || 'me',
-            otherPersonName: data.otherPersonName || '',
+            victimType: data.victimType === "other" ? "other" : "me",
           };
 
-          // Fetch victim info: if 'other', search by name; otherwise use caller's profile
-          const userInfo =
-            data.victimType === 'other' && data.otherPersonName?.trim()
-              ? await fetchUserInfoByName(data.otherPersonName)
-              : await fetchUserInfo(data.userId);
-          if (userInfo) {
-            emergency.userInfo = userInfo;
+          // Privacy: if victimType is "other", do NOT fetch or display medical profile data.
+          if (emergency.victimType !== "other") {
+            const userInfo = await fetchUserInfo(data.userId);
+            if (userInfo) {
+              emergency.userInfo = userInfo;
+            }
           }
 
           // Calculate distance if ambulance location is available
@@ -174,6 +157,7 @@ export default function AmbulanceDashboard() {
       }
     }, (error) => {
       console.error("Error listening to emergencies:", error);
+      // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
       setLoadingEmergencies(false);
     });
 
@@ -247,12 +231,16 @@ export default function AmbulanceDashboard() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace("/(tabs)");
+          }}
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
-          <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       <Text style={styles.logo}>🚑</Text>
@@ -399,15 +387,10 @@ export default function AmbulanceDashboard() {
                   <Text style={styles.callTime}>{emergency.timeAgo || "Just now"}</Text>
                 </View>
                 <Text style={styles.callType}>
-                  {emergency.victimType === 'other' && emergency.otherPersonName
-                    ? emergency.otherPersonName
+                  {emergency.victimType === "other"
+                    ? "Someone else"
                     : emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
                 </Text>
-                {emergency.victimType === 'other' && emergency.otherPersonName && (
-                  <Text style={styles.reporterLabel}>
-                    {t("sosReportingFor")}: {emergency.userInfo?.name || emergency.userInfo?.email || "—"}
-                  </Text>
-                )}
                 <TouchableOpacity
                   onPress={(e) => {
                     e.stopPropagation();
@@ -426,7 +409,7 @@ export default function AmbulanceDashboard() {
                     </Text>
                   ) : null}
                 </TouchableOpacity>
-                {emergency.userInfo && (
+                {emergency.victimType !== "other" && emergency.userInfo && (
                   <View style={styles.quickInfo}>
                     {emergency.userInfo.bloodType ? (
                       <Text style={styles.quickInfoText}>
@@ -528,18 +511,7 @@ const styles = StyleSheet.create({
     color: "#003049",
     fontWeight: "700",
   },
-  languageBtn: {
-    backgroundColor: "#003049",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  languageText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
+  headerSpacer: { width: 40, height: 40 },
   logo: {
     fontSize: 60,
     textAlign: "center",

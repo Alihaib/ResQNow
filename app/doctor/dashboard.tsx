@@ -1,22 +1,100 @@
 import { useRouter } from "expo-router";
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
-import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 
-const emergencyCases = [
-  { id: "1", type: "Cardiac", time: "2 min ago", priority: "High", location: "Tel Aviv" },
-  { id: "2", type: "Accident", time: "5 min ago", priority: "Medium", location: "Jerusalem" },
-  { id: "3", type: "Respiratory", time: "10 min ago", priority: "Low", location: "Haifa" },
-];
+type Patient = {
+  id: string;
+  role?: string;
+  approved?: boolean;
+  name?: string;
+  email?: string;
+  israeliId?: string;
+  phoneNumber?: string;
+  age?: string | number;
+  bloodType?: string;
+  diseases?: string;
+  medications?: string;
+  allergies?: string;
+  emergencyContacts?: Array<{ name?: string; phone?: string; relationship?: string }>;
+};
+
+type Emergency = {
+  id: string;
+  userId: string;
+  victimType?: "me" | "other";
+  timestamp?: string;
+  status?: string;
+  location?: { address?: string | null; latitude?: number; longitude?: number };
+};
 
 export default function DoctorDashboard() {
   const router = useRouter();
-  const { lang, toggleLanguage, t } = useLanguage();
+  const { role, approved, user, loading } = useAuth();
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
-  const [patientData, setPatientData] = useState<any>(null);
+  const [results, setResults] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [liveEmergencies, setLiveEmergencies] = useState<Emergency[]>([]);
+  const [loadingEmergencies, setLoadingEmergencies] = useState(true);
+
+  // Access control
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      router.replace("/auth/login");
+      return;
+    }
+    if (role !== "doctor") {
+      router.replace("/");
+      return;
+    }
+    if (approved !== true) {
+      router.replace("/doctor/pending");
+      return;
+    }
+  }, [loading, user, role, approved, router]);
+
+  // Live emergencies (real data; no mock)
+  useEffect(() => {
+    setLoadingEmergencies(true);
+    const emergenciesRef = collection(db, "emergencies");
+    const q = query(emergenciesRef, where("sessionStatus", "==", "active"));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        console.log("[DoctorDashboard] emergencies snapshot:", snap.size);
+        const list: Emergency[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            userId: data.userId,
+            victimType: data.victimType === "other" ? "other" : "me",
+            timestamp: data.timestamp,
+            status: data.status,
+            location: data.location,
+          };
+        });
+        // Sort newest first if timestamp is ISO string
+        list.sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
+        setLiveEmergencies(list);
+        setLoadingEmergencies(false);
+      },
+      (err) => {
+        console.error("Doctor emergencies listener error:", err);
+        // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
+        setLiveEmergencies([]);
+        setLoadingEmergencies(false);
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  const normalize = (s: string) => s.trim().toLowerCase();
 
   const handleSearchPatient = async () => {
     if (!searchQuery.trim()) {
@@ -26,33 +104,59 @@ export default function DoctorDashboard() {
 
     setSearching(true);
     try {
-      const queryLower = searchQuery.trim().toLowerCase();
-      const queryDigits = searchQuery.trim().replace(/\D/g, ""); // Extract digits for ID search
-      
-      // Search by Israeli ID or name or email
-      const usersSnapshot = await getDocs(collection(db, "users"));
-      let foundPatient = null;
+      const raw = searchQuery.trim();
+      const queryLower = normalize(raw);
+      const queryDigits = raw.replace(/\D/g, "");
 
-      usersSnapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const userId = docSnap.id;
-        
-        // Check if search matches Israeli ID, name, or email
-        if (
-          data.israeliId === queryDigits ||
-          data.name?.toLowerCase().includes(queryLower) ||
-          data.email?.toLowerCase().includes(queryLower)
-        ) {
-          foundPatient = { id: userId, ...data };
-        }
-      });
+      const usersRef = collection(db, "users");
 
-      if (foundPatient) {
-        setPatientData(foundPatient);
-      } else {
-        Alert.alert(t("error"), t("patientNotFound") || "Patient not found");
-        setPatientData(null);
+      // Israeli ID: exact match
+      if (queryDigits.length === 9) {
+        const q = query(
+          usersRef,
+          where("role", "==", "user"),
+          where("israeliId", "==", queryDigits),
+          limit(10)
+        );
+        const snap = await getDocs(q);
+        const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[];
+        setResults(list);
+        setSelectedPatient(list[0] ?? null);
+        if (list.length === 0) Alert.alert(t("error"), t("patientNotFound") || "Patient not found");
+        return;
       }
+
+      // Email: exact match
+      if (raw.includes("@")) {
+        const q = query(usersRef, where("role", "==", "user"), where("email", "==", raw), limit(10));
+        const snap = await getDocs(q);
+        const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Patient[];
+        setResults(list);
+        setSelectedPatient(list[0] ?? null);
+        if (list.length === 0) Alert.alert(t("error"), t("patientNotFound") || "Patient not found");
+        return;
+      }
+
+      // Name (partial): Firestore doesn't support contains; fetch a small set of patients and filter in-memory.
+      const q = query(usersRef, where("role", "==", "user"), limit(200));
+      const snap = await getDocs(q);
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }) as Patient)
+        .filter((p) => {
+          const name = normalize(p.name || "");
+          const email = normalize(p.email || "");
+          const israeliId = (p.israeliId || "").replace(/\D/g, "");
+          return (
+            name.includes(queryLower) ||
+            email.includes(queryLower) ||
+            israeliId.includes(queryDigits)
+          );
+        })
+        .slice(0, 25);
+
+      setResults(list);
+      setSelectedPatient(list[0] ?? null);
+      if (list.length === 0) Alert.alert(t("error"), t("patientNotFound") || "Patient not found");
     } catch (error) {
       console.error("Error searching patient:", error);
       Alert.alert(t("error"), "Failed to search patient");
@@ -61,16 +165,23 @@ export default function DoctorDashboard() {
     }
   };
 
+  const selectedId = selectedPatient?.id;
+  const selectedContacts = useMemo(() => selectedPatient?.emergencyContacts || [], [selectedId, selectedPatient?.emergencyContacts]);
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.replace("/(tabs)")} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace("/(tabs)");
+          }}
+          style={styles.backBtn}
+        >
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
-          <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       <Text style={styles.logo}>🩺</Text>
@@ -92,7 +203,7 @@ export default function DoctorDashboard() {
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholderTextColor="#ADB5BD"
-              keyboardType="number-pad"
+              keyboardType="default"
             />
             <TouchableOpacity
               style={styles.searchBtn}
@@ -105,70 +216,96 @@ export default function DoctorDashboard() {
             </TouchableOpacity>
           </View>
 
-          {/* Patient Info Display */}
-          {patientData && (
+          {/* Results list */}
+          {searching ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="small" color="#D62828" />
+              <Text style={styles.loadingText}>{t("loading")}</Text>
+            </View>
+          ) : results.length > 0 ? (
+            <View style={styles.resultsBox}>
+              {results.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[
+                    styles.resultRow,
+                    selectedPatient?.id === p.id && styles.resultRowActive,
+                  ]}
+                  onPress={() => setSelectedPatient(p)}
+                >
+                  <Text style={styles.resultName}>{p.name || p.email || "Unknown"}</Text>
+                  <Text style={styles.resultMeta}>
+                    {p.israeliId ? `ID: ${p.israeliId}` : p.email || ""}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
+
+          {/* Selected Patient Info Display */}
+          {selectedPatient && (
             <View style={styles.patientInfoCard}>
               <View style={styles.patientHeader}>
-                <Text style={styles.patientName}>{patientData.name || patientData.email}</Text>
+                <Text style={styles.patientName}>{selectedPatient.name || selectedPatient.email}</Text>
                 <TouchableOpacity
                   style={styles.closeBtn}
-                  onPress={() => setPatientData(null)}
+                  onPress={() => setSelectedPatient(null)}
                 >
                   <Text style={styles.closeBtnText}>✕</Text>
                 </TouchableOpacity>
               </View>
               
-              {patientData.israeliId && (
+              {selectedPatient.israeliId && (
                 <View style={styles.patientInfoRow}>
                   <Text style={styles.patientInfoLabel}>{t("israeliId")}:</Text>
-                  <Text style={styles.patientInfoValue}>{patientData.israeliId}</Text>
+                  <Text style={styles.patientInfoValue}>{selectedPatient.israeliId}</Text>
                 </View>
               )}
               
               <View style={styles.patientInfoRow}>
                 <Text style={styles.patientInfoLabel}>{t("phoneNumber")}:</Text>
-                <Text style={styles.patientInfoValue}>{patientData.phoneNumber || "N/A"}</Text>
+                <Text style={styles.patientInfoValue}>{selectedPatient.phoneNumber || "N/A"}</Text>
               </View>
               
-              {patientData.bloodType && (
+              {selectedPatient.bloodType && (
                 <View style={styles.patientInfoRow}>
                   <Text style={styles.patientInfoLabel}>{t("blood_type")}:</Text>
-                  <Text style={styles.patientInfoValue}>{patientData.bloodType}</Text>
+                  <Text style={styles.patientInfoValue}>{selectedPatient.bloodType}</Text>
                 </View>
               )}
               
-              {patientData.age && (
+              {selectedPatient.age && (
                 <View style={styles.patientInfoRow}>
                   <Text style={styles.patientInfoLabel}>{t("age")}:</Text>
-                  <Text style={styles.patientInfoValue}>{patientData.age}</Text>
+                  <Text style={styles.patientInfoValue}>{String(selectedPatient.age)}</Text>
                 </View>
               )}
 
-              {patientData.diseases && (
+              {selectedPatient.diseases && (
                 <View style={styles.patientInfoSection}>
                   <Text style={styles.patientInfoSectionTitle}>{t("diseases")}:</Text>
-                  <Text style={styles.patientInfoText}>{patientData.diseases}</Text>
+                  <Text style={styles.patientInfoText}>{selectedPatient.diseases}</Text>
                 </View>
               )}
 
-              {patientData.medications && (
+              {selectedPatient.medications && (
                 <View style={styles.patientInfoSection}>
                   <Text style={styles.patientInfoSectionTitle}>{t("medications")}:</Text>
-                  <Text style={styles.patientInfoText}>{patientData.medications}</Text>
+                  <Text style={styles.patientInfoText}>{selectedPatient.medications}</Text>
                 </View>
               )}
 
-              {patientData.allergies && (
+              {selectedPatient.allergies && (
                 <View style={styles.patientInfoSection}>
                   <Text style={styles.patientInfoSectionTitle}>{t("allergies")}:</Text>
-                  <Text style={styles.patientInfoText}>{patientData.allergies}</Text>
+                  <Text style={styles.patientInfoText}>{selectedPatient.allergies}</Text>
                 </View>
               )}
 
-              {patientData.emergencyContacts && patientData.emergencyContacts.length > 0 && (
+              {selectedContacts.length > 0 && (
                 <View style={styles.patientInfoSection}>
                   <Text style={styles.patientInfoSectionTitle}>{t("emergency_contact")}:</Text>
-                  {patientData.emergencyContacts.map((contact: any, index: number) => (
+                  {selectedContacts.map((contact: any, index: number) => (
                     <Text key={index} style={styles.patientInfoText}>
                       {contact.name}: {contact.phone}
                     </Text>
@@ -178,7 +315,7 @@ export default function DoctorDashboard() {
 
               <TouchableOpacity
                 style={styles.viewFullBtn}
-                onPress={() => router.push(`/doctor/patient/${patientData.id}`)}
+                onPress={() => router.push(`/doctor/patient/${selectedPatient.id}`)}
               >
                 <Text style={styles.viewFullBtnText}>
                   {t("viewFullProfile") || "View Full Profile"} ›
@@ -188,22 +325,44 @@ export default function DoctorDashboard() {
           )}
         </View>
 
-        {/* Active Cases */}
+        {/* Live Emergencies (real) */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("activeEmergencyCases")}</Text>
-          {emergencyCases.map((case_) => (
-            <TouchableOpacity key={case_.id} style={styles.caseCard}>
-              <View style={styles.caseHeader}>
-                <View style={[styles.priorityBadge, { backgroundColor: case_.priority === "High" ? "#DC2626" : case_.priority === "Medium" ? "#F59E0B" : "#10B981" }]}>
-                  <Text style={styles.priorityText}>{case_.priority}</Text>
+          <Text style={styles.sectionTitle}>{t("activeEmergencyCases") || "Active Emergencies"}</Text>
+          {loadingEmergencies ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="small" color="#D62828" />
+              <Text style={styles.loadingText}>{t("loading")}</Text>
+            </View>
+          ) : liveEmergencies.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyBoxText}>No active emergencies</Text>
+            </View>
+          ) : (
+            liveEmergencies.slice(0, 10).map((e) => (
+              <TouchableOpacity
+                key={e.id}
+                style={styles.caseCard}
+                onPress={() => router.push(`/doctor/case/${e.id}`)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.caseHeader}>
+                  <View style={[styles.priorityBadge, { backgroundColor: "#DC2626" }]}>
+                    <Text style={styles.priorityText}>ACTIVE</Text>
+                  </View>
+                  <Text style={styles.caseTime}>
+                    {e.timestamp ? new Date(e.timestamp).toLocaleString() : "—"}
+                  </Text>
                 </View>
-                <Text style={styles.caseTime}>{case_.time}</Text>
-              </View>
-              <Text style={styles.caseType}>{case_.type}</Text>
-              <Text style={styles.caseLocation}>📍 {case_.location}</Text>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          ))}
+                <Text style={styles.caseType}>
+                  {e.victimType === "other" ? "Someone else needs help" : "User needs help"}
+                </Text>
+                <Text style={styles.caseLocation}>
+                  📍 {e.location?.address || (e.location?.latitude && e.location?.longitude ? `${e.location.latitude}, ${e.location.longitude}` : "Location not available")}
+                </Text>
+                <Text style={styles.caseHint}>Tap to open case monitor ›</Text>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
 
         {/* Quick Actions */}
@@ -231,24 +390,6 @@ export default function DoctorDashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Statistics */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("todaysStatistics")}</Text>
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>12</Text>
-              <Text style={styles.statLabel}>{t("cases")}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>8</Text>
-              <Text style={styles.statLabel}>{t("resolved")}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statNumber}>4</Text>
-              <Text style={styles.statLabel}>{t("active")}</Text>
-            </View>
-          </View>
-        </View>
       </ScrollView>
     </View>
   );
@@ -285,18 +426,7 @@ const styles = StyleSheet.create({
     color: "#003049",
     fontWeight: "700",
   },
-  languageBtn: {
-    backgroundColor: "#003049",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  languageText: { color: "#FFF", fontWeight: "700", fontSize: 14 },
+  headerSpacer: { width: 40, height: 40 },
   logo: { fontSize: 60, textAlign: "center", marginBottom: 8 },
   title: {
     fontSize: 32,
@@ -362,12 +492,68 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#6C757D",
   },
+  caseHint: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#D62828",
+  },
   chevron: {
     position: "absolute",
     right: 20,
     top: 20,
     fontSize: 24,
     color: "#6C757D",
+  },
+  loadingBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  loadingText: {
+    color: "#6C757D",
+    fontWeight: "700",
+  },
+  emptyBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+  },
+  emptyBoxText: {
+    color: "#6C757D",
+    fontWeight: "700",
+  },
+  resultsBox: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+    marginBottom: 12,
+  },
+  resultRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  resultRowActive: {
+    backgroundColor: "#FFF5F5",
+    borderWidth: 1,
+    borderColor: "#D62828",
+  },
+  resultName: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#003049",
+  },
+  resultMeta: {
+    fontSize: 12,
+    color: "#6C757D",
+    marginTop: 2,
   },
   actionCard: {
     backgroundColor: "#FFFFFF",
@@ -411,33 +597,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "700",
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#D62828",
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 14,
-    color: "#6C757D",
-    fontWeight: "600",
   },
   searchSubtitle: {
     fontSize: 13,

@@ -1,10 +1,12 @@
 import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
+import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 
 export default function HomeTab() {
   const { user, role, approved } = useAuth();
+  const { isEmergencyActive, navigateToActiveEmergency } = useEmergency();
   const { t } = useLanguage();
   const router = useRouter();
 
@@ -17,18 +19,36 @@ export default function HomeTab() {
         <Text style={styles.subtitle}>{t("home_subtitle")}</Text>
       </View>
 
+      {/* Global emergency state indicator (home) */}
+      {isEmergencyActive && (
+        <View style={styles.emergencyStatusCard}>
+          <Text style={styles.emergencyStatusTitle}>🚨 Emergency Active</Text>
+          <Text style={styles.emergencyStatusSubtitle}>
+            Tap “View Active Emergency” to continue.
+          </Text>
+        </View>
+      )}
+
       {/* Quick Actions */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
         
         {/* Emergency Button */}
         <TouchableOpacity
-          style={styles.emergencyBtn}
-          onPress={() => router.push("/(tabs)/emergency")}
+          style={[styles.emergencyBtn, isEmergencyActive && styles.emergencyBtnActive]}
+          onPress={() =>
+            isEmergencyActive
+              ? navigateToActiveEmergency()
+              : router.push("/(tabs)/emergency")
+          }
         >
           <Text style={styles.emergencyIcon}>🚨</Text>
-          <Text style={styles.emergencyText}>{t("emergency")}</Text>
-          <Text style={styles.emergencySubtext}>{t("tapForHelp")}</Text>
+          <Text style={styles.emergencyText}>
+            {isEmergencyActive ? "Emergency Active" : "🚨 SOS"}
+          </Text>
+          <Text style={styles.emergencySubtext}>
+            {isEmergencyActive ? "Tap to view active emergency" : t("tapForHelp")}
+          </Text>
         </TouchableOpacity>
 
         {/* Quick Access Cards */}
@@ -141,6 +161,26 @@ const styles = StyleSheet.create({
     color: "#6C757D",
     textAlign: "center",
   },
+  emergencyStatusCard: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: "#FFF5F5",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: "#DC2626",
+  },
+  emergencyStatusTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#DC2626",
+    marginBottom: 4,
+  },
+  emergencyStatusSubtitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6C757D",
+  },
   section: {
     paddingHorizontal: 20,
     marginBottom: 24,
@@ -162,6 +202,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  emergencyBtnActive: {
+    backgroundColor: "#991B1B",
   },
   emergencyIcon: {
     fontSize: 48,

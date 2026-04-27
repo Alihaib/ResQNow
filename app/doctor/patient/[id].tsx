@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
 
@@ -9,34 +10,47 @@ export default function PatientViewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { role, approved, user, loading: authLoading } = useAuth();
   const [patientData, setPatientData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadPatientData();
-  }, [id]);
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/auth/login");
+      return;
+    }
+    if (role !== "doctor" || approved !== true) {
+      router.replace("/");
+      return;
+    }
 
-  const loadPatientData = async () => {
     if (!id) {
       setLoading(false);
       return;
     }
 
-    try {
-      const docRef = doc(db, "users", id);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        setPatientData({ id: docSnap.id, ...docSnap.data() });
-      } else {
+    setLoading(true);
+    const ref = doc(db, "users", id);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists()) {
+          setPatientData({ id: snap.id, ...snap.data() });
+        } else {
+          setPatientData(null);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error loading patient data:", err);
         setPatientData(null);
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error loading patient data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    );
+
+    return () => unsub();
+  }, [authLoading, user, role, approved, id, router]);
 
   const makePhoneCall = (phoneNumber: string) => {
     // Clean the phone number - remove any non-digit characters except +
