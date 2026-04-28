@@ -247,7 +247,7 @@ export default function DoctorCaseDetailScreen() {
         <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace("/doctor/dashboard"))}>
           <Text style={styles.backText}>‹ {t("back")}</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>🧑‍⚕️ Case Monitor</Text>
+        <Text style={styles.title}>{t("caseMonitorTitle")}</Text>
       </View>
 
       {/* Case summary */}
@@ -267,7 +267,7 @@ export default function DoctorCaseDetailScreen() {
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Victim</Text>
-          <Text style={styles.value}>{emergency.victimType === "other" ? "Someone else" : "Caller (me)"}</Text>
+          <Text style={styles.value}>{emergency.victimType === "other" ? t("someoneElse") : t("caller")}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Time</Text>
@@ -277,7 +277,7 @@ export default function DoctorCaseDetailScreen() {
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Ambulance</Text>
-          <Text style={styles.value}>{formatMaybe(emergency.assignedAmbulanceId || "Unassigned")}</Text>
+          <Text style={styles.value}>{formatMaybe(emergency.assignedAmbulanceId || t("unassigned"))}</Text>
         </View>
       </View>
 
@@ -286,7 +286,7 @@ export default function DoctorCaseDetailScreen() {
         <View style={styles.cardHeaderRow}>
           <Text style={styles.cardTitle}>📍 Location</Text>
           <TouchableOpacity onPress={openInMaps} disabled={!patientHasCoords}>
-            <Text style={[styles.link, !patientHasCoords && styles.linkDisabled]}>Open in Maps</Text>
+            <Text style={[styles.link, !patientHasCoords && styles.linkDisabled]}>{t("openInMaps")}</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.smallText}>
@@ -298,7 +298,7 @@ export default function DoctorCaseDetailScreen() {
             <WebView source={{ uri: mapUrl }} />
           </View>
         ) : (
-          <Text style={styles.muted}>Map unavailable (missing coordinates).</Text>
+          <Text style={styles.muted}>{t("mapUnavailable")}</Text>
         )}
       </View>
 
@@ -363,7 +363,7 @@ export default function DoctorCaseDetailScreen() {
           multiline
         />
         <TouchableOpacity style={styles.noteBtn} onPress={addDoctorNote} disabled={!noteText.trim()}>
-          <Text style={styles.noteBtnText}>Save note</Text>
+          <Text style={styles.noteBtnText}>{t("saveNote")}</Text>
         </TouchableOpacity>
         {Array.isArray(emergency.doctorNotes) && emergency.doctorNotes.length > 0 ? (
           <View style={{ marginTop: 10 }}>
@@ -390,10 +390,10 @@ export default function DoctorCaseDetailScreen() {
         <Text style={styles.cardTitle}>🩺 Patient Medical Summary</Text>
         {emergency.victimType === "other" ? (
           <Text style={styles.muted}>
-            No patient profile is available when the caller is helping someone else.
+            {t("privacyModeNoProfile")}
           </Text>
         ) : !patient ? (
-          <Text style={styles.muted}>Patient profile not found.</Text>
+          <Text style={styles.muted}>{t("patientProfileNotFound")}</Text>
         ) : (
           <>
             <View style={styles.row}>

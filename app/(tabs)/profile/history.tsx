@@ -44,7 +44,7 @@ export default function MedicalHistoryScreen() {
 
   const saveHistory = async () => {
     if (!user) {
-      Alert.alert(t("error"), "User not logged in");
+      Alert.alert(t("error"), t("userNotLoggedIn"));
       return;
     }
 
@@ -69,7 +69,7 @@ export default function MedicalHistoryScreen() {
       }
     } catch (error) {
       console.error("Error saving medical history:", error);
-      Alert.alert(t("error"), "Failed to save medical history");
+      Alert.alert(t("error"), t("failedToSaveMedicalHistory"));
     } finally {
       setSaving(false);
     }

@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { auth, db } from "../../src/firebase/config";
+import { theme } from "../../src/ui/theme";
 
 export default function Signup() {
   const router = useRouter();
@@ -66,7 +67,7 @@ export default function Signup() {
     }
 
     if (!validateIsraeliId(israeliId)) {
-      Alert.alert(t("error"), t("invalidIsraeliId") || "Israeli ID must be exactly 9 digits");
+      Alert.alert(t("error"), t("invalidIsraeliId"));
       return;
     }
 
@@ -165,7 +166,7 @@ export default function Signup() {
         <Text style={[styles.label, { marginTop: 16 }]}>{t("email")}</Text>
         <TextInput
           style={styles.input}
-          placeholder="example@mail.com"
+          placeholder={t("email_placeholder")}
           placeholderTextColor="#ADB5BD"
           value={email}
           autoCapitalize="none"
@@ -232,11 +233,11 @@ export default function Signup() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
   },
   scrollContent: {
     paddingTop: 70,
-    paddingHorizontal: 20,
+    paddingHorizontal: theme.spacing.lg,
     paddingBottom: 40,
   },
 
@@ -244,7 +245,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 40,
     right: 20,
-    backgroundColor: "#003049",
+    backgroundColor: theme.colors.text,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 12,
@@ -267,30 +268,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#003049",
+    ...theme.typography.title,
+    color: theme.colors.text,
     textAlign: "center",
     letterSpacing: -0.5,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 15,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     textAlign: "center",
     marginBottom: 32,
     lineHeight: 22,
   },
 
   card: {
-    backgroundColor: "white",
+    backgroundColor: theme.colors.surface,
     padding: 28,
     borderRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 8,
+    ...theme.shadow.card,
   },
 
   label: {
@@ -301,7 +297,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   input: {
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -309,7 +305,7 @@ const styles = StyleSheet.create({
     color: "#212529",
     marginBottom: 4,
     borderWidth: 1.5,
-    borderColor: "#E9ECEF",
+    borderColor: theme.colors.border,
   },
 
   // Role buttons
@@ -323,11 +319,11 @@ const styles = StyleSheet.create({
   roleBtn: {
     flex: 1,
     borderWidth: 2,
-    borderColor: "#E9ECEF",
+    borderColor: theme.colors.border,
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.colors.surface,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -335,9 +331,9 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   roleBtnActive: {
-    borderColor: "#D62828",
+    borderColor: theme.colors.primary,
     backgroundColor: "#FFF5F5",
-    shadowColor: "#D62828",
+    shadowColor: theme.colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -349,22 +345,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   roleTextActive: {
-    color: "#D62828",
+    color: theme.colors.primary,
     fontWeight: "800",
   },
 
   // Buttons
   primaryBtn: {
-    backgroundColor: "#D62828",
+    backgroundColor: theme.colors.primary,
     paddingVertical: 18,
     borderRadius: 14,
     alignItems: "center",
     marginTop: 24,
-    shadowColor: "#D62828",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    ...theme.shadow.primary,
   },
   primaryText: {
     color: "white",
@@ -379,7 +371,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   secondaryText: {
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "600",
     fontSize: 15,
   },

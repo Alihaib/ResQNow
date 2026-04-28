@@ -95,7 +95,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     try {
       const id = `${user.uid}_${Date.now()}`;
       console.log("[SOS] Creating emergency doc:", id);
-      await setDoc(doc(db, "emergencies", id), {
+      const payload = {
         userId: user.uid,
         victimType,
         // keep legacy `location` for existing screens, plus explicit `patientLocation`
@@ -116,8 +116,10 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         timestamp: timestamp ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         timeline: [{ status: "dispatched", timestamp: timestamp ?? new Date().toISOString() }],
-      });
+      };
+      await setDoc(doc(db, "emergencies", id), payload);
       console.log("[SOS] Emergency doc created:", id);
+      console.log("[SOS] Emergency payload:", payload);
 
       await setCurrentEmergency({
         id,

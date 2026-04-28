@@ -53,7 +53,7 @@ export default function EmergencyDetailScreen() {
   useEffect(() => {
     const loadEmergency = async () => {
       if (!params.emergencyId) {
-        Alert.alert(t("error") || "Error", "Emergency ID not provided");
+        Alert.alert(t("error"), t("emergencyIdNotProvided"));
         router.back();
         return;
       }
@@ -77,7 +77,7 @@ export default function EmergencyDetailScreen() {
         });
       } catch (error) {
         console.error("Error loading emergency:", error);
-        Alert.alert(t("error") || "Error", "Failed to load emergency details");
+        Alert.alert(t("error"), t("failedToLoadEmergencyDetails"));
         router.back();
       } finally {
         setLoading(false);
@@ -166,7 +166,7 @@ export default function EmergencyDetailScreen() {
 
   const startTracking = async () => {
     if (!user?.uid || !emergency?.id) {
-      Alert.alert(t("error") || "Error", "You must be logged in to track.");
+      Alert.alert(t("error"), t("mustBeLoggedInToTrack"));
       return;
     }
     if (trackingSubRef.current) return;
@@ -175,7 +175,7 @@ export default function EmergencyDetailScreen() {
 
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(t("error") || "Permission Denied", t("locationPermissionDenied") || "Location permission is required.");
+      Alert.alert(t("error"), t("locationPermissionDenied"));
       return;
     }
 
@@ -231,7 +231,7 @@ export default function EmergencyDetailScreen() {
 
     // If assigned to someone else, block updates
     if (emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user.uid) {
-      Alert.alert(t("error") || "Error", "This case is assigned to another ambulance.");
+      Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
       return;
     }
 
@@ -281,7 +281,7 @@ export default function EmergencyDetailScreen() {
       }
     }).catch((error) => {
       console.error("Error opening navigation:", error);
-      Alert.alert(t("error") || "Error", "Failed to open navigation");
+      Alert.alert(t("error"), t("failedToOpenNavigation"));
     });
   };
 
@@ -347,17 +347,17 @@ export default function EmergencyDetailScreen() {
           </View>
           <Text style={styles.timeText}>{formatTimeAgo(emergency.timestamp)}</Text>
           {emergency.victimType === "other" && (
-            <Text style={styles.victimBadge}>🆘 Helping someone else</Text>
+            <Text style={styles.victimBadge}>🆘 {t("victimHelpingOther")}</Text>
           )}
           <Text style={styles.callerBadge}>
-            🚑 Case status: {emergency.status || "dispatched"}
+            🚑 {t("caseStatusLabel")}: {emergency.status || t("statusDispatched")}
           </Text>
           {emergency.assignedAmbulanceId ? (
             <Text style={styles.callerBadge}>
-              Assigned: {isAssignedToMe ? "You" : emergency.assignedAmbulanceId}
+              {t("assignedLabel")}: {isAssignedToMe ? t("you") : emergency.assignedAmbulanceId}
             </Text>
           ) : (
-            <Text style={styles.callerBadge}>Unassigned</Text>
+            <Text style={styles.callerBadge}>{t("unassigned")}</Text>
           )}
         </View>
 
@@ -371,7 +371,7 @@ export default function EmergencyDetailScreen() {
                 onPress={tracking ? stopTracking : startTracking}
               >
                 <Text style={styles.navigateButtonText}>
-                  {tracking ? "Stop GPS" : "Start GPS"}
+                  {tracking ? t("stopGps") : t("startGps")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -428,9 +428,9 @@ export default function EmergencyDetailScreen() {
         {emergency.victimType === "other" && (
           <View style={styles.section}>
             <View style={styles.notFoundCard}>
-              <Text style={styles.notFoundTitle}>🔒 Privacy Mode</Text>
+              <Text style={styles.notFoundTitle}>{t("privacyModeTitle")}</Text>
               <Text style={styles.notFoundText}>
-                Medical profile details are not shown when the caller is helping someone else.
+                {t("privacyModeNoProfile")}
               </Text>
             </View>
           </View>

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { theme } from "../../src/ui/theme";
 
 export default function EmergencyScreen() {
   const { t } = useLanguage();
@@ -34,7 +35,7 @@ export default function EmergencyScreen() {
 
     const loc = locationDataRef.current;
     if (!loc?.latitude || !loc?.longitude) {
-      Alert.alert(t("error") || "Error", t("locationNotAvailable") || "Location not available");
+      Alert.alert(t("error"), t("locationNotAvailable"));
       return;
     }
 
@@ -50,7 +51,7 @@ export default function EmergencyScreen() {
       });
       navigateToActiveEmergency();
     } catch {
-      Alert.alert(t("error") || "Error", "Failed to start emergency. Please try again.");
+      Alert.alert(t("error"), t("failedToStartEmergency"));
     }
   };
 
@@ -70,8 +71,8 @@ export default function EmergencyScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
-          t("error") || "Permission Denied",
-          t("locationPermissionDenied") || "Location permission is required for emergency services."
+          t("error"),
+          t("locationPermissionDenied")
         );
       } else {
         const location = await Location.getCurrentPositionAsync({
@@ -127,21 +128,21 @@ export default function EmergencyScreen() {
         statusBarTranslucent
       >
         <View style={styles.overlayContainer}>
-          <Text style={styles.overlayQuestion}>Who needs help?</Text>
+          <Text style={styles.overlayQuestion}>{t("sosWhoNeedsHelp")}</Text>
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
               style={styles.overlayPrimaryBtn}
               onPress={() => proceedToActiveEmergency("me")}
             >
-              <Text style={styles.overlayPrimaryText}>👤 Me</Text>
+              <Text style={styles.overlayPrimaryText}>{t("sosMe")}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.overlaySecondaryBtn}
               onPress={() => proceedToActiveEmergency("other")}
             >
-              <Text style={styles.overlaySecondaryText}>🆘 Someone else</Text>
+              <Text style={styles.overlaySecondaryText}>{t("sosSomeoneElse")}</Text>
             </TouchableOpacity>
           </View>
 
@@ -169,13 +170,13 @@ export default function EmergencyScreen() {
         >
           <Text style={styles.emergencyIcon}>🚨</Text>
           <Text style={styles.emergencyText}>
-            {isEmergencyActive ? "Emergency Active" : "🚨 SOS"}
+            {isEmergencyActive ? t("emergencyActiveShort") : `🚨 ${t("sos")}`}
           </Text>
           <Text style={styles.emergencySubtext}>
             {isEmergencyActive
-              ? "Tap to view active emergency"
+              ? t("tapToViewActiveEmergency")
               : sosBusy || startingEmergency
-                ? (t("loading") || "Please wait…")
+                ? (t("loading") || t("pleaseWait"))
                 : t("tapForHelp")}
           </Text>
         </TouchableOpacity>
@@ -226,106 +227,92 @@ export default function EmergencyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
   },
   header: {
     alignItems: "center",
-    marginBottom: 30,
+    marginBottom: theme.spacing.xxl,
   },
   logo: {
     fontSize: 60,
-    marginBottom: 8,
+    marginBottom: theme.spacing.sm,
   },
   title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#003049",
-    marginBottom: 8,
+    ...theme.typography.title,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
   subtitle: {
     fontSize: 15,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     textAlign: "center",
   },
   emergencyBtn: {
-    backgroundColor: "#DC2626",
-    borderRadius: 20,
+    backgroundColor: theme.colors.danger,
+    borderRadius: theme.radius.lg,
     padding: 32,
     alignItems: "center",
-    marginBottom: 30,
-    shadowColor: "#DC2626",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    marginBottom: theme.spacing.xxl,
+    ...theme.shadow.primary,
   },
   emergencyBtnActive: {
-    backgroundColor: "#991B1B",
+    backgroundColor: theme.colors.dangerDark,
   },
   emergencyBtnDisabled: {
     opacity: 0.7,
   },
   emergencyIcon: {
     fontSize: 64,
-    marginBottom: 12,
+    marginBottom: theme.spacing.md,
   },
   emergencyText: {
-    color: "#FFFFFF",
+    color: theme.colors.surface,
     fontSize: 28,
     fontWeight: "900",
-    marginBottom: 8,
+    marginBottom: theme.spacing.sm,
   },
   emergencySubtext: {
-    color: "#FFFFFF",
+    color: theme.colors.surface,
     fontSize: 16,
     opacity: 0.9,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: theme.spacing.xl,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#003049",
-    marginBottom: 16,
+    ...theme.typography.h2,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.lg,
   },
   instructionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
+    ...theme.shadow.card,
   },
   instructionText: {
     fontSize: 16,
     color: "#212529",
-    marginBottom: 12,
+    marginBottom: theme.spacing.md,
     lineHeight: 24,
   },
   actionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: theme.spacing.md,
+    ...theme.shadow.card,
   },
   actionIcon: {
     fontSize: 32,
-    marginRight: 16,
+    marginRight: theme.spacing.lg,
   },
   actionContent: {
     flex: 1,
@@ -333,29 +320,29 @@ const styles = StyleSheet.create({
   actionTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#003049",
+    color: theme.colors.text,
     marginBottom: 4,
   },
   actionSubtitle: {
     fontSize: 14,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
   },
   chevron: {
     fontSize: 24,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
   },
   overlayContainer: {
     flex: 1,
-    backgroundColor: "#DC2626",
+    backgroundColor: theme.colors.danger,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
+    paddingHorizontal: theme.spacing.xxl,
   },
   overlayQuestion: {
     fontSize: 26,
     fontWeight: "800",
-    color: "#FFFFFF",
-    marginBottom: 32,
+    color: theme.colors.surface,
+    marginBottom: theme.spacing.xxl,
     textAlign: "center",
   },
   buttonsContainer: {
@@ -364,20 +351,20 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   overlayPrimaryBtn: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: "center",
   },
   overlayPrimaryText: {
-    color: "#DC2626",
+    color: theme.colors.danger,
     fontSize: 20,
     fontWeight: "900",
   },
   overlaySecondaryBtn: {
     backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 16,
+    borderRadius: theme.radius.md,
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: "center",
@@ -385,7 +372,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.35)",
   },
   overlaySecondaryText: {
-    color: "#FFFFFF",
+    color: theme.colors.surface,
     fontSize: 20,
     fontWeight: "900",
   },
@@ -393,10 +380,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.25)",
     paddingVertical: 16,
     paddingHorizontal: 48,
-    borderRadius: 14,
+    borderRadius: theme.radius.sm,
   },
   cancelOverlayText: {
-    color: "#FFFFFF",
+    color: theme.colors.surface,
     fontSize: 18,
     fontWeight: "700",
   },

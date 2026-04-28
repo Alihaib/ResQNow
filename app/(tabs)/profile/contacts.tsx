@@ -5,6 +5,7 @@ import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpaci
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
+import { theme } from "../../../src/ui/theme";
 
 interface Contact {
   id: string;
@@ -48,7 +49,7 @@ export default function EmergencyContactsScreen() {
 
   const saveContacts = async (showSuccess = false) => {
     if (!user) {
-      Alert.alert(t("error"), "User not logged in");
+      Alert.alert(t("error"), t("userNotLoggedIn"));
       return;
     }
 
@@ -68,7 +69,7 @@ export default function EmergencyContactsScreen() {
       setShowAddForm(false);
     } catch (error) {
       console.error("Error saving contacts:", error);
-      Alert.alert(t("error"), "Failed to save contacts");
+      Alert.alert(t("error"), t("failedToSaveContacts"));
     } finally {
       setSaving(false);
     }
@@ -106,7 +107,7 @@ export default function EmergencyContactsScreen() {
         );
       } catch (error) {
         console.error("Error saving contact:", error);
-        Alert.alert(t("error"), "Failed to save contact");
+        Alert.alert(t("error"), t("failedToSaveContact"));
       } finally {
         setSaving(false);
       }
@@ -116,11 +117,11 @@ export default function EmergencyContactsScreen() {
   const deleteContact = (id: string) => {
     Alert.alert(
       t("deleteAccount"),
-      "Are you sure you want to delete this contact?",
+      t("deleteContactConfirm"),
       [
         { text: t("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: t("delete"),
           style: "destructive",
           onPress: async () => {
             const updated = contacts.filter((c) => c.id !== id);
@@ -180,7 +181,7 @@ export default function EmergencyContactsScreen() {
       })
       .catch((error) => {
         console.error("Error making phone call:", error);
-        Alert.alert(t("error"), "Failed to make phone call");
+        Alert.alert(t("error"), t("failedToMakeCall"));
       });
   };
 
@@ -234,7 +235,7 @@ export default function EmergencyContactsScreen() {
           />
           <TextInput
             style={styles.formInput}
-            placeholder="Relationship (optional)"
+            placeholder={t("relationshipOptional")}
             value={newContact.relationship}
             onChangeText={(text) => setNewContact({ ...newContact, relationship: text })}
           />
@@ -302,12 +303,12 @@ export default function EmergencyContactsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
   },
   header: {
     marginBottom: 24,
@@ -317,7 +318,7 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 18,
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "700",
   },
   titleRow: {
@@ -328,10 +329,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "900",
-    color: "#003049",
+    color: theme.colors.text,
   },
   addBtn: {
-    backgroundColor: "#D62828",
+    backgroundColor: theme.colors.primary,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
@@ -342,23 +343,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   contactCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     padding: 20,
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...theme.shadow.card,
   },
   contactAvatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#D62828",
+    backgroundColor: theme.colors.primary,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
@@ -374,17 +371,17 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#003049",
+    color: theme.colors.text,
     marginBottom: 4,
   },
   contactRelationship: {
     fontSize: 14,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     marginBottom: 4,
   },
   contactPhone: {
     fontSize: 16,
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "600",
   },
   callBtn: {

@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, initializeFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, setLogLevel } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCOlzzkSshIJTm3Mylcd4RcM85HpGxgK1I",
@@ -16,6 +16,15 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
+
+// Firestore SDK logging (dev only) helps debug realtime permission issues.
+if (typeof __DEV__ !== "undefined" && __DEV__) {
+  try {
+    setLogLevel("debug");
+  } catch {
+    // ignore
+  }
+}
 
 // initializeFirestore (with long-polling for React Native) can only be called
 // once. On Fast Refresh the module re-runs, so we fall back to getFirestore()

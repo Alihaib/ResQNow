@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-nati
 import { useAuth } from "../../src/context/AuthContext";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { theme } from "../../src/ui/theme";
 
 export default function HomeTab() {
   const { user, role, approved } = useAuth();
@@ -22,9 +23,9 @@ export default function HomeTab() {
       {/* Global emergency state indicator (home) */}
       {isEmergencyActive && (
         <View style={styles.emergencyStatusCard}>
-          <Text style={styles.emergencyStatusTitle}>🚨 Emergency Active</Text>
+          <Text style={styles.emergencyStatusTitle}>{t("emergencyActiveTitle")}</Text>
           <Text style={styles.emergencyStatusSubtitle}>
-            Tap “View Active Emergency” to continue.
+            {t("continueActiveEmergencyHint")}
           </Text>
         </View>
       )}
@@ -44,10 +45,10 @@ export default function HomeTab() {
         >
           <Text style={styles.emergencyIcon}>🚨</Text>
           <Text style={styles.emergencyText}>
-            {isEmergencyActive ? "Emergency Active" : "🚨 SOS"}
+            {isEmergencyActive ? t("emergencyActiveShort") : `🚨 ${t("sos")}`}
           </Text>
           <Text style={styles.emergencySubtext}>
-            {isEmergencyActive ? "Tap to view active emergency" : t("tapForHelp")}
+            {isEmergencyActive ? t("tapToViewActiveEmergency") : t("tapForHelp")}
           </Text>
         </TouchableOpacity>
 
@@ -135,89 +136,83 @@ export default function HomeTab() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     paddingTop: 60,
-    paddingBottom: 30,
+    paddingBottom: theme.spacing.xl,
   },
   header: {
     alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 30,
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.xxl,
   },
   logo: {
     fontSize: 60,
-    marginBottom: 8,
+    marginBottom: theme.spacing.sm,
   },
   title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#003049",
-    marginBottom: 8,
+    ...theme.typography.title,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
   subtitle: {
     fontSize: 15,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     textAlign: "center",
   },
   emergencyStatusCard: {
-    marginHorizontal: 20,
-    marginBottom: 16,
+    marginHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
     backgroundColor: "#FFF5F5",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.md,
     borderWidth: 2,
-    borderColor: "#DC2626",
+    borderColor: theme.colors.danger,
   },
   emergencyStatusTitle: {
     fontSize: 16,
     fontWeight: "900",
-    color: "#DC2626",
+    color: theme.colors.danger,
     marginBottom: 4,
   },
   emergencyStatusSubtitle: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#6C757D",
+    color: theme.colors.textMuted,
   },
   section: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
+    paddingHorizontal: theme.spacing.lg,
+    marginBottom: theme.spacing.xl,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#003049",
-    marginBottom: 16,
+    ...theme.typography.h2,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.lg,
   },
   emergencyBtn: {
-    backgroundColor: "#DC2626",
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: theme.colors.danger,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.xl,
     alignItems: "center",
-    marginBottom: 20,
-    shadowColor: "#DC2626",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    marginBottom: theme.spacing.lg,
+    ...theme.shadow.primary,
   },
   emergencyBtnActive: {
-    backgroundColor: "#991B1B",
+    backgroundColor: theme.colors.dangerDark,
   },
   emergencyIcon: {
     fontSize: 48,
-    marginBottom: 8,
+    marginBottom: theme.spacing.sm,
   },
   emergencyText: {
-    color: "#FFFFFF",
+    color: theme.colors.surface,
     fontSize: 24,
     fontWeight: "900",
     marginBottom: 4,
   },
   emergencySubtext: {
-    color: "#FFFFFF",
+    color: theme.colors.surface,
     fontSize: 14,
     opacity: 0.9,
   },
@@ -227,15 +222,11 @@ const styles = StyleSheet.create({
   },
   quickCard: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...theme.shadow.card,
   },
   quickIcon: {
     fontSize: 32,
@@ -244,23 +235,19 @@ const styles = StyleSheet.create({
   quickText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#003049",
+    color: theme.colors.text,
   },
   roleCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
     flexDirection: "row",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...theme.shadow.card,
   },
   roleIcon: {
     fontSize: 32,
-    marginRight: 16,
+    marginRight: theme.spacing.lg,
   },
   roleContent: {
     flex: 1,
@@ -268,36 +255,32 @@ const styles = StyleSheet.create({
   roleTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#003049",
+    color: theme.colors.text,
     marginBottom: 4,
   },
   roleSubtitle: {
     fontSize: 14,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
   },
   chevron: {
     fontSize: 24,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
   },
   activityCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...theme.shadow.card,
   },
   activityText: {
     fontSize: 16,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     marginBottom: 4,
   },
   activitySubtext: {
     fontSize: 14,
-    color: "#ADB5BD",
+    color: theme.colors.textFaint,
   },
 });
 

@@ -82,12 +82,12 @@ export default function PatientViewScreen() {
         if (supported) {
           return Linking.openURL(phoneUrl);
         } else {
-          Alert.alert(t("error"), "Phone calls are not supported on this device");
+          Alert.alert(t("error"), t("phoneCallsNotSupported"));
         }
       })
       .catch((error) => {
         console.error("Error making phone call:", error);
-        Alert.alert(t("error"), "Failed to make phone call");
+        Alert.alert(t("error"), t("failedToMakeCall"));
       });
   };
 
@@ -114,7 +114,7 @@ export default function PatientViewScreen() {
             }
           }}
         >
-          <Text style={styles.backBtnText}>{t("goBack") || "Go Back"}</Text>
+          <Text style={styles.backBtnText}>{t("goBack")}</Text>
         </TouchableOpacity>
       </View>
     );

@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { theme } from "../../../src/ui/theme";
 
 export default function HelpScreen() {
   const router = useRouter();
@@ -53,7 +54,7 @@ export default function HelpScreen() {
       <View style={styles.contactCard}>
         <Text style={styles.contactTitle}>{t("needMoreHelp")}</Text>
         <Text style={styles.contactText}>{t("contactSupport")}</Text>
-        <Text style={styles.contactEmail}>support@resqnow.app</Text>
+        <Text style={styles.contactEmail}>{t("supportEmail")}</Text>
       </View>
     </ScrollView>
   );
@@ -62,12 +63,12 @@ export default function HelpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
   },
   header: {
     marginBottom: 24,
@@ -77,63 +78,54 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 18,
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "700",
   },
   title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#003049",
+    ...theme.typography.h1,
+    color: theme.colors.text,
   },
   faqCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
+    ...theme.shadow.card,
   },
   faqQuestion: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#003049",
-    marginBottom: 12,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
   },
   faqAnswer: {
     fontSize: 16,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     lineHeight: 24,
   },
   contactCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: theme.spacing.lg,
     alignItems: "center",
-    marginTop: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginTop: theme.spacing.lg,
+    ...theme.shadow.card,
   },
   contactTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#003049",
-    marginBottom: 8,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
   contactText: {
     fontSize: 16,
-    color: "#6C757D",
-    marginBottom: 8,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
   },
   contactEmail: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#D62828",
+    color: theme.colors.primary,
   },
 });
 

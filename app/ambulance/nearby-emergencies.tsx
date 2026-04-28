@@ -47,14 +47,14 @@ export default function NearbyEmergenciesScreen() {
           });
         } else {
           Alert.alert(
-            t("error") || "Permission Denied",
-            t("locationPermissionDenied") || "Location permission is required to find nearby emergencies."
+            t("error"),
+            t("locationPermissionDenied")
           );
           setLoading(false);
         }
       } catch (error) {
         console.error("Error getting ambulance location:", error);
-        Alert.alert(t("error") || "Error", "Failed to get location");
+        Alert.alert(t("error"), t("failedToGetLocation"));
         setLoading(false);
       }
     };
@@ -82,10 +82,14 @@ export default function NearbyEmergenciesScreen() {
     const time = new Date(timestamp);
     const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
     
-    if (diffInSeconds < 60) return `${diffInSeconds} sec ago`;
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} min ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hour${Math.floor(diffInSeconds / 3600) > 1 ? "s" : ""} ago`;
-    return `${Math.floor(diffInSeconds / 86400)} day${Math.floor(diffInSeconds / 86400) > 1 ? "s" : ""} ago`;
+    if (diffInSeconds < 60) return t("timeAgoSec").replace("{count}", String(diffInSeconds));
+    if (diffInSeconds < 3600) return t("timeAgoMin").replace("{count}", String(Math.floor(diffInSeconds / 60)));
+    if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return (hours === 1 ? t("timeAgoHour") : t("timeAgoHours")).replace("{count}", String(hours));
+    }
+    const days = Math.floor(diffInSeconds / 86400);
+    return (days === 1 ? t("timeAgoDay") : t("timeAgoDays")).replace("{count}", String(days));
   };
 
   // Fetch user info for emergency
@@ -163,6 +167,7 @@ export default function NearbyEmergenciesScreen() {
       setLoading(false);
     }, (error) => {
       console.error("Error listening to emergencies:", error);
+      console.error("Nearby emergencies listener error code:", (error as any)?.code);
       setLoading(false);
     });
 
@@ -186,7 +191,7 @@ export default function NearbyEmergenciesScreen() {
       }
     }).catch((error) => {
       console.error("Error opening navigation:", error);
-      Alert.alert(t("error") || "Error", "Failed to open navigation");
+      Alert.alert(t("error"), t("failedToOpenNavigation"));
     });
   };
 
@@ -217,19 +222,19 @@ export default function NearbyEmergenciesScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {loading ? (
           <View style={styles.centerContainer}>
-            <Text style={styles.loadingText}>{t("loading") || "Loading nearby emergencies..."}</Text>
+            <Text style={styles.loadingText}>{t("loadingNearbyEmergencies")}</Text>
             {!ambulanceLocation && (
-              <Text style={styles.subText}>{t("gettingLocation") || "Getting your location..."}</Text>
+              <Text style={styles.subText}>{t("gettingLocation")}</Text>
             )}
           </View>
         ) : emergencies.length === 0 ? (
           <View style={styles.centerContainer}>
             <Text style={styles.emptyIcon}>🚑</Text>
             <Text style={styles.emptyText}>
-              {t("noNearbyEmergencies") || "No emergencies within 200 meters"}
+              {t("noNearbyEmergencies").replace("{meters}", String(MAX_DISTANCE_METERS))}
             </Text>
             <Text style={styles.subText}>
-              {t("checkBackLater") || "Check back later or expand your search radius"}
+              {t("checkBackLater")}
             </Text>
           </View>
         ) : (
@@ -250,13 +255,13 @@ export default function NearbyEmergenciesScreen() {
                   <View style={styles.priorityBadge}>
                     <Text style={styles.priorityText}>🚨 {t("emergency") || "EMERGENCY"}</Text>
                   </View>
-                  <Text style={styles.timeText}>{emergency.timeAgo || "Just now"}</Text>
+                  <Text style={styles.timeText}>{emergency.timeAgo || t("justNow")}</Text>
                 </View>
 
                 <Text style={styles.userName}>
                   {emergency.victimType === "other"
-                    ? "Someone else"
-                    : emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
+                    ? t("someoneElse")
+                    : emergency.userInfo?.name || emergency.userInfo?.email || t("unknownUser")}
                 </Text>
 
                 <TouchableOpacity

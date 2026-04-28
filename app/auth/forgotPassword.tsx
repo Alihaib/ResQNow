@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { auth } from "../../src/firebase/config";
+import { theme } from "../../src/ui/theme";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -63,10 +64,10 @@ export default function ForgotPassword() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
-    padding: 30,
+    backgroundColor: theme.colors.bg,
+    padding: theme.spacing.xxl,
     paddingTop: 70,
-    marginTop:40
+    marginTop: 40,
   },
 
   /* 🌍 Language toggle button at top-right */
@@ -74,7 +75,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 40,
     right: 20,
-    backgroundColor: "#003049",
+    backgroundColor: theme.colors.text,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
@@ -88,39 +89,42 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#003049",
+    color: theme.colors.text,
     textAlign: "center",
     marginBottom: 20,
   },
   text: {
     textAlign: "center",
     fontSize: 14,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     marginBottom: 25,
   },
   input: {
-    backgroundColor: "#F1F3F5",
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.sm,
+    padding: theme.spacing.md,
     fontSize: 16,
     marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
   },
   primaryBtn: {
-    backgroundColor: "#D62828",
+    backgroundColor: theme.colors.primary,
     padding: 15,
-    borderRadius: 12,
+    borderRadius: theme.radius.sm,
     alignItems: "center",
     marginBottom: 20,
+    ...theme.shadow.primary,
   },
   primaryText: {
-    color: "#FFF",
+    color: theme.colors.surface,
     fontWeight: "700",
     fontSize: 16,
   },
   backText: {
     textAlign: "center",
     fontSize: 14,
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "600",
   },
 });

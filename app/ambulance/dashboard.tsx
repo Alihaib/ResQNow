@@ -75,10 +75,14 @@ export default function AmbulanceDashboard() {
     const time = new Date(timestamp);
     const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
     
-    if (diffInSeconds < 60) return `${diffInSeconds} sec ago`;
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} min ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hour${Math.floor(diffInSeconds / 3600) > 1 ? "s" : ""} ago`;
-    return `${Math.floor(diffInSeconds / 86400)} day${Math.floor(diffInSeconds / 86400) > 1 ? "s" : ""} ago`;
+    if (diffInSeconds < 60) return t("timeAgoSec").replace("{count}", String(diffInSeconds));
+    if (diffInSeconds < 3600) return t("timeAgoMin").replace("{count}", String(Math.floor(diffInSeconds / 60)));
+    if (diffInSeconds < 86400) {
+      const hours = Math.floor(diffInSeconds / 3600);
+      return (hours === 1 ? t("timeAgoHour") : t("timeAgoHours")).replace("{count}", String(hours));
+    }
+    const days = Math.floor(diffInSeconds / 86400);
+    return (days === 1 ? t("timeAgoDay") : t("timeAgoDays")).replace("{count}", String(days));
   };
 
   // Fetch user info for emergency
@@ -104,6 +108,9 @@ export default function AmbulanceDashboard() {
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       try {
         console.log("[AmbulanceDashboard] emergencies snapshot:", snapshot.size);
+        if (snapshot.size > 0) {
+          console.log("[AmbulanceDashboard] first emergency id:", snapshot.docs[0]?.id);
+        }
         const emergenciesList: Emergency[] = [];
 
         for (const docSnap of snapshot.docs) {
@@ -157,6 +164,7 @@ export default function AmbulanceDashboard() {
       }
     }, (error) => {
       console.error("Error listening to emergencies:", error);
+      console.error("Ambulance emergencies listener error code:", (error as any)?.code);
       // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
       setLoadingEmergencies(false);
     });
@@ -182,7 +190,7 @@ export default function AmbulanceDashboard() {
       }
     }).catch((error) => {
       console.error("Error opening navigation:", error);
-      Alert.alert(t("error") || "Error", "Failed to open navigation");
+      Alert.alert(t("error"), t("failedToOpenNavigation"));
     });
   };
 
@@ -221,7 +229,7 @@ export default function AmbulanceDashboard() {
       }
     } catch (error) {
       console.error("Error searching patient:", error);
-      Alert.alert(t("error"), "Failed to search patient");
+      Alert.alert(t("error"), t("failedToSearchPatient"));
     } finally {
       setSearching(false);
     }
@@ -368,7 +376,7 @@ export default function AmbulanceDashboard() {
           ) : emergencies.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>🚑</Text>
-              <Text style={styles.emptyText}>{t("noActiveEmergencies") || "No active emergencies"}</Text>
+              <Text style={styles.emptyText}>{t("noActiveEmergencies")}</Text>
             </View>
           ) : (
             emergencies.map((emergency) => (
@@ -384,12 +392,12 @@ export default function AmbulanceDashboard() {
                   <View style={[styles.priorityBadge, { backgroundColor: "#DC2626" }]}>
                     <Text style={styles.priorityText}>{t("emergency") || "EMERGENCY"}</Text>
                   </View>
-                  <Text style={styles.callTime}>{emergency.timeAgo || "Just now"}</Text>
+                  <Text style={styles.callTime}>{emergency.timeAgo || t("justNow")}</Text>
                 </View>
                 <Text style={styles.callType}>
                   {emergency.victimType === "other"
-                    ? "Someone else"
-                    : emergency.userInfo?.name || emergency.userInfo?.email || "Unknown User"}
+                    ? t("someoneElse")
+                    : emergency.userInfo?.name || emergency.userInfo?.email || t("unknownUser")}
                 </Text>
                 <TouchableOpacity
                   onPress={(e) => {

@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { auth, db } from "../../src/firebase/config";
+import { theme } from "../../src/ui/theme";
 
 export default function Login() {
   const router = useRouter();
@@ -108,16 +109,16 @@ export default function Login() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
     paddingTop: 70,
-    paddingHorizontal: 20,
+    paddingHorizontal: theme.spacing.lg,
   },
 
   languageBtn: {
     position: "absolute",
     top: 40,
     right: 20,
-    backgroundColor: "#003049",
+    backgroundColor: theme.colors.text,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 12,
@@ -141,31 +142,25 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#003049",
+    ...theme.typography.title,
+    color: theme.colors.text,
     textAlign: "center",
-    letterSpacing: -0.5,
-    marginBottom: 8,
+    marginBottom: theme.spacing.sm,
   },
 
   subtitle: {
     fontSize: 15,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     textAlign: "center",
     marginBottom: 32,
     lineHeight: 22,
   },
 
   card: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: theme.colors.surface,
     padding: 28,
     borderRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 8,
+    ...theme.shadow.card,
   },
 
   label: {
@@ -177,28 +172,24 @@ const styles = StyleSheet.create({
   },
 
   input: {
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
+    backgroundColor: theme.colors.bg,
+    borderRadius: theme.radius.sm,
     paddingVertical: 14,
     paddingHorizontal: 16,
     fontSize: 16,
     color: "#212529",
     marginBottom: 4,
     borderWidth: 1.5,
-    borderColor: "#E9ECEF",
+    borderColor: theme.colors.border,
   },
 
   primaryBtn: {
-    backgroundColor: "#D62828",
+    backgroundColor: theme.colors.primary,
     paddingVertical: 18,
     borderRadius: 14,
     alignItems: "center",
     marginTop: 24,
-    shadowColor: "#D62828",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    ...theme.shadow.primary,
   },
   primaryText: {
     color: "#FFFFFF",
@@ -213,7 +204,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   secondaryText: {
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "600",
     fontSize: 15,
   },
@@ -221,7 +212,7 @@ const styles = StyleSheet.create({
   forgotText: {
     marginTop: 16,
     textAlign: "center",
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     fontSize: 14,
     fontWeight: "500",
   },

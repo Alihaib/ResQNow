@@ -47,7 +47,7 @@ export default function ActiveEmergencyScreen() {
   const shareMedicalInfo = async () => {
     if (victimType === "other") return;
     if (!user) {
-      Alert.alert(translate("error"), "User not logged in");
+      Alert.alert(translate("error"), translate("userNotLoggedIn"));
       return;
     }
 
@@ -99,7 +99,7 @@ Shared from ResQNow App - Emergency Situation
       });
     } catch (error) {
       console.error("Error sharing medical info:", error);
-      Alert.alert(translate("error"), "Failed to share medical information");
+      Alert.alert(translate("error"), translate("failedToShareMedicalInfo"));
     }
   };
 
@@ -129,7 +129,7 @@ Shared from ResQNow App - Emergency Situation
         
       } catch (error) {
         console.error("Error parsing location data:", error);
-        setLocationDisplay(translate("locationLoading") || "Loading location...");
+        setLocationDisplay(translate("locationLoading"));
       }
     } else {
       // If no params, try to restore location from the active emergency doc (global state)
@@ -159,10 +159,10 @@ Shared from ResQNow App - Emergency Situation
           } catch (e) {
             console.error("Error restoring emergency location:", e);
           }
-          setLocationDisplay(translate("locationNotAvailable") || "Location not available");
+          setLocationDisplay(translate("locationNotAvailable"));
         })();
       } else {
-        setLocationDisplay(translate("locationNotAvailable") || "Location not available");
+        setLocationDisplay(translate("locationNotAvailable"));
       }
     }
   }, [params.locationData, currentEmergency?.id]);
@@ -326,15 +326,15 @@ Shared from ResQNow App - Emergency Situation
           // Continue with sharing
         } catch (error) {
           Alert.alert(
-            translate("error") || "Error", 
-            translate("locationNotAvailable") || "Location not available. Please wait for location to load."
+            translate("error"),
+            translate("locationNotAvailableWait")
           );
           return;
         }
       } else {
         Alert.alert(
-          translate("error") || "Error", 
-          translate("locationNotAvailable") || "Location not available. Please wait for location to load."
+          translate("error"),
+          translate("locationNotAvailableWait")
         );
         return;
       }
@@ -362,11 +362,11 @@ Shared from ResQNow App - Emergency Situation
       const locationMessage =
         victimType === "other"
           ? `
-Emergency Alert 🚨
-Someone needs help at this location:
+${translate("emergencyAlertTitle")} 🚨
+${translate("emergencyAlertSomeoneNeedsHelpAt")}
 ${googleMapsLink}
 
-Time: ${timestampText}
+${translate("timeLabel")}: ${timestampText}
           `.trim()
           : `
 🚨 EMERGENCY LOCATION 🚨
@@ -377,10 +377,10 @@ ${addressText}
 Coordinates:
 ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}
 
-🗺️ Open in Maps:
+🗺️ ${translate("openInMaps")}:
 ${googleMapsLink}
 
-Time: ${timestampText}
+${translate("timeLabel")}: ${timestampText}
 
 ---
 Shared from ResQNow Emergency App
@@ -427,8 +427,8 @@ Shared from ResQNow Emergency App
           } else {
             // Fallback to native share if SMS failed
             Alert.alert(
-              translate("error") || "Error",
-              translate("failedToOpenSMS") || "Failed to open SMS app. Opening share dialog instead.",
+              translate("error"),
+              translate("failedToOpenSMS"),
               [
                 { text: translate("cancel") || "Cancel", style: "cancel" },
                 {
@@ -463,8 +463,8 @@ Shared from ResQNow Emergency App
       // Only show alert if it's not a user cancellation
       if (error.message !== "User did not share") {
         Alert.alert(
-          translate("error") || "Error", 
-          translate("failedToShareLocation") || "Failed to share location. Please try again."
+          translate("error"),
+          translate("failedToShareLocation")
         );
       }
     }
@@ -537,7 +537,7 @@ Shared from ResQNow Emergency App
         {/* Victim label */}
         <View style={styles.victimLabelCard}>
           <Text style={styles.victimLabelText}>
-            {victimType === "me" ? "You are receiving help" : "Helping someone else"}
+            {victimType === "me" ? translate("victimReceivingHelp") : translate("victimHelpingOther")}
           </Text>
         </View>
 

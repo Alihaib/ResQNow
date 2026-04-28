@@ -35,7 +35,7 @@ export default function ProfileTab() {
 
   const shareMedicalInfo = async () => {
     if (!user) {
-      Alert.alert(t("error"), "User not logged in");
+      Alert.alert(t("error"), t("userNotLoggedIn"));
       return;
     }
 
@@ -88,7 +88,7 @@ Shared from ResQNow App
       }
     } catch (error) {
       console.error("Error sharing medical info:", error);
-      Alert.alert(t("error"), "Failed to share medical information");
+      Alert.alert(t("error"), t("failedToShareMedicalInfo"));
     } finally {
       setSharing(false);
     }

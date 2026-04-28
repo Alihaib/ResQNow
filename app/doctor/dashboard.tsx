@@ -68,6 +68,9 @@ export default function DoctorDashboard() {
       q,
       (snap) => {
         console.log("[DoctorDashboard] emergencies snapshot:", snap.size);
+        if (snap.size > 0) {
+          console.log("[DoctorDashboard] first emergency id:", snap.docs[0]?.id);
+        }
         const list: Emergency[] = snap.docs.map((d) => {
           const data = d.data() as any;
           return {
@@ -86,6 +89,9 @@ export default function DoctorDashboard() {
       },
       (err) => {
         console.error("Doctor emergencies listener error:", err);
+        // If you see PERMISSION_DENIED here, your Firestore rules are blocking the query.
+        // Check `firestore.rules` and deploy it.
+        console.error("Doctor emergencies listener error code:", (err as any)?.code);
         // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
         setLiveEmergencies([]);
         setLoadingEmergencies(false);
@@ -159,7 +165,7 @@ export default function DoctorDashboard() {
       if (list.length === 0) Alert.alert(t("error"), t("patientNotFound") || "Patient not found");
     } catch (error) {
       console.error("Error searching patient:", error);
-      Alert.alert(t("error"), "Failed to search patient");
+      Alert.alert(t("error"), t("failedToSearchPatient"));
     } finally {
       setSearching(false);
     }
@@ -335,7 +341,7 @@ export default function DoctorDashboard() {
             </View>
           ) : liveEmergencies.length === 0 ? (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyBoxText}>No active emergencies</Text>
+              <Text style={styles.emptyBoxText}>{t("noActiveEmergencies")}</Text>
             </View>
           ) : (
             liveEmergencies.slice(0, 10).map((e) => (
@@ -354,12 +360,12 @@ export default function DoctorDashboard() {
                   </Text>
                 </View>
                 <Text style={styles.caseType}>
-                  {e.victimType === "other" ? "Someone else needs help" : "User needs help"}
+                  {e.victimType === "other" ? t("someoneElseNeedsHelp") : t("userNeedsHelp")}
                 </Text>
                 <Text style={styles.caseLocation}>
-                  📍 {e.location?.address || (e.location?.latitude && e.location?.longitude ? `${e.location.latitude}, ${e.location.longitude}` : "Location not available")}
+                  📍 {e.location?.address || (e.location?.latitude && e.location?.longitude ? `${e.location.latitude}, ${e.location.longitude}` : t("locationNotAvailable"))}
                 </Text>
-                <Text style={styles.caseHint}>Tap to open case monitor ›</Text>
+                <Text style={styles.caseHint}>{t("tapToOpenCaseMonitor")}</Text>
               </TouchableOpacity>
             ))
           )}

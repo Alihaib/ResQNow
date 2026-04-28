@@ -14,6 +14,7 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { theme } from "../../src/ui/theme";
 
 export default function AdminPanel() {
   const router = useRouter();
@@ -55,16 +56,17 @@ export default function AdminPanel() {
   };
 
   const deleteUser = async (id: string, userName: string) => {
+    const nameForConfirm = userName || t("deleteThisUser");
     Alert.alert(
       t("deleteAccount"),
-      `Are you sure you want to delete ${userName || "this user"}? This action cannot be undone.`,
+      t("deleteUserConfirm").replace("{name}", nameForConfirm),
       [
         {
           text: t("cancel"),
           style: "cancel",
         },
         {
-          text: "Delete",
+          text: t("delete"),
           style: "destructive",
           onPress: async () => {
             try {
@@ -72,7 +74,7 @@ export default function AdminPanel() {
               loadUsers();
             } catch (error) {
               console.error("Error deleting user:", error);
-              Alert.alert(t("error"), "Failed to delete user");
+              Alert.alert(t("error"), t("error"));
             }
           },
         },
@@ -162,7 +164,7 @@ export default function AdminPanel() {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyIcon}>👥</Text>
-              <Text style={styles.emptyText}>No users found</Text>
+              <Text style={styles.emptyText}>{t("noUsersFound")}</Text>
             </View>
           }
           renderItem={({ item }) => {
@@ -257,7 +259,7 @@ export default function AdminPanel() {
                     onPress={() => deleteUser(item.id, item.name || item.email)}
                   >
                     <Text style={styles.deleteIcon}>🗑️</Text>
-                    <Text style={styles.deleteBtnText}>Delete</Text>
+                    <Text style={styles.deleteBtnText}>{t("delete")}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -285,7 +287,7 @@ function getRoleColor(role: string | undefined) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
   },
 
   langBtn: {
@@ -353,7 +355,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#003049",
+    color: theme.colors.text,
   },
   logoutBtn: {
     width: 40,

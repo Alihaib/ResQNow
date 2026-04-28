@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function role() {
+      return isSignedIn() ? userDoc(request.auth.uid).role : null;
+    }
+
+    function isApprovedResponder() {
+      return (role() == "doctor" || role() == "ambulance") && userDoc(request.auth.uid).approved == true;
+    }
+
+    function isAdmin() {
+      return role() == "admin";
+    }
+
+    // Users collection: users can read/write their own profile.
+    // Responders/admin can read user profiles as needed (medical info access).
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isApprovedResponder() || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow delete: if isSignedIn() && isAdmin();
+    }
+
+    // Emergencies:
+    // - Any signed-in user can create an emergency doc for themselves.
+    // - The owner can read their own emergency.
+    // - Approved responders (doctor/ambulance) can list/read active emergencies.
+    // - Status updates are restricted to responders/admin.
+    match /emergencies/{id} {
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.sessionStatus == "active"
+        && request.resource.data.status == "dispatched";
+
+      allow read: if isSignedIn()
+        && (
+          resource.data.userId == request.auth.uid
+          || isApprovedResponder()
+          || isAdmin()
+        );
+
+      // Allow responders/admin to update emergencies (status, assignment, timeline, gps, etc).
+      // Allow the owner to cancel their own emergency (sessionStatus/status -> cancelled).
+      allow update: if isSignedIn()
+        && (
+          isAdmin()
+          || isApprovedResponder()
+          || (
+            resource.data.userId == request.auth.uid
+            && request.resource.data.sessionStatus == "cancelled"
+            && request.resource.data.status == "cancelled"
+          )
+        );
+
+      allow delete: if isSignedIn() && isAdmin();
+    }
+  }
+}
+

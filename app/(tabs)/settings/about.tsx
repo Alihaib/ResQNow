@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { theme } from "../../../src/ui/theme";
 
 export default function AboutScreen() {
   const router = useRouter();
@@ -26,8 +27,8 @@ export default function AboutScreen() {
 
       <View style={styles.infoCard}>
         <Text style={styles.logo}>⛑</Text>
-        <Text style={styles.appName}>ResQNow</Text>
-        <Text style={styles.version}>Version 1.0.0</Text>
+        <Text style={styles.appName}>{t("appName")}</Text>
+        <Text style={styles.version}>{t("appVersion").replace("{version}", "1.0.0")}</Text>
       </View>
 
       <View style={styles.section}>
@@ -57,12 +58,12 @@ export default function AboutScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
   },
   content: {
     paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
+    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
   },
   header: {
     marginBottom: 24,
@@ -72,25 +73,20 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 18,
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "700",
   },
   title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#003049",
+    ...theme.typography.h1,
+    color: theme.colors.text,
   },
   infoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 32,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.xxl,
     alignItems: "center",
     marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...theme.shadow.card,
   },
   logo: {
     fontSize: 64,
@@ -99,37 +95,36 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#003049",
-    marginBottom: 8,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
   },
   version: {
     fontSize: 16,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
   },
   section: {
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#003049",
-    marginBottom: 12,
+    ...theme.typography.h2,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
   },
   description: {
     fontSize: 16,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     lineHeight: 24,
   },
   feature: {
     fontSize: 16,
-    color: "#6C757D",
-    marginBottom: 8,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
     lineHeight: 24,
   },
   contactText: {
     fontSize: 16,
-    color: "#6C757D",
-    marginBottom: 8,
+    color: theme.colors.textMuted,
+    marginBottom: theme.spacing.sm,
   },
 });
 

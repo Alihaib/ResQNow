@@ -46,7 +46,7 @@ export default function MedicalProfileScreen() {
 
   const saveProfile = async () => {
     if (!user) {
-      Alert.alert(t("error"), "User not logged in");
+      Alert.alert(t("error"), t("userNotLoggedIn"));
       return;
     }
 
@@ -72,7 +72,7 @@ export default function MedicalProfileScreen() {
       }
     } catch (error) {
       console.error("Error saving profile:", error);
-      Alert.alert(t("error"), "Failed to save profile");
+      Alert.alert(t("error"), t("failedToSaveProfile"));
     } finally {
       setSaving(false);
     }
