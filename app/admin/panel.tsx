@@ -1,7 +1,7 @@
 // app/admin/panel.tsx
 import { useRouter } from "expo-router";
 import { collection, deleteDoc, doc, getDocs, updateDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -18,19 +18,27 @@ import { theme } from "../../src/ui/theme";
 
 export default function AdminPanel() {
   const router = useRouter();
-  const { role, logout } = useAuth();
+  const { role, loading: authLoading, logout } = useAuth();
   const { lang, toggleLanguage, t } = useLanguage();
 
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadedOnceRef = useRef(false);
 
   useEffect(() => {
+    if (authLoading) return;
+
+    // Prevent redirect flicker/loops while role is still null during auth bootstrap.
     if (role !== "admin") {
       router.replace("/");
       return;
     }
-    loadUsers();
-  }, []);
+
+    if (!loadedOnceRef.current) {
+      loadedOnceRef.current = true;
+      loadUsers();
+    }
+  }, [authLoading, role, router]);
 
   const loadUsers = async () => {
     const snap = await getDocs(collection(db, "users"));
@@ -82,7 +90,15 @@ export default function AdminPanel() {
     );
   };
 
-  const goHome = () => {
+  const goBack = () => {
+    // Prefer actual back navigation (when admin came from tabs),
+    // but always provide a safe exit path to avoid loops.
+    // `canGoBack` may not exist in older expo-router versions, so guard it.
+    const canGoBack = (router as any)?.canGoBack?.() ?? false;
+    if (canGoBack) {
+      router.back();
+      return;
+    }
     router.replace("/(tabs)");
   };
 
@@ -96,12 +112,15 @@ export default function AdminPanel() {
   };
 
   // Calculate statistics
-  const stats = {
-    total: users.length,
-    approved: users.filter((u) => u.approved).length,
-    pending: users.filter((u) => !u.approved && (u.role === "doctor" || u.role === "ambulance")).length,
-    admins: users.filter((u) => u.role === "admin").length,
-  };
+  const stats = useMemo(
+    () => ({
+      total: users.length,
+      approved: users.filter((u) => u.approved).length,
+      pending: users.filter((u) => !u.approved && (u.role === "doctor" || u.role === "ambulance")).length,
+      admins: users.filter((u) => u.role === "admin").length,
+    }),
+    [users]
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -113,15 +132,17 @@ export default function AdminPanel() {
       {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <TouchableOpacity style={styles.backBtn} onPress={goHome}>
+          <TouchableOpacity style={styles.backBtn} onPress={goBack} accessibilityRole="button">
             <Text style={styles.backIcon}>‹</Text>
           </TouchableOpacity>
           <View style={styles.headerContent}>
-            <Text style={styles.headerIcon}>🔧</Text>
             <Text style={styles.title}>{t("adminPanel")}</Text>
+            <View style={styles.titlePill}>
+              <Text style={styles.titlePillText}>{t("manageUsers")}</Text>
+            </View>
           </View>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-            <Text style={styles.logoutIcon}>🚪</Text>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} accessibilityRole="button">
+            <Text style={styles.logoutText}>{t("logout")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -131,7 +152,7 @@ export default function AdminPanel() {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{stats.total}</Text>
-            <Text style={styles.statLabel}>{t("cases")}</Text>
+            <Text style={styles.statLabel}>{t("users") || t("cases")}</Text>
           </View>
           <View style={[styles.statCard, styles.statCardSuccess]}>
             <Text style={styles.statNumber}>{stats.approved}</Text>
@@ -193,10 +214,8 @@ export default function AdminPanel() {
                       <Text style={styles.phone}>📞 {item.phoneNumber}</Text>
                     )}
                   </View>
-                  <View style={[styles.roleTag, { backgroundColor: roleColor }]}>
-                    <Text style={styles.roleTagText}>
-                      {roleName.toUpperCase()}
-                    </Text>
+                  <View style={[styles.roleTag, { borderColor: roleColor }]}>
+                    <Text style={[styles.roleTagText, { color: roleColor }]}>{roleName.toUpperCase()}</Text>
                   </View>
                 </View>
 
@@ -226,7 +245,6 @@ export default function AdminPanel() {
                       style={styles.approveBtn}
                       onPress={() => approve(item.id)}
                     >
-                      <Text style={styles.approveIcon}>✓</Text>
                       <Text style={styles.btnText}>{t("approve")}</Text>
                     </TouchableOpacity>
 
@@ -234,7 +252,6 @@ export default function AdminPanel() {
                       style={styles.rejectBtn}
                       onPress={() => reject(item.id)}
                     >
-                      <Text style={styles.rejectIcon}>✕</Text>
                       <Text style={styles.btnText}>{t("reject")}</Text>
                     </TouchableOpacity>
                   </View>
@@ -248,7 +265,6 @@ export default function AdminPanel() {
                       style={styles.adminBtn}
                       onPress={() => makeAdmin(item.id)}
                     >
-                      <Text style={styles.adminIcon}>👑</Text>
                       <Text style={styles.adminBtnText}>{t("makeAdmin")}</Text>
                     </TouchableOpacity>
                   )}
@@ -258,7 +274,6 @@ export default function AdminPanel() {
                     style={styles.deleteUserBtn}
                     onPress={() => deleteUser(item.id, item.name || item.email)}
                   >
-                    <Text style={styles.deleteIcon}>🗑️</Text>
                     <Text style={styles.deleteBtnText}>{t("delete")}</Text>
                   </TouchableOpacity>
                 </View>
@@ -292,37 +307,30 @@ const styles = StyleSheet.create({
 
   langBtn: {
     position: "absolute",
-    top: 15,
-    right: 15,
-    backgroundColor: "#003049",
-    paddingHorizontal: 14,
+    top: 12,
+    right: 12,
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     zIndex: 50,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    ...theme.shadow.card,
   },
   langText: {
-    color: "white",
-    fontWeight: "800",
+    color: theme.colors.text,
+    fontWeight: "900",
     fontSize: 14,
   },
 
   header: {
-    backgroundColor: "#FFFFFF",
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    backgroundColor: theme.colors.surface,
+    paddingTop: 48,
+    paddingBottom: 14,
+    paddingHorizontal: theme.spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: "#E9ECEF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderBottomColor: theme.colors.border,
   },
   headerTop: {
     flexDirection: "row",
@@ -333,79 +341,92 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: theme.colors.bg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
   backIcon: {
     fontSize: 24,
-    color: "#003049",
+    color: theme.colors.text,
     fontWeight: "700",
   },
   headerContent: {
     flex: 1,
     alignItems: "center",
-    flexDirection: "row",
     justifyContent: "center",
-    gap: 8,
-  },
-  headerIcon: {
-    fontSize: 28,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "900",
+    ...theme.typography.h2,
     color: theme.colors.text,
   },
   logoutBtn: {
-    width: 40,
+    paddingHorizontal: 12,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F8F9FA",
+    borderRadius: 999,
+    backgroundColor: theme.colors.bg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  logoutIcon: {
-    fontSize: 20,
+  logoutText: {
+    color: theme.colors.text,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  titlePill: {
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: theme.colors.bg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  titlePillText: {
+    color: theme.colors.textMuted,
+    fontWeight: "700",
+    fontSize: 12,
   },
 
   statsContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 10,
-    gap: 12,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+    gap: 10,
   },
   statCard: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
   },
   statCardSuccess: {
-    backgroundColor: "#D1FAE5",
+    backgroundColor: "#ECFDF5",
   },
   statCardWarning: {
-    backgroundColor: "#FEF3C7",
+    backgroundColor: "#FFFBEB",
   },
   statCardDanger: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#FEF2F2",
   },
   statNumber: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
-    color: "#003049",
+    color: theme.colors.text,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 11,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     fontWeight: "600",
     textAlign: "center",
   },
@@ -423,23 +444,19 @@ const styles = StyleSheet.create({
   },
 
   listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 40,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.xl,
   },
 
   card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.md,
     borderWidth: 1,
-    borderColor: "#F0F0F0",
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
   },
 
   cardHeader: {
@@ -456,7 +473,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarText: {
-    color: "#FFFFFF",
+    color: theme.colors.surface,
     fontSize: 20,
     fontWeight: "900",
   },
@@ -466,26 +483,27 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#003049",
+    color: theme.colors.text,
     marginBottom: 4,
   },
   email: {
     fontSize: 14,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     marginBottom: 4,
   },
   phone: {
     fontSize: 13,
-    color: "#6C757D",
+    color: theme.colors.textMuted,
     fontWeight: "500",
   },
   roleTag: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
+    borderWidth: 1,
+    backgroundColor: "transparent",
   },
   roleTagText: {
-    color: "white",
     fontSize: 11,
     fontWeight: "800",
     letterSpacing: 0.5,
@@ -501,123 +519,87 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   statusBadgeSuccess: {
-    backgroundColor: "#D1FAE5",
+    backgroundColor: "#ECFDF5",
   },
   statusBadgePending: {
-    backgroundColor: "#FEE2E2",
+    backgroundColor: "#FEF2F2",
   },
   statusText: {
     fontSize: 13,
     fontWeight: "700",
   },
   statusTextSuccess: {
-    color: "#2D6A4F",
+    color: "#166534",
   },
   statusTextPending: {
-    color: "#DC2626",
+    color: "#B91C1C",
   },
 
   btnRow: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
+    gap: 10,
+    marginBottom: theme.spacing.sm,
   },
   approveBtn: {
     flex: 1,
-    backgroundColor: "#2D6A4F",
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: "#16A34A",
+    paddingVertical: 12,
+    borderRadius: theme.radius.md,
     alignItems: "center",
-    flexDirection: "row",
     justifyContent: "center",
-    gap: 6,
-    shadowColor: "#2D6A4F",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  approveIcon: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "900",
+    ...theme.shadow.primary,
   },
   rejectBtn: {
     flex: 1,
     backgroundColor: "#DC2626",
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: 12,
+    borderRadius: theme.radius.md,
     alignItems: "center",
-    flexDirection: "row",
     justifyContent: "center",
-    gap: 6,
-    shadowColor: "#DC2626",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  rejectIcon: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "900",
+    ...theme.shadow.primary,
   },
   btnText: {
     color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "900",
   },
 
   actionButtonsRow: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
+    gap: 10,
+    marginTop: 4,
   },
   adminBtn: {
     flex: 1,
-    backgroundColor: "#003049",
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: theme.colors.surface,
+    paddingVertical: 12,
+    borderRadius: theme.radius.md,
     alignItems: "center",
-    flexDirection: "row",
     justifyContent: "center",
-    gap: 8,
-    shadowColor: "#003049",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  adminIcon: {
-    fontSize: 18,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
   },
   adminBtnText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800",
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: "900",
   },
   deleteUserBtn: {
     flex: 1,
-    backgroundColor: "#991B1B",
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: theme.colors.surface,
+    paddingVertical: 12,
+    borderRadius: theme.radius.md,
     alignItems: "center",
-    flexDirection: "row",
     justifyContent: "center",
-    gap: 8,
-    shadowColor: "#991B1B",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  deleteIcon: {
-    fontSize: 18,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    ...theme.shadow.card,
   },
   deleteBtnText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "800",
+    color: "#B91C1C",
+    fontSize: 14,
+    fontWeight: "900",
   },
 
   emptyState: {

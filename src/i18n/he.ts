@@ -56,6 +56,7 @@ export default {
   // -------- ADMIN PANEL --------
   adminPanel: "פאנל ניהול",
   loadingUsers: "טוען משתמשים...",
+  users: "משתמשים",
   approved: "מאושר",
   awaitingApproval: "ממתין לאישור",
   approve: "אישור",

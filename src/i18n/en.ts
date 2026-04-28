@@ -51,6 +51,7 @@ export default {
   signupFailed: "Signup failed",
   adminPanel: "Admin Panel",
   loadingUsers: "Loading users...",
+  users: "Users",
   approved: "Approved",
   awaitingApproval: "Awaiting Approval",
   approve: "Approve",
