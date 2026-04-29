@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
@@ -49,6 +50,7 @@ export default function EmergencyDetailScreen() {
   const [tracking, setTracking] = useState(false);
   const trackingSubRef = useRef<Location.LocationSubscription | null>(null);
   const lastWriteAtRef = useRef<number>(0);
+  const mapRef = useRef<MapView | null>(null);
 
   useEffect(() => {
     const loadEmergency = async () => {
@@ -224,6 +226,29 @@ export default function EmergencyDetailScreen() {
     };
   }, []);
 
+  // Auto-fit map to show both patient and ambulance markers
+  useEffect(() => {
+    if (!mapRef.current || !emergency) return;
+    const patLoc = emergency.patientLocation ?? emergency.location;
+    if (!patLoc?.latitude || !patLoc?.longitude) return;
+
+    const coords: { latitude: number; longitude: number }[] = [
+      { latitude: patLoc.latitude, longitude: patLoc.longitude },
+    ];
+    if (ambulanceLocation?.latitude && ambulanceLocation?.longitude) {
+      coords.push({ latitude: ambulanceLocation.latitude, longitude: ambulanceLocation.longitude });
+    }
+
+    const timer = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+        animated: true,
+      });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [ambulanceLocation, emergency]);
+
   const updateCaseStatus = async (nextStatus: (typeof AMBULANCE_STATUSES)[number]["key"]) => {
     if (!user?.uid || !emergency?.id) return;
 
@@ -359,6 +384,47 @@ export default function EmergencyDetailScreen() {
           ) : (
             <Text style={styles.callerBadge}>{t("unassigned")}</Text>
           )}
+        </View>
+
+        {/* Live Map */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🗺️ Live Map</Text>
+          <View style={styles.mapWrapper}>
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              initialRegion={{
+                latitude: baseLoc.latitude,
+                longitude: baseLoc.longitude,
+                latitudeDelta: 0.012,
+                longitudeDelta: 0.012,
+              }}
+              scrollEnabled
+              zoomEnabled
+              showsUserLocation={false}
+            >
+              <Marker
+                coordinate={{ latitude: baseLoc.latitude, longitude: baseLoc.longitude }}
+                title="Patient"
+                description={baseLoc.address ?? `${baseLoc.latitude.toFixed(5)}, ${baseLoc.longitude.toFixed(5)}`}
+                pinColor="#D62828"
+              />
+              {ambulanceLocation && (
+                <Marker
+                  coordinate={{ latitude: ambulanceLocation.latitude, longitude: ambulanceLocation.longitude }}
+                  title="Ambulance"
+                  description="Your current location"
+                  pinColor="#0074D9"
+                />
+              )}
+            </MapView>
+            {tracking && (
+              <View style={styles.liveIndicator}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>LIVE</Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Ambulance controls */}
@@ -816,5 +882,43 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 18,
     color: "#D62828",
+  },
+  mapWrapper: {
+    height: 240,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  map: {
+    width: "100%",
+    height: "100%",
+  },
+  liveIndicator: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "#D62828",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FFFFFF",
+  },
+  liveText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
   },
 });

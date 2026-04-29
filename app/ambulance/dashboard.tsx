@@ -1,8 +1,25 @@
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query
+} from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  Linking,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 
@@ -31,7 +48,10 @@ export default function AmbulanceDashboard() {
   const [patientData, setPatientData] = useState<any>(null);
   const [emergencies, setEmergencies] = useState<Emergency[]>([]);
   const [loadingEmergencies, setLoadingEmergencies] = useState(true);
-  const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [ambulanceLocation, setAmbulanceLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   // Get ambulance location
   useEffect(() => {
@@ -55,7 +75,12 @@ export default function AmbulanceDashboard() {
   }, []);
 
   // Calculate distance between two coordinates (Haversine formula)
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const calculateDistance = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number => {
     const R = 6371; // Radius of the Earth in km
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
@@ -74,15 +99,26 @@ export default function AmbulanceDashboard() {
     const now = new Date();
     const time = new Date(timestamp);
     const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
-    
-    if (diffInSeconds < 60) return t("timeAgoSec").replace("{count}", String(diffInSeconds));
-    if (diffInSeconds < 3600) return t("timeAgoMin").replace("{count}", String(Math.floor(diffInSeconds / 60)));
+
+    if (diffInSeconds < 60)
+      return t("timeAgoSec").replace("{count}", String(diffInSeconds));
+    if (diffInSeconds < 3600)
+      return t("timeAgoMin").replace(
+        "{count}",
+        String(Math.floor(diffInSeconds / 60)),
+      );
     if (diffInSeconds < 86400) {
       const hours = Math.floor(diffInSeconds / 3600);
-      return (hours === 1 ? t("timeAgoHour") : t("timeAgoHours")).replace("{count}", String(hours));
+      return (hours === 1 ? t("timeAgoHour") : t("timeAgoHours")).replace(
+        "{count}",
+        String(hours),
+      );
     }
     const days = Math.floor(diffInSeconds / 86400);
-    return (days === 1 ? t("timeAgoDay") : t("timeAgoDays")).replace("{count}", String(days));
+    return (days === 1 ? t("timeAgoDay") : t("timeAgoDays")).replace(
+      "{count}",
+      String(days),
+    );
   };
 
   // Fetch user info for emergency
@@ -103,71 +139,86 @@ export default function AmbulanceDashboard() {
   useEffect(() => {
     setLoadingEmergencies(true);
     const emergenciesRef = collection(db, "emergencies");
-    const q = query(emergenciesRef, where("sessionStatus", "==", "active"));
-    
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      try {
-        console.log("[AmbulanceDashboard] emergencies snapshot:", snapshot.size);
-        if (snapshot.size > 0) {
-          console.log("[AmbulanceDashboard] first emergency id:", snapshot.docs[0]?.id);
-        }
-        const emergenciesList: Emergency[] = [];
+    const q = query(emergenciesRef);
 
-        for (const docSnap of snapshot.docs) {
-          const data = docSnap.data();
-          const emergency: Emergency = {
-            id: docSnap.id,
-            userId: data.userId,
-            location: data.location,
-            timestamp: data.timestamp,
-            status: data.status,
-            victimType: data.victimType === "other" ? "other" : "me",
-          };
-
-          // Privacy: if victimType is "other", do NOT fetch or display medical profile data.
-          if (emergency.victimType !== "other") {
-            const userInfo = await fetchUserInfo(data.userId);
-            if (userInfo) {
-              emergency.userInfo = userInfo;
-            }
-          }
-
-          // Calculate distance if ambulance location is available
-          if (ambulanceLocation && emergency.location) {
-            emergency.distance = calculateDistance(
-              ambulanceLocation.latitude,
-              ambulanceLocation.longitude,
-              emergency.location.latitude,
-              emergency.location.longitude
+    const unsubscribe = onSnapshot(
+      q,
+      async (snapshot) => {
+        try {
+          console.log(
+            "[AmbulanceDashboard] emergencies snapshot:",
+            snapshot.size,
+          );
+          if (snapshot.size > 0) {
+            console.log(
+              "[AmbulanceDashboard] first emergency id:",
+              snapshot.docs[0]?.id,
             );
           }
+          const emergenciesList: Emergency[] = [];
 
-          // Calculate time ago
-          emergency.timeAgo = formatTimeAgo(emergency.timestamp);
+          for (const docSnap of snapshot.docs) {
+            const data = docSnap.data();
+            const emergency: Emergency = {
+              id: docSnap.id,
+              userId: data.userId,
+              location: data.location,
+              timestamp: data.timestamp,
+              status: data.status,
+              victimType: data.victimType === "other" ? "other" : "me",
+            };
 
-          emergenciesList.push(emergency);
-        }
+            // Privacy: if victimType is "other", do NOT fetch or display medical profile data.
+            if (emergency.victimType !== "other") {
+              const userInfo = await fetchUserInfo(data.userId);
+              if (userInfo) {
+                emergency.userInfo = userInfo;
+              }
+            }
 
-        // Sort by distance (closest first) or by time (newest first)
-        emergenciesList.sort((a, b) => {
-          if (a.distance && b.distance) {
-            return a.distance - b.distance;
+            // Calculate distance if ambulance location is available
+            if (ambulanceLocation && emergency.location) {
+              emergency.distance = calculateDistance(
+                ambulanceLocation.latitude,
+                ambulanceLocation.longitude,
+                emergency.location.latitude,
+                emergency.location.longitude,
+              );
+            }
+
+            // Calculate time ago
+            emergency.timeAgo = formatTimeAgo(emergency.timestamp);
+
+            emergenciesList.push(emergency);
           }
-          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        });
 
-        setEmergencies(emergenciesList);
+          // Sort by distance (closest first) or by time (newest first)
+          emergenciesList.sort((a, b) => {
+            if (a.distance && b.distance) {
+              return a.distance - b.distance;
+            }
+            return (
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+          });
+
+          setEmergencies(emergenciesList);
+          setLoadingEmergencies(false);
+        } catch (error) {
+          console.error("Error processing emergencies snapshot:", error);
+          setLoadingEmergencies(false);
+        }
+      },
+      (error) => {
+        console.error("Error listening to emergencies:", error);
+        console.error(
+          "Ambulance emergencies listener error code:",
+          (error as any)?.code,
+        );
+        // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
         setLoadingEmergencies(false);
-      } catch (error) {
-        console.error("Error processing emergencies snapshot:", error);
-        setLoadingEmergencies(false);
-      }
-    }, (error) => {
-      console.error("Error listening to emergencies:", error);
-      console.error("Ambulance emergencies listener error code:", (error as any)?.code);
-      // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
-      setLoadingEmergencies(false);
-    });
+      },
+    );
 
     return () => unsubscribe();
   }, [ambulanceLocation]);
@@ -181,22 +232,29 @@ export default function AmbulanceDashboard() {
       default: `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
     });
 
-    Linking.canOpenURL(url || "").then((supported) => {
-      if (supported) {
-        Linking.openURL(url || "");
-      } else {
-        // Fallback to Google Maps web
-        Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`);
-      }
-    }).catch((error) => {
-      console.error("Error opening navigation:", error);
-      Alert.alert(t("error"), t("failedToOpenNavigation"));
-    });
+    Linking.canOpenURL(url || "")
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(url || "");
+        } else {
+          // Fallback to Google Maps web
+          Linking.openURL(
+            `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("Error opening navigation:", error);
+        Alert.alert(t("error"), t("failedToOpenNavigation"));
+      });
   };
 
   const handleSearchPatient = async () => {
     if (!searchQuery.trim()) {
-      Alert.alert(t("error"), t("enterPatientId") || "Please enter Israeli ID or name");
+      Alert.alert(
+        t("error"),
+        t("enterPatientId") || "Please enter Israeli ID or name",
+      );
       return;
     }
 
@@ -204,14 +262,14 @@ export default function AmbulanceDashboard() {
     try {
       const queryLower = searchQuery.trim().toLowerCase();
       const queryDigits = searchQuery.trim().replace(/\D/g, ""); // Extract digits for ID search
-      
+
       // Search by Israeli ID or name or email
       const usersSnapshot = await getDocs(collection(db, "users"));
-      
+
       // Use find() to stop searching once we find a match
       const foundDoc = usersSnapshot.docs.find((docSnap) => {
         const data = docSnap.data();
-        
+
         // Check if search matches Israeli ID, name, or email
         return (
           data.israeliId === queryDigits ||
@@ -258,11 +316,14 @@ export default function AmbulanceDashboard() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Patient Search for Emergency Access */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔍 {t("searchPatient") || "Search Patient"}</Text>
-          <Text style={styles.searchSubtitle}>
-            {t("searchPatientNote") || "Enter Israeli ID or name to access medical information"}
+          <Text style={styles.sectionTitle}>
+            🔍 {t("searchPatient") || "Search Patient"}
           </Text>
-          
+          <Text style={styles.searchSubtitle}>
+            {t("searchPatientNote") ||
+              "Enter Israeli ID or name to access medical information"}
+          </Text>
+
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
@@ -287,7 +348,9 @@ export default function AmbulanceDashboard() {
           {patientData && (
             <View style={styles.patientInfoCard}>
               <View style={styles.patientHeader}>
-                <Text style={styles.patientName}>{patientData.name || patientData.email}</Text>
+                <Text style={styles.patientName}>
+                  {patientData.name || patientData.email}
+                </Text>
                 <TouchableOpacity
                   style={styles.closeBtn}
                   onPress={() => setPatientData(null)}
@@ -295,26 +358,34 @@ export default function AmbulanceDashboard() {
                   <Text style={styles.closeBtnText}>✕</Text>
                 </TouchableOpacity>
               </View>
-              
+
               {patientData.israeliId && (
                 <View style={styles.patientInfoRow}>
                   <Text style={styles.patientInfoLabel}>{t("israeliId")}:</Text>
-                  <Text style={styles.patientInfoValue}>{patientData.israeliId}</Text>
+                  <Text style={styles.patientInfoValue}>
+                    {patientData.israeliId}
+                  </Text>
                 </View>
               )}
-              
+
               <View style={styles.patientInfoRow}>
                 <Text style={styles.patientInfoLabel}>{t("phoneNumber")}:</Text>
-                <Text style={styles.patientInfoValue}>{patientData.phoneNumber || "N/A"}</Text>
+                <Text style={styles.patientInfoValue}>
+                  {patientData.phoneNumber || "N/A"}
+                </Text>
               </View>
-              
+
               {patientData.bloodType && (
                 <View style={styles.patientInfoRow}>
-                  <Text style={styles.patientInfoLabel}>{t("blood_type")}:</Text>
-                  <Text style={styles.patientInfoValue}>{patientData.bloodType}</Text>
+                  <Text style={styles.patientInfoLabel}>
+                    {t("blood_type")}:
+                  </Text>
+                  <Text style={styles.patientInfoValue}>
+                    {patientData.bloodType}
+                  </Text>
                 </View>
               )}
-              
+
               {patientData.age && (
                 <View style={styles.patientInfoRow}>
                   <Text style={styles.patientInfoLabel}>{t("age")}:</Text>
@@ -324,35 +395,52 @@ export default function AmbulanceDashboard() {
 
               {patientData.diseases && (
                 <View style={styles.patientInfoSection}>
-                  <Text style={styles.patientInfoSectionTitle}>{t("diseases")}:</Text>
-                  <Text style={styles.patientInfoText}>{patientData.diseases}</Text>
+                  <Text style={styles.patientInfoSectionTitle}>
+                    {t("diseases")}:
+                  </Text>
+                  <Text style={styles.patientInfoText}>
+                    {patientData.diseases}
+                  </Text>
                 </View>
               )}
 
               {patientData.medications && (
                 <View style={styles.patientInfoSection}>
-                  <Text style={styles.patientInfoSectionTitle}>{t("medications")}:</Text>
-                  <Text style={styles.patientInfoText}>{patientData.medications}</Text>
+                  <Text style={styles.patientInfoSectionTitle}>
+                    {t("medications")}:
+                  </Text>
+                  <Text style={styles.patientInfoText}>
+                    {patientData.medications}
+                  </Text>
                 </View>
               )}
 
               {patientData.allergies && (
                 <View style={styles.patientInfoSection}>
-                  <Text style={styles.patientInfoSectionTitle}>{t("allergies")}:</Text>
-                  <Text style={styles.patientInfoText}>{patientData.allergies}</Text>
+                  <Text style={styles.patientInfoSectionTitle}>
+                    {t("allergies")}:
+                  </Text>
+                  <Text style={styles.patientInfoText}>
+                    {patientData.allergies}
+                  </Text>
                 </View>
               )}
 
-              {patientData.emergencyContacts && patientData.emergencyContacts.length > 0 && (
-                <View style={styles.patientInfoSection}>
-                  <Text style={styles.patientInfoSectionTitle}>{t("emergency_contact")}:</Text>
-                  {patientData.emergencyContacts.map((contact: any, index: number) => (
-                    <Text key={index} style={styles.patientInfoText}>
-                      {contact.name}: {contact.phone}
+              {patientData.emergencyContacts &&
+                patientData.emergencyContacts.length > 0 && (
+                  <View style={styles.patientInfoSection}>
+                    <Text style={styles.patientInfoSectionTitle}>
+                      {t("emergency_contact")}:
                     </Text>
-                  ))}
-                </View>
-              )}
+                    {patientData.emergencyContacts.map(
+                      (contact: any, index: number) => (
+                        <Text key={index} style={styles.patientInfoText}>
+                          {contact.name}: {contact.phone}
+                        </Text>
+                      ),
+                    )}
+                  </View>
+                )}
 
               <TouchableOpacity
                 style={styles.viewFullBtn}
@@ -368,10 +456,14 @@ export default function AmbulanceDashboard() {
 
         {/* Live Emergency Calls */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("live_calls") || "Live Emergency Calls"}</Text>
+          <Text style={styles.sectionTitle}>
+            {t("live_calls") || "Live Emergency Calls"}
+          </Text>
           {loadingEmergencies ? (
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>{t("loading") || "Loading emergencies..."}</Text>
+              <Text style={styles.loadingText}>
+                {t("loading") || "Loading emergencies..."}
+              </Text>
             </View>
           ) : emergencies.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -383,21 +475,34 @@ export default function AmbulanceDashboard() {
               <TouchableOpacity
                 key={emergency.id}
                 style={styles.callCard}
-                onPress={() => router.push({
-                  pathname: "/ambulance/emergency-detail",
-                  params: { emergencyId: emergency.id }
-                })}
+                onPress={() =>
+                  router.push({
+                    pathname: "/ambulance/emergency-detail",
+                    params: { emergencyId: emergency.id },
+                  })
+                }
               >
                 <View style={styles.callHeader}>
-                  <View style={[styles.priorityBadge, { backgroundColor: "#DC2626" }]}>
-                    <Text style={styles.priorityText}>{t("emergency") || "EMERGENCY"}</Text>
+                  <View
+                    style={[
+                      styles.priorityBadge,
+                      { backgroundColor: "#DC2626" },
+                    ]}
+                  >
+                    <Text style={styles.priorityText}>
+                      {t("emergency") || "EMERGENCY"}
+                    </Text>
                   </View>
-                  <Text style={styles.callTime}>{emergency.timeAgo || t("justNow")}</Text>
+                  <Text style={styles.callTime}>
+                    {emergency.timeAgo || t("justNow")}
+                  </Text>
                 </View>
                 <Text style={styles.callType}>
                   {emergency.victimType === "other"
                     ? t("someoneElse")
-                    : emergency.userInfo?.name || emergency.userInfo?.email || t("unknownUser")}
+                    : emergency.userInfo?.name ||
+                      emergency.userInfo?.email ||
+                      t("unknownUser")}
                 </Text>
                 <TouchableOpacity
                   onPress={(e) => {
@@ -407,11 +512,14 @@ export default function AmbulanceDashboard() {
                   style={styles.locationRow}
                 >
                   <Text style={styles.callDistance}>
-                    📍 {emergency.location.address || `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
+                    📍{" "}
+                    {emergency.location.address ||
+                      `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
                   </Text>
-                  {emergency.distance !== undefined && emergency.distance !== null ? (
+                  {emergency.distance !== undefined &&
+                  emergency.distance !== null ? (
                     <Text style={styles.distanceText}>
-                      {emergency.distance < 1 
+                      {emergency.distance < 1
                         ? `${(emergency.distance * 1000).toFixed(0)}m away`
                         : `${emergency.distance.toFixed(1)}km away`}
                     </Text>
@@ -421,7 +529,8 @@ export default function AmbulanceDashboard() {
                   <View style={styles.quickInfo}>
                     {emergency.userInfo.bloodType ? (
                       <Text style={styles.quickInfoText}>
-                        🩸 {t("blood_type") || "Blood"}: {emergency.userInfo.bloodType}
+                        🩸 {t("blood_type") || "Blood"}:{" "}
+                        {emergency.userInfo.bloodType}
                       </Text>
                     ) : null}
                     {emergency.userInfo.age ? (
@@ -461,15 +570,17 @@ export default function AmbulanceDashboard() {
         {/* Quick Actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.actionCard}
             onPress={() => router.push("/ambulance/nearby-emergencies")}
           >
             <Text style={styles.actionIcon}>🗺️</Text>
             <View style={styles.actionContent}>
               <Text style={styles.actionTitle}>{t("nearby_emergencies")}</Text>
-              <Text style={styles.actionSubtitle}>{t("nearby_emergencies_desc")}</Text>
+              <Text style={styles.actionSubtitle}>
+                {t("nearby_emergencies_desc")}
+              </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>

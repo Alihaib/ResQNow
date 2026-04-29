@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
@@ -17,8 +17,12 @@ import { theme } from "../../src/ui/theme";
 export default function EmergencyScreen() {
   const { t } = useLanguage();
   const router = useRouter();
-  const { isEmergencyActive, startingEmergency, startEmergency, navigateToActiveEmergency } =
-    useEmergency();
+  const {
+    isEmergencyActive,
+    startingEmergency,
+    startEmergency,
+    navigateToActiveEmergency,
+  } = useEmergency();
   const [sosBusy, setSosBusy] = useState(false);
 
   // SOS victim selection overlay state
@@ -69,11 +73,8 @@ export default function EmergencyScreen() {
     // (mirrors original behaviour so location is always available on navigate)
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          t("error"),
-          t("locationPermissionDenied")
-        );
+      if (status !== "granted") {
+        Alert.alert(t("error"), t("locationPermissionDenied"));
       } else {
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
@@ -142,11 +143,16 @@ export default function EmergencyScreen() {
               style={styles.overlaySecondaryBtn}
               onPress={() => proceedToActiveEmergency("other")}
             >
-              <Text style={styles.overlaySecondaryText}>{t("sosSomeoneElse")}</Text>
+              <Text style={styles.overlaySecondaryText}>
+                {t("sosSomeoneElse")}
+              </Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.cancelOverlayBtn} onPress={cancelEmergency}>
+          <TouchableOpacity
+            style={styles.cancelOverlayBtn}
+            onPress={cancelEmergency}
+          >
             <Text style={styles.cancelOverlayText}>{t("cancel")}</Text>
           </TouchableOpacity>
         </View>
@@ -176,49 +182,51 @@ export default function EmergencyScreen() {
             {isEmergencyActive
               ? t("tapToViewActiveEmergency")
               : sosBusy || startingEmergency
-                ? (t("loading") || t("pleaseWait"))
+                ? t("loading") || t("pleaseWait")
                 : t("tapForHelp")}
           </Text>
         </TouchableOpacity>
 
-          {/* Emergency Instructions */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("beforeEmergency")}</Text>
-            <View style={styles.instructionCard}>
-              <Text style={styles.instructionText}>✓ {t("stayCalm")}</Text>
-              <Text style={styles.instructionText}>✓ {t("checkLocation")}</Text>
-              <Text style={styles.instructionText}>✓ {t("ensureSafety")}</Text>
-              <Text style={styles.instructionText}>✓ {t("haveMedicalInfo")}</Text>
+        {/* Emergency Instructions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t("beforeEmergency")}</Text>
+          <View style={styles.instructionCard}>
+            <Text style={styles.instructionText}>✓ {t("stayCalm")}</Text>
+            <Text style={styles.instructionText}>✓ {t("checkLocation")}</Text>
+            <Text style={styles.instructionText}>✓ {t("ensureSafety")}</Text>
+            <Text style={styles.instructionText}>✓ {t("haveMedicalInfo")}</Text>
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push("/(tabs)/firstaid")}
+          >
+            <Text style={styles.actionIcon}>⛑</Text>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>{t("medical_guides")}</Text>
+              <Text style={styles.actionSubtitle}>
+                {t("medical_guides_desc")}
+              </Text>
             </View>
-          </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
 
-          {/* Quick Actions */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push("/(tabs)/firstaid")}
-            >
-              <Text style={styles.actionIcon}>⛑</Text>
-              <View style={styles.actionContent}>
-                <Text style={styles.actionTitle}>{t("medical_guides")}</Text>
-                <Text style={styles.actionSubtitle}>{t("medical_guides_desc")}</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push("/(tabs)/profile")}
-            >
-              <Text style={styles.actionIcon}>📋</Text>
-              <View style={styles.actionContent}>
-                <Text style={styles.actionTitle}>{t("medicalProfile")}</Text>
-                <Text style={styles.actionSubtitle}>{t("personal_info")}</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push("/(tabs)/profile")}
+          >
+            <Text style={styles.actionIcon}>📋</Text>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionTitle}>{t("medicalProfile")}</Text>
+              <Text style={styles.actionSubtitle}>{t("personal_info")}</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
       </>
     </ScrollView>
   );
@@ -388,5 +396,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-
-
