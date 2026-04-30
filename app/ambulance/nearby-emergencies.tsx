@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 
@@ -28,9 +29,28 @@ const MAX_DISTANCE_METERS = 200; // 200 meters
 export default function NearbyEmergenciesScreen() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { user, role, approved, loading: authLoading } = useAuth();
   const [emergencies, setEmergencies] = useState<Emergency[]>([]);
   const [loading, setLoading] = useState(true);
   const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+
+  // Access control
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/auth/login");
+      return;
+    }
+    if (role !== "ambulance") {
+      router.replace("/");
+      return;
+    }
+    if (approved !== true) {
+      router.replace("/ambulance/pending");
+      return;
+    }
+  }, [authLoading, user, role, approved, router]);
 
   // Get ambulance location
   useEffect(() => {
@@ -50,11 +70,13 @@ export default function NearbyEmergenciesScreen() {
             t("error"),
             t("locationPermissionDenied")
           );
+          setErrorText(t("locationPermissionDenied") || "Location permission denied.");
           setLoading(false);
         }
       } catch (error) {
         console.error("Error getting ambulance location:", error);
         Alert.alert(t("error"), t("failedToGetLocation"));
+        setErrorText(t("failedToGetLocation") || "Failed to get location.");
         setLoading(false);
       }
     };
@@ -109,12 +131,17 @@ export default function NearbyEmergenciesScreen() {
   // Listen to active emergencies and filter by distance
   useEffect(() => {
     if (!ambulanceLocation) return;
+    if (authLoading) return;
+    if (!user?.uid) return;
+    if (role !== "ambulance" || approved !== true) return;
 
     setLoading(true);
+    setErrorText(null);
     const emergenciesRef = collection(db, "emergencies");
     const q = query(emergenciesRef, where("sessionStatus", "==", "active"));
     
     const unsubscribe = onSnapshot(q, async (snapshot) => {
+      console.log("[NearbyEmergencies] active emergencies snapshot:", snapshot.size);
       const emergenciesList: Emergency[] = [];
       
       for (const docSnap of snapshot.docs) {
@@ -168,11 +195,16 @@ export default function NearbyEmergenciesScreen() {
     }, (error) => {
       console.error("Error listening to emergencies:", error);
       console.error("Nearby emergencies listener error code:", (error as any)?.code);
+      setErrorText(
+        (error as any)?.code === "permission-denied" || (error as any)?.code === "PERMISSION_DENIED"
+          ? "PERMISSION_DENIED: responder not approved or rules not deployed."
+          : t("failedToLoadEmergencies") || "Failed to load emergencies."
+      );
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [ambulanceLocation]);
+  }, [ambulanceLocation, authLoading, user?.uid, role, approved, t]);
 
   // Open navigation to emergency location
   const openNavigation = (emergency: Emergency) => {
@@ -226,6 +258,11 @@ export default function NearbyEmergenciesScreen() {
             {!ambulanceLocation && (
               <Text style={styles.subText}>{t("gettingLocation")}</Text>
             )}
+          </View>
+        ) : errorText ? (
+          <View style={styles.centerContainer}>
+            <Text style={styles.emptyIcon}>⚠️</Text>
+            <Text style={styles.emptyText}>{errorText}</Text>
           </View>
         ) : emergencies.length === 0 ? (
           <View style={styles.centerContainer}>

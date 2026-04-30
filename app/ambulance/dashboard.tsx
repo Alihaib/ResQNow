@@ -6,7 +6,8 @@ import {
   getDoc,
   getDocs,
   onSnapshot,
-  query
+  query,
+  where,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
@@ -20,6 +21,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 
@@ -43,15 +45,34 @@ interface Emergency {
 export default function AmbulanceDashboard() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { user, role, approved, loading: authLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [patientData, setPatientData] = useState<any>(null);
   const [emergencies, setEmergencies] = useState<Emergency[]>([]);
   const [loadingEmergencies, setLoadingEmergencies] = useState(true);
+  const [emergenciesError, setEmergenciesError] = useState<string | null>(null);
   const [ambulanceLocation, setAmbulanceLocation] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
+
+  // Access control (keep behavior consistent with doctor/admin)
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/auth/login");
+      return;
+    }
+    if (role !== "ambulance") {
+      router.replace("/");
+      return;
+    }
+    if (approved !== true) {
+      router.replace("/ambulance/pending");
+      return;
+    }
+  }, [authLoading, user, role, approved, router]);
 
   // Get ambulance location
   useEffect(() => {
@@ -137,14 +158,22 @@ export default function AmbulanceDashboard() {
 
   // Listen to active emergencies
   useEffect(() => {
+    // Only mount listener when access is valid (avoids PERMISSION_DENIED during auth bootstrap)
+    if (authLoading) return;
+    if (!user?.uid) return;
+    if (role !== "ambulance" || approved !== true) return;
+    if (!ambulanceLocation) return;
+
     setLoadingEmergencies(true);
+    setEmergenciesError(null);
     const emergenciesRef = collection(db, "emergencies");
-    const q = query(emergenciesRef);
+    const q = query(emergenciesRef, where("sessionStatus", "==", "active"));
 
     const unsubscribe = onSnapshot(
       q,
       async (snapshot) => {
         try {
+          console.log("[AmbulanceDashboard] active emergencies snapshot:", snapshot.size);
           console.log(
             "[AmbulanceDashboard] emergencies snapshot:",
             snapshot.size,
@@ -159,6 +188,9 @@ export default function AmbulanceDashboard() {
 
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data();
+            // Defensive validation for legacy/malformed docs (don't crash UI)
+            const sessionStatus = typeof data.sessionStatus === "string" ? data.sessionStatus : "active";
+            if (sessionStatus !== "active") continue;
             const emergency: Emergency = {
               id: docSnap.id,
               userId: data.userId,
@@ -206,6 +238,7 @@ export default function AmbulanceDashboard() {
           setLoadingEmergencies(false);
         } catch (error) {
           console.error("Error processing emergencies snapshot:", error);
+          setEmergenciesError(t("failedToLoadEmergencies") || "Failed to load emergencies.");
           setLoadingEmergencies(false);
         }
       },
@@ -216,12 +249,17 @@ export default function AmbulanceDashboard() {
           (error as any)?.code,
         );
         // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
+        setEmergenciesError(
+          (error as any)?.code === "permission-denied" || (error as any)?.code === "PERMISSION_DENIED"
+            ? "PERMISSION_DENIED: responder not approved or rules not deployed."
+            : t("failedToLoadEmergencies") || "Failed to load emergencies."
+        );
         setLoadingEmergencies(false);
       },
     );
 
     return () => unsubscribe();
-  }, [ambulanceLocation]);
+  }, [ambulanceLocation, authLoading, user?.uid, role, approved, t]);
 
   // Open navigation to emergency location
   const openNavigation = (emergency: Emergency) => {
@@ -464,6 +502,11 @@ export default function AmbulanceDashboard() {
               <Text style={styles.loadingText}>
                 {t("loading") || "Loading emergencies..."}
               </Text>
+            </View>
+          ) : emergenciesError ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>⚠️</Text>
+              <Text style={styles.loadingText}>{emergenciesError}</Text>
             </View>
           ) : emergencies.length === 0 ? (
             <View style={styles.emptyContainer}>

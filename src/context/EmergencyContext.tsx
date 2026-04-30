@@ -94,7 +94,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     setStartingEmergency(true);
     try {
       const id = `${user.uid}_${Date.now()}`;
-      console.log("[SOS] Creating emergency doc:", id);
+      console.log("[SOS] Creating emergency doc:", id, "victimType=", victimType);
       const payload = {
         userId: user.uid,
         victimType,
@@ -117,9 +117,19 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         updatedAt: new Date().toISOString(),
         timeline: [{ status: "dispatched", timestamp: timestamp ?? new Date().toISOString() }],
       };
+      // Validation (debug-only): prevent undefined critical fields
+      if (
+        !payload.patientLocation ||
+        typeof payload.patientLocation.latitude !== "number" ||
+        typeof payload.patientLocation.longitude !== "number" ||
+        typeof payload.sessionStatus !== "string" ||
+        typeof payload.status !== "string" ||
+        typeof payload.updatedAt !== "string"
+      ) {
+        console.error("[SOS] Invalid emergency payload (critical fields missing):", payload);
+      }
       await setDoc(doc(db, "emergencies", id), payload);
-      console.log("[SOS] Emergency doc created:", id);
-      console.log("[SOS] Emergency payload:", payload);
+      console.log("[SOS] Emergency doc created:", id, "sessionStatus=", payload.sessionStatus, "status=", payload.status);
 
       await setCurrentEmergency({
         id,

@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
@@ -41,6 +41,7 @@ export default function DoctorDashboard() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [liveEmergencies, setLiveEmergencies] = useState<Emergency[]>([]);
   const [loadingEmergencies, setLoadingEmergencies] = useState(true);
+  const seenEmergencyIdsRef = useRef<Set<string>>(new Set());
 
   // Access control
   useEffect(() => {
@@ -61,6 +62,8 @@ export default function DoctorDashboard() {
 
   // Live emergencies (real data; no mock)
   useEffect(() => {
+    if (!user?.uid) return;
+    if (role !== "doctor" || approved !== true) return;
     setLoadingEmergencies(true);
     const emergenciesRef = collection(db, "emergencies");
     const q = query(emergenciesRef, where("sessionStatus", "==", "active"));
@@ -71,6 +74,16 @@ export default function DoctorDashboard() {
         if (snap.size > 0) {
           console.log("[DoctorDashboard] first emergency id:", snap.docs[0]?.id);
         }
+        // Debug: log newly appeared emergency ids
+        const nextIds = new Set<string>();
+        snap.docs.forEach((d) => nextIds.add(d.id));
+        for (const id of nextIds) {
+          if (!seenEmergencyIdsRef.current.has(id)) {
+            console.log("[DoctorDashboard] NEW emergency received:", id);
+          }
+        }
+        seenEmergencyIdsRef.current = nextIds;
+
         const list: Emergency[] = snap.docs.map((d) => {
           const data = d.data() as any;
           return {
@@ -98,7 +111,7 @@ export default function DoctorDashboard() {
       }
     );
     return () => unsub();
-  }, []);
+  }, [user?.uid, role, approved]);
 
   const normalize = (s: string) => s.trim().toLowerCase();
 

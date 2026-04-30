@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, onSnapshot, updateDoc } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { WebView } from "react-native-webview";
+import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
@@ -76,6 +76,7 @@ export default function DoctorCaseDetailScreen() {
   const [emergency, setEmergency] = useState<EmergencyDoc | null>(null);
   const [patient, setPatient] = useState<PatientDoc | null>(null);
   const [noteText, setNoteText] = useState("");
+  const mapRef = useRef<MapView | null>(null);
 
   // Access control
   useEffect(() => {
@@ -184,20 +185,45 @@ export default function DoctorCaseDetailScreen() {
     return Math.max(1, Math.round((distanceKm / speedKmh) * 60));
   }, [distanceKm]);
 
-  const mapUrl = useMemo(() => {
-    if (!patientHasCoords) return null;
-    if (ambulanceHasCoords) {
-      // Show a route view when ambulance coords exist.
-      return `https://www.google.com/maps?output=embed&saddr=${ambLat},${ambLng}&daddr=${patientLat},${patientLng}&z=14`;
-    }
-    return `https://www.google.com/maps?q=${patientLat},${patientLng}&z=16&output=embed`;
-  }, [patientHasCoords, ambulanceHasCoords, patientLat, patientLng, ambLat, ambLng]);
-
   const openInMaps = () => {
     if (!patientHasCoords) return;
     const url = `https://www.google.com/maps?q=${patientLat},${patientLng}`;
     Linking.openURL(url).catch(() => {});
   };
+
+  // Keep the map viewport aligned with live Firestore updates.
+  useEffect(() => {
+    if (!patientHasCoords) return;
+    if (!mapRef.current) return;
+
+    const patientCoord = { latitude: patientLat as number, longitude: patientLng as number };
+    const coords = [patientCoord];
+    if (ambulanceHasCoords) {
+      coords.push({ latitude: ambLat as number, longitude: ambLng as number });
+    }
+
+    const timer = setTimeout(() => {
+      if (!mapRef.current) return;
+      if (coords.length === 1) {
+        mapRef.current.animateToRegion(
+          {
+            ...patientCoord,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          },
+          250
+        );
+        return;
+      }
+
+      mapRef.current.fitToCoordinates(coords, {
+        edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+        animated: true,
+      });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [patientHasCoords, ambulanceHasCoords, patientLat, patientLng, ambLat, ambLng]);
 
   const timelineSorted = useMemo(() => {
     const items = emergency?.timeline ?? [];
@@ -293,9 +319,41 @@ export default function DoctorCaseDetailScreen() {
           {basePatientLoc?.address ||
             (patientHasCoords ? `${patientLat}, ${patientLng}` : "Not provided")}
         </Text>
-        {mapUrl ? (
+        {!ambulanceHasCoords && (
+          <Text style={styles.muted}>Ambulance location not available yet.</Text>
+        )}
+
+        {patientHasCoords ? (
           <View style={styles.mapFrame}>
-            <WebView source={{ uri: mapUrl }} />
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              initialRegion={{
+                latitude: patientLat as number,
+                longitude: patientLng as number,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }}
+              scrollEnabled
+              zoomEnabled
+              showsUserLocation={false}
+            >
+              <Marker
+                coordinate={{ latitude: patientLat as number, longitude: patientLng as number }}
+                title="Patient"
+                description={basePatientLoc?.address ?? `${patientLat}, ${patientLng}`}
+                pinColor="#D62828"
+              />
+
+              {ambulanceHasCoords ? (
+                <Marker
+                  coordinate={{ latitude: ambLat as number, longitude: ambLng as number }}
+                  title="Ambulance"
+                  description="Live ambulance location"
+                  pinColor="#0074D9"
+                />
+              ) : null}
+            </MapView>
           </View>
         ) : (
           <Text style={styles.muted}>{t("mapUnavailable")}</Text>
@@ -482,6 +540,7 @@ const styles = StyleSheet.create({
   link: { color: "#D62828", fontWeight: "900" },
   linkDisabled: { color: "#ADB5BD" },
   mapFrame: { height: 220, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#E9ECEF" },
+  map: { width: "100%", height: "100%" },
   timelineRow: { flexDirection: "row", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F3F5" },
   timelineDot: { color: "#D62828", fontWeight: "900" },
   timelineText: { fontSize: 13, fontWeight: "800", color: "#003049" },

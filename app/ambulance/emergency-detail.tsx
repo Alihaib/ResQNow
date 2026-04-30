@@ -41,7 +41,7 @@ const AMBULANCE_STATUSES = [
 export default function EmergencyDetailScreen() {
   const router = useRouter();
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { user, role, approved, loading: authLoading } = useAuth();
   const params = useLocalSearchParams<{ emergencyId: string }>();
   const [emergency, setEmergency] = useState<Emergency | null>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
@@ -50,7 +50,34 @@ export default function EmergencyDetailScreen() {
   const [tracking, setTracking] = useState(false);
   const trackingSubRef = useRef<Location.LocationSubscription | null>(null);
   const lastWriteAtRef = useRef<number>(0);
+  const emergencyRef = useRef<Emergency | null>(null);
+  const userUidRef = useRef<string | null>(null);
   const mapRef = useRef<MapView | null>(null);
+
+  // Access control: block non-ambulance users and non-approved responders
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/auth/login");
+      return;
+    }
+    if (role !== "ambulance") {
+      router.replace("/");
+      return;
+    }
+    if (approved !== true) {
+      router.replace("/ambulance/pending");
+      return;
+    }
+  }, [authLoading, user, role, approved, router]);
+
+  useEffect(() => {
+    emergencyRef.current = emergency;
+  }, [emergency]);
+
+  useEffect(() => {
+    userUidRef.current = user?.uid ?? null;
+  }, [user?.uid]);
 
   useEffect(() => {
     const loadEmergency = async () => {
@@ -65,6 +92,7 @@ export default function EmergencyDetailScreen() {
         const emergencyDoc = await getDoc(doc(db, "emergencies", params.emergencyId));
         if (!emergencyDoc.exists()) throw new Error("Emergency not found");
         const data = emergencyDoc.data() as any;
+        console.log("[AmbulanceEmergencyDetail] initial load:", emergencyDoc.id, data?.sessionStatus, data?.status);
         setEmergency({
           id: emergencyDoc.id,
           userId: data.userId,
@@ -110,6 +138,18 @@ export default function EmergencyDetailScreen() {
           assignedAmbulanceId: data.assignedAmbulanceId ?? null,
           ambulanceLocation: data.ambulanceLocation ?? null,
         };
+        console.log(
+          "[AmbulanceEmergencyDetail] emergency snapshot:",
+          next.id,
+          "status=",
+          next.status,
+          "session=",
+          next.sessionStatus,
+          "assigned=",
+          next.assignedAmbulanceId,
+          "hasAmbLoc=",
+          !!next.ambulanceLocation
+        );
         setEmergency(next);
 
         // Privacy: if victimType is "other", do NOT load any medical profile data.
@@ -153,21 +193,26 @@ export default function EmergencyDetailScreen() {
   }, [user?.uid, emergency?.assignedAmbulanceId]);
 
   const claimIfUnassigned = async () => {
-    if (!user?.uid || !emergency?.id) return;
-    if (emergency.assignedAmbulanceId) return;
-    await updateDoc(doc(db, "emergencies", emergency.id), {
-      assignedAmbulanceId: user.uid,
+    const uid = userUidRef.current;
+    const e = emergencyRef.current;
+    if (!uid || !e?.id) return;
+    if (e.assignedAmbulanceId) return;
+    console.log("[AmbulanceEmergencyDetail] claiming unassigned case:", e.id, "as", uid);
+    await updateDoc(doc(db, "emergencies", e.id), {
+      assignedAmbulanceId: uid,
       updatedAt: new Date().toISOString(),
       timeline: arrayUnion({
         status: "assigned_ambulance",
-        ambulanceId: user.uid,
+        ambulanceId: uid,
         timestamp: new Date().toISOString(),
       }),
     });
   };
 
   const startTracking = async () => {
-    if (!user?.uid || !emergency?.id) {
+    const uid = userUidRef.current;
+    const e = emergencyRef.current;
+    if (!uid || !e?.id) {
       Alert.alert(t("error"), t("mustBeLoggedInToTrack"));
       return;
     }
@@ -193,16 +238,32 @@ export default function EmergencyDetailScreen() {
 
         // Throttle Firestore writes (avoid spamming)
         const now = Date.now();
-        if (now - lastWriteAtRef.current < 4500) return;
+        if (now - lastWriteAtRef.current < 3500) return;
         lastWriteAtRef.current = now;
 
         try {
           // Only the assigned ambulance should publish location
-          const assigned = emergency?.assignedAmbulanceId;
-          if (assigned && assigned !== user.uid) return;
+          const latest = emergencyRef.current;
+          const latestUid = userUidRef.current;
+          if (!latest?.id || !latestUid) return;
+          const assigned = latest.assignedAmbulanceId;
+          if (assigned && assigned !== latestUid) {
+            console.log(
+              "[AmbulanceEmergencyDetail] skip GPS write: assigned to another ambulance",
+              assigned
+            );
+            return;
+          }
 
-          await updateDoc(doc(db, "emergencies", emergency.id), {
-            assignedAmbulanceId: assigned ?? user.uid,
+          console.log(
+            "[AmbulanceEmergencyDetail] sending ambulanceLocation:",
+            latest.id,
+            loc.coords.latitude,
+            loc.coords.longitude
+          );
+
+          await updateDoc(doc(db, "emergencies", latest.id), {
+            assignedAmbulanceId: assigned ?? latestUid,
             ambulanceLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
             updatedAt: new Date().toISOString(),
           });
@@ -250,24 +311,28 @@ export default function EmergencyDetailScreen() {
   }, [ambulanceLocation, emergency]);
 
   const updateCaseStatus = async (nextStatus: (typeof AMBULANCE_STATUSES)[number]["key"]) => {
-    if (!user?.uid || !emergency?.id) return;
+    const uid = userUidRef.current;
+    const e = emergencyRef.current;
+    if (!uid || !e?.id) return;
 
     await claimIfUnassigned();
 
     // If assigned to someone else, block updates
-    if (emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user.uid) {
+    const latest = emergencyRef.current;
+    if (latest?.assignedAmbulanceId && latest.assignedAmbulanceId !== uid) {
       Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
       return;
     }
 
     const nowIso = new Date().toISOString();
-    await updateDoc(doc(db, "emergencies", emergency.id), {
+    console.log("[AmbulanceEmergencyDetail] update status:", e.id, "->", nextStatus);
+    await updateDoc(doc(db, "emergencies", e.id), {
       status: nextStatus,
       sessionStatus: nextStatus === "completed" ? "resolved" : "active",
       updatedAt: nowIso,
       timeline: arrayUnion({
         status: nextStatus,
-        ambulanceId: user.uid,
+        ambulanceId: uid,
         timestamp: nowIso,
       }),
     });
