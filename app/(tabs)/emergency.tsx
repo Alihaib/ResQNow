@@ -44,7 +44,7 @@ export default function EmergencyScreen() {
     }
 
     try {
-      await startEmergency({
+      const result = await startEmergency({
         victimType: type,
         location: {
           latitude: loc.latitude,
@@ -52,8 +52,18 @@ export default function EmergencyScreen() {
           address: loc.address ?? null,
         },
         timestamp: loc.timestamp,
+        locationPermissionStatus: "granted",
       });
-      navigateToActiveEmergency();
+      if (result.ok) {
+        navigateToActiveEmergency();
+        return;
+      }
+      // If context says already active, treat as success and navigate.
+      if (result.reason === "already_active") {
+        navigateToActiveEmergency();
+        return;
+      }
+      Alert.alert(t("error"), result.message || t("failedToStartEmergency"));
     } catch {
       Alert.alert(t("error"), t("failedToStartEmergency"));
     }
@@ -73,11 +83,17 @@ export default function EmergencyScreen() {
     // (mirrors original behaviour so location is always available on navigate)
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log("[SOS][UI] location permission status:", status);
       if (status !== "granted") {
         Alert.alert(t("error"), t("locationPermissionDenied"));
       } else {
         const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
+        });
+        console.log("[SOS][UI] location fix:", {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          accuracy: location.coords.accuracy,
         });
 
         try {
@@ -96,6 +112,7 @@ export default function EmergencyScreen() {
             timestamp: new Date().toISOString(),
           };
         } catch (geocodeError) {
+          console.warn("[SOS][UI] reverseGeocode failed:", geocodeError);
           locationDataRef.current = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,

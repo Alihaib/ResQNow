@@ -66,6 +66,16 @@ const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => 
   return R * c;
 };
 
+const calculateDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  return haversineKm(lat1, lon1, lat2, lon2) * 1000;
+};
+
+const formatDistance = (meters: number) => {
+  if (!Number.isFinite(meters)) return "—";
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+};
+
 export default function DoctorCaseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -173,17 +183,24 @@ export default function DoctorCaseDetailScreen() {
   const ambLng = emergency?.ambulanceLocation?.longitude;
   const ambulanceHasCoords = typeof ambLat === "number" && typeof ambLng === "number";
 
-  const distanceKm = useMemo(() => {
+  const distanceMeters = useMemo(() => {
     if (!patientHasCoords || !ambulanceHasCoords) return null;
-    return haversineKm(patientLat as number, patientLng as number, ambLat as number, ambLng as number);
+    return calculateDistanceMeters(patientLat as number, patientLng as number, ambLat as number, ambLng as number);
   }, [patientHasCoords, ambulanceHasCoords, patientLat, patientLng, ambLat, ambLng]);
 
   const etaMinutes = useMemo(() => {
-    if (distanceKm === null) return null;
-    // Simple ETA estimation (no routing API): assume average 45 km/h in-city.
-    const speedKmh = 45;
-    return Math.max(1, Math.round((distanceKm / speedKmh) * 60));
-  }, [distanceKm]);
+    if (distanceMeters === null) return null;
+    // Simple ETA estimation (no routing API): assume average 40 km/h in-city.
+    const speedKmh = 40;
+    const speedMPerMin = (speedKmh * 1000) / 60;
+    return Math.max(1, Math.round(distanceMeters / speedMPerMin));
+  }, [distanceMeters]);
+
+  const etaLabel = useMemo(() => {
+    if (etaMinutes === null) return null;
+    if (etaMinutes < 2) return "Arriving now";
+    return `${etaMinutes} min`;
+  }, [etaMinutes]);
 
   const openInMaps = () => {
     if (!patientHasCoords) return;
@@ -370,17 +387,22 @@ export default function DoctorCaseDetailScreen() {
         <View style={styles.row}>
           <Text style={styles.label}>Distance</Text>
           <Text style={styles.value}>
-            {distanceKm === null ? "Not available" : distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`}
+            {distanceMeters === null ? "Not available" : formatDistance(distanceMeters)}
           </Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>ETA</Text>
-          <Text style={styles.value}>{etaMinutes === null ? "Not available" : `${etaMinutes} min`}</Text>
+          <Text style={[styles.value, etaMinutes !== null && etaMinutes < 2 ? styles.etaArriving : undefined]}>
+            {etaLabel ?? "Not available"}
+          </Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Ambulance GPS</Text>
           <Text style={styles.value}>{ambulanceHasCoords ? `${ambLat}, ${ambLng}` : "Not available"}</Text>
         </View>
+        {!ambulanceHasCoords && (
+          <Text style={styles.muted}>Waiting for ambulance…</Text>
+        )}
         <Text style={styles.muted}>
           Updates stream in real time from Firestore (`ambulanceLocation`, `status`, `timeline`).
         </Text>
@@ -541,6 +563,7 @@ const styles = StyleSheet.create({
   linkDisabled: { color: "#ADB5BD" },
   mapFrame: { height: 220, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#E9ECEF" },
   map: { width: "100%", height: "100%" },
+  etaArriving: { color: "#DC2626" },
   timelineRow: { flexDirection: "row", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F3F5" },
   timelineDot: { color: "#D62828", fontWeight: "900" },
   timelineText: { fontSize: 13, fontWeight: "800", color: "#003049" },

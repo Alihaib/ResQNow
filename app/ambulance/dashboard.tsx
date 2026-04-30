@@ -9,9 +9,10 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   Linking,
   Platform,
   ScrollView,
@@ -21,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as SecureStore from "expo-secure-store";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
@@ -56,6 +58,68 @@ export default function AmbulanceDashboard() {
     latitude: number;
     longitude: number;
   } | null>(null);
+
+  // "Live alert" UI state (local only)
+  const [lastSeenEmergencyTs, setLastSeenEmergencyTs] = useState<string | null>(null);
+  const [newEmergencyIds, setNewEmergencyIds] = useState<Record<string, true>>({});
+  const [bannerEmergencyId, setBannerEmergencyId] = useState<string | null>(null);
+  const [bannerVisible, setBannerVisible] = useState(false);
+  const [liveCallsScrollY, setLiveCallsScrollY] = useState<number | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  const SEEN_KEY = "ambulance_last_seen_emergency_ts";
+
+  // Restore last-seen timestamp to decide what is "NEW"
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await SecureStore.getItemAsync(SEEN_KEY);
+        setLastSeenEmergencyTs(stored || null);
+      } catch {
+        setLastSeenEmergencyTs(null);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const saveLastSeenTs = async (ts: string) => {
+    setLastSeenEmergencyTs(ts);
+    await SecureStore.setItemAsync(SEEN_KEY, ts).catch(() => {});
+  };
+
+  const markEmergencySeen = async (emergencyId: string) => {
+    // Remove NEW badge and hide banner if it was referencing this emergency
+    setNewEmergencyIds((prev) => {
+      const next = { ...prev };
+      delete next[emergencyId];
+      return next;
+    });
+    if (bannerEmergencyId === emergencyId) {
+      setBannerVisible(false);
+      setBannerEmergencyId(null);
+    }
+    // Update last seen timestamp to the newest emergency currently known (best effort)
+    const found = emergencies.find((e) => e.id === emergencyId);
+    if (found?.timestamp) await saveLastSeenTs(found.timestamp);
+  };
+
+  // Pulse animation for banner/new emergencies
+  useEffect(() => {
+    if (!bannerVisible) {
+      pulse.stopAnimation();
+      pulse.setValue(0);
+      return;
+    }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 650, useNativeDriver: true }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [bannerVisible, pulse]);
 
   // Access control (keep behavior consistent with doctor/admin)
   useEffect(() => {
@@ -185,12 +249,25 @@ export default function AmbulanceDashboard() {
             );
           }
           const emergenciesList: Emergency[] = [];
+          const incomingNewIds: Record<string, true> = {};
+          let newestIncoming: { id: string; timestamp: string } | null = null;
 
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data();
             // Defensive validation for legacy/malformed docs (don't crash UI)
             const sessionStatus = typeof data.sessionStatus === "string" ? data.sessionStatus : "active";
             if (sessionStatus !== "active") continue;
+
+            // Determine if this emergency is "new" relative to the last seen timestamp.
+            const ts = typeof data.timestamp === "string" ? data.timestamp : null;
+            const isNew = !!ts && (!!lastSeenEmergencyTs ? ts > lastSeenEmergencyTs : false);
+            if (isNew) {
+              incomingNewIds[docSnap.id] = true;
+              if (!newestIncoming || ts! > newestIncoming.timestamp) {
+                newestIncoming = { id: docSnap.id, timestamp: ts! };
+              }
+            }
+
             const emergency: Emergency = {
               id: docSnap.id,
               userId: data.userId,
@@ -235,6 +312,22 @@ export default function AmbulanceDashboard() {
           });
 
           setEmergencies(emergenciesList);
+
+          // Merge NEW ids into local state (so badge persists until seen)
+          if (Object.keys(incomingNewIds).length > 0) {
+            setNewEmergencyIds((prev) => ({ ...prev, ...incomingNewIds }));
+          }
+
+          // Show live banner for the newest unseen emergency (and auto-scroll to calls section)
+          if (newestIncoming) {
+            setBannerEmergencyId(newestIncoming.id);
+            setBannerVisible(true);
+            console.log("[AmbulanceDashboard] NEW emergency alert:", newestIncoming.id);
+            if (liveCallsScrollY !== null && scrollRef.current?.scrollTo) {
+              scrollRef.current.scrollTo({ y: Math.max(0, liveCallsScrollY - 12), animated: true });
+            }
+          }
+
           setLoadingEmergencies(false);
         } catch (error) {
           console.error("Error processing emergencies snapshot:", error);
@@ -259,7 +352,7 @@ export default function AmbulanceDashboard() {
     );
 
     return () => unsubscribe();
-  }, [ambulanceLocation, authLoading, user?.uid, role, approved, t]);
+  }, [ambulanceLocation, authLoading, user?.uid, role, approved, t, lastSeenEmergencyTs, liveCallsScrollY]);
 
   // Open navigation to emergency location
   const openNavigation = (emergency: Emergency) => {
@@ -333,6 +426,54 @@ export default function AmbulanceDashboard() {
 
   return (
     <View style={styles.container}>
+      {/* Live banner alert (local-only) */}
+      {bannerVisible && bannerEmergencyId && (
+        <Animated.View
+          style={[
+            styles.liveBanner,
+            {
+              transform: [
+                {
+                  scale: pulse.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 1.02],
+                  }),
+                },
+              ],
+              opacity: pulse.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.95, 1],
+              }),
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={0.9}
+            onPress={async () => {
+              await markEmergencySeen(bannerEmergencyId);
+              router.push({
+                pathname: "/ambulance/emergency-detail",
+                params: { emergencyId: bannerEmergencyId },
+              });
+            }}
+          >
+            <Text style={styles.liveBannerTitle}>🚨 New Emergency Received</Text>
+            <Text style={styles.liveBannerSub}>Tap to open</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              setBannerVisible(false);
+              setBannerEmergencyId(null);
+            }}
+            style={styles.liveBannerDismiss}
+            accessibilityRole="button"
+          >
+            <Text style={styles.liveBannerDismissText}>✕</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -351,7 +492,7 @@ export default function AmbulanceDashboard() {
       <Text style={styles.title}>{t("ambulance_dashboard_title")}</Text>
       <Text style={styles.subtitle}>{t("ambulance_dashboard_sub")}</Text>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
         {/* Patient Search for Emergency Access */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
@@ -493,7 +634,13 @@ export default function AmbulanceDashboard() {
         </View>
 
         {/* Live Emergency Calls */}
-        <View style={styles.section}>
+        <View
+          style={styles.section}
+          onLayout={(e) => {
+            const y = e.nativeEvent.layout.y;
+            setLiveCallsScrollY(y);
+          }}
+        >
           <Text style={styles.sectionTitle}>
             {t("live_calls") || "Live Emergency Calls"}
           </Text>
@@ -517,13 +664,17 @@ export default function AmbulanceDashboard() {
             emergencies.map((emergency) => (
               <TouchableOpacity
                 key={emergency.id}
-                style={styles.callCard}
-                onPress={() =>
+                style={[
+                  styles.callCard,
+                  newEmergencyIds[emergency.id] ? styles.callCardNew : undefined,
+                ]}
+                onPress={async () => {
+                  await markEmergencySeen(emergency.id);
                   router.push({
                     pathname: "/ambulance/emergency-detail",
                     params: { emergencyId: emergency.id },
-                  })
-                }
+                  });
+                }}
               >
                 <View style={styles.callHeader}>
                   <View
@@ -540,6 +691,25 @@ export default function AmbulanceDashboard() {
                     {emergency.timeAgo || t("justNow")}
                   </Text>
                 </View>
+                {newEmergencyIds[emergency.id] ? (
+                  <Animated.View
+                    style={[
+                      styles.newBadge,
+                      {
+                        transform: [
+                          {
+                            scale: pulse.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1, 1.08],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <Text style={styles.newBadgeText}>NEW</Text>
+                  </Animated.View>
+                ) : null}
                 <Text style={styles.callType}>
                   {emergency.victimType === "other"
                     ? t("someoneElse")
@@ -649,6 +819,50 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 20,
   },
+  liveBanner: {
+    position: "absolute",
+    top: 56,
+    left: 20,
+    right: 20,
+    zIndex: 50,
+    backgroundColor: "#DC2626",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  liveBannerTitle: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  liveBannerSub: {
+    marginTop: 2,
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  liveBannerDismiss: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  liveBannerDismissText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 16,
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -714,6 +928,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  callCardNew: {
+    borderLeftWidth: 4,
+    borderLeftColor: "#DC2626",
+    backgroundColor: "#FFF5F5",
+  },
+  newBadge: {
+    alignSelf: "flex-start",
+    marginBottom: 8,
+    backgroundColor: "#111827",
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+  },
+  newBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
   },
   callHeader: {
     flexDirection: "row",

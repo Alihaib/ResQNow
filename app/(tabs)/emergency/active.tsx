@@ -32,7 +32,7 @@ interface Contact {
 
 export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
-  const { currentEmergency, setCurrentEmergency } = useEmergency();
+  const { currentEmergency } = useEmergency();
   const { t: translate } = useLanguage();
   const router = useRouter();
   const params = useLocalSearchParams<{ locationData?: string; victimType?: string }>();
@@ -43,6 +43,23 @@ export default function ActiveEmergencyScreen() {
   const [locationDisplay, setLocationDisplay] = useState<string>("");
   const [autoShareEnabled, setAutoShareEnabled] = useState<boolean | null>(null);
   const [emergencyContacts, setEmergencyContacts] = useState<Contact[]>([]);
+  const [ending, setEnding] = useState(false);
+
+  // Firestore is the source of truth: if the emergency ends in Firestore and
+  // the context clears, navigate away from this screen.
+  useEffect(() => {
+    if (!currentEmergency) {
+      // Emergency is no longer active (cancelled/resolved) → exit screen
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/emergency");
+      return;
+    }
+    if (currentEmergency.sessionStatus !== "active") {
+      // Extra guard (context usually clears already)
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)/emergency");
+    }
+  }, [currentEmergency?.id, currentEmergency?.sessionStatus]);
 
   const shareMedicalInfo = async () => {
     if (victimType === "other") return;
@@ -493,6 +510,7 @@ Shared from ResQNow Emergency App
           (async () => {
             try {
               if (currentEmergency?.id) {
+                setEnding(true);
                 await updateDoc(doc(db, "emergencies", currentEmergency.id), {
                   sessionStatus: "cancelled",
                   status: "cancelled",
@@ -502,16 +520,16 @@ Shared from ResQNow Emergency App
                     timestamp: new Date().toISOString(),
                   }),
                 });
+                // Do NOT clear local state or navigate yet.
+                // Wait for Firestore confirmation via onSnapshot (EmergencyContext).
+                console.log("[ActiveEmergency] cancel requested; waiting for Firestore confirmation");
               }
             } catch (e) {
               console.error("Error ending emergency:", e);
+              Alert.alert(translate("error"), translate("failedToEndEmergency") || translate("error"));
+              setEnding(false);
             } finally {
-              await setCurrentEmergency(null);
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace("/(tabs)/emergency");
-              }
+              // no-op: snapshot drives the final UI state
             }
           })();
         },
@@ -607,8 +625,10 @@ Shared from ResQNow Emergency App
 
       {/* End Emergency Button */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.endBtn} onPress={endEmergency}>
-          <Text style={styles.endBtnText}>{translate("endEmergency")}</Text>
+        <TouchableOpacity style={[styles.endBtn, ending && styles.endBtnDisabled]} onPress={endEmergency} disabled={ending}>
+          <Text style={styles.endBtnText}>
+            {ending ? (translate("loading") || "Ending...") : translate("endEmergency")}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -799,6 +819,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",
+  },
+  endBtnDisabled: {
+    opacity: 0.7,
   },
   endBtnText: {
     color: "#FFFFFF",

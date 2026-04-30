@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import { useRouter } from "expo-router";
+import { AppState } from "react-native";
 import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   setDoc,
@@ -23,6 +25,16 @@ export type CurrentEmergency = {
   status?: string; // lifecycle status (dispatched/en_route/...)
 };
 
+export type StartEmergencyErrorReason =
+  | "already_active"
+  | "not_logged_in"
+  | "in_progress"
+  | "location_permission_denied"
+  | "invalid_payload"
+  | "firestore_permission_denied"
+  | "network_error"
+  | "unknown_error";
+
 type EmergencyContextType = {
   currentEmergency: CurrentEmergency | null;
   setCurrentEmergency: (emergency: CurrentEmergency | null) => Promise<void>;
@@ -33,7 +45,11 @@ type EmergencyContextType = {
     victimType: VictimType;
     location: { latitude: number; longitude: number; address?: string | null };
     timestamp?: string;
-  }) => Promise<{ ok: true; id: string } | { ok: false; reason: "already_active" | "not_logged_in" | "in_progress" }>;
+    locationPermissionStatus?: "granted" | "denied" | "undetermined" | string;
+  }) => Promise<
+    | { ok: true; id: string }
+    | { ok: false; reason: StartEmergencyErrorReason; message?: string }
+  >;
 };
 
 const EmergencyContext = createContext<EmergencyContextType>({
@@ -42,10 +58,14 @@ const EmergencyContext = createContext<EmergencyContextType>({
   isEmergencyActive: false,
   startingEmergency: false,
   navigateToActiveEmergency: () => {},
-  startEmergency: async () => ({ ok: false, reason: "not_logged_in" }),
+  startEmergency: async () => ({ ok: false, reason: "not_logged_in", message: "Not logged in" }),
 });
 
-const STORAGE_KEY = "current_emergency_id";
+const STORAGE_KEY_PREFIX = "emergency_";
+
+function storageKeyForUser(uid: string) {
+  return `${STORAGE_KEY_PREFIX}${uid}`;
+}
 
 export function EmergencyProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
@@ -55,11 +75,63 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
   const restoringRef = useRef(false);
   const startingRef = useRef(false);
   const [startingEmergency, setStartingEmergency] = useState(false);
+  const lastSyncAtRef = useRef<number>(0);
+  const lastUserIdRef = useRef<string | null>(null);
 
   const stopListening = () => {
     if (unsubscribeRef.current) {
+      console.log("[EmergencyContext] listener detach");
       unsubscribeRef.current();
       unsubscribeRef.current = null;
+    }
+  };
+
+  /**
+   * Firestore is the source of truth.
+   * Sync current emergency by querying: userId == uid AND sessionStatus == "active".
+   * This is safe to call on app foreground / bootstrap.
+   */
+  const syncActiveEmergencyFromFirestore = async (reason: string) => {
+    if (!user?.uid) return;
+
+    // Lightweight debounce to avoid spamming reads on rapid AppState toggles
+    const now = Date.now();
+    if (now - lastSyncAtRef.current < 1500) return;
+    lastSyncAtRef.current = now;
+
+    try {
+      console.log("[EmergencyContext] syncActiveEmergencyFromFirestore:", reason);
+      const emergenciesRef = collection(db, "emergencies");
+      const q = query(
+        emergenciesRef,
+        where("userId", "==", user.uid),
+        where("sessionStatus", "==", "active")
+      );
+      const snap = await getDocs(q);
+      const first = snap.docs[0];
+
+      if (!first) {
+        // No active emergency in Firestore → clear local state + storage.
+        if (currentEmergency?.sessionStatus === "active") {
+          console.log("[EmergencyContext] no active emergency found in Firestore; clearing local state");
+        }
+        await setCurrentEmergency(null);
+        return;
+      }
+
+      const data = first.data() as any;
+      const restored: CurrentEmergency = {
+        id: first.id,
+        sessionStatus: "active",
+        victimType: (data.victimType as VictimType) || "me",
+        status: typeof data.status === "string" ? data.status : undefined,
+      };
+
+      console.log("[EmergencyContext] restored active emergency:", restored.id);
+      setCurrentEmergencyState(restored);
+      await SecureStore.setItemAsync(storageKeyForUser(user.uid), restored.id).catch(() => {});
+    } catch (e) {
+      console.error("[EmergencyContext] syncActiveEmergencyFromFirestore error:", e);
     }
   };
 
@@ -68,11 +140,15 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
     if (!emergency) {
       stopListening();
-      await SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
+      if (user?.uid) {
+        await SecureStore.deleteItemAsync(storageKeyForUser(user.uid)).catch(() => {});
+      }
       return;
     }
 
-    await SecureStore.setItemAsync(STORAGE_KEY, emergency.id).catch(() => {});
+    if (user?.uid) {
+      await SecureStore.setItemAsync(storageKeyForUser(user.uid), emergency.id).catch(() => {});
+    }
   };
 
   const isEmergencyActive = currentEmergency?.sessionStatus === "active";
@@ -85,6 +161,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     victimType,
     location,
     timestamp,
+    locationPermissionStatus,
   }) => {
     if (startingRef.current) return { ok: false, reason: "in_progress" };
     if (!user?.uid) return { ok: false, reason: "not_logged_in" };
@@ -94,7 +171,14 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     setStartingEmergency(true);
     try {
       const id = `${user.uid}_${Date.now()}`;
-      console.log("[SOS] Creating emergency doc:", id, "victimType=", victimType);
+      console.log("[SOS][1] startEmergency begin:", { id, victimType, uid: user.uid });
+      console.log("[SOS][2] locationPermissionStatus:", locationPermissionStatus ?? "unknown");
+      console.log("[SOS][3] location input:", location);
+
+      if (locationPermissionStatus && locationPermissionStatus !== "granted") {
+        console.warn("[SOS] location permission not granted:", locationPermissionStatus);
+      }
+
       const payload = {
         userId: user.uid,
         victimType,
@@ -117,7 +201,17 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         updatedAt: new Date().toISOString(),
         timeline: [{ status: "dispatched", timestamp: timestamp ?? new Date().toISOString() }],
       };
+      console.log("[SOS][4] payload before write:", payload);
+
       // Validation (debug-only): prevent undefined critical fields
+      const valid =
+        !!payload.patientLocation &&
+        typeof payload.patientLocation.latitude === "number" &&
+        typeof payload.patientLocation.longitude === "number" &&
+        typeof payload.sessionStatus === "string" &&
+        typeof payload.status === "string" &&
+        typeof payload.updatedAt === "string";
+
       if (
         !payload.patientLocation ||
         typeof payload.patientLocation.latitude !== "number" ||
@@ -127,9 +221,33 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         typeof payload.updatedAt !== "string"
       ) {
         console.error("[SOS] Invalid emergency payload (critical fields missing):", payload);
+        return { ok: false, reason: "invalid_payload", message: "Invalid emergency payload" };
       }
-      await setDoc(doc(db, "emergencies", id), payload);
-      console.log("[SOS] Emergency doc created:", id, "sessionStatus=", payload.sessionStatus, "status=", payload.status);
+
+      console.log("[SOS][5] Firestore setDoc start");
+      try {
+        await setDoc(doc(db, "emergencies", id), payload);
+      } catch (e: any) {
+        // Detailed Firestore error logging
+        console.error("[SOS][5] Firestore setDoc FAILED (raw):", e);
+        console.error("[SOS][5] Firestore setDoc FAILED details:", {
+          name: e?.name,
+          code: e?.code,
+          message: e?.message,
+          stack: e?.stack,
+        });
+
+        const code = String(e?.code || "").toLowerCase();
+        if (code.includes("permission-denied") || code.includes("permission_denied")) {
+          return { ok: false, reason: "firestore_permission_denied", message: "Firestore permission denied" };
+        }
+        if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
+          return { ok: false, reason: "network_error", message: "Network error while writing to Firestore" };
+        }
+        return { ok: false, reason: "unknown_error", message: e?.message || "Unknown Firestore error" };
+      }
+
+      console.log("[SOS][6] Firestore setDoc success:", { id });
 
       await setCurrentEmergency({
         id,
@@ -137,11 +255,12 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         victimType,
         status: "dispatched",
       });
+      console.log("[SOS][7] context updated after Firestore success:", { id });
 
       return { ok: true, id };
     } catch (e) {
-      console.error("startEmergency error:", e);
-      throw e;
+      console.error("[SOS] startEmergency unexpected error:", e);
+      return { ok: false, reason: "unknown_error", message: "Unexpected error" };
     } finally {
       startingRef.current = false;
       setStartingEmergency(false);
@@ -158,11 +277,15 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     stopListening();
 
     const ref = doc(db, "emergencies", currentEmergency.id);
+    console.log("[EmergencyContext] listener attach:", currentEmergency.id);
     unsubscribeRef.current = onSnapshot(
       ref,
       async (snap) => {
         if (!snap.exists()) {
-          await setCurrentEmergency(null);
+          // Don't immediately clear on transient missing snapshot.
+          // Re-sync from Firestore first (e.g. app background/resume, cached state, etc).
+          console.warn("[EmergencyContext] current emergency doc missing; resyncing from Firestore");
+          await syncActiveEmergencyFromFirestore("doc_missing");
           return;
         }
         const data = snap.data() as any;
@@ -174,8 +297,9 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         };
         setCurrentEmergencyState(next);
 
-        // If emergency is no longer active, clear persisted state.
-        if (next.sessionStatus !== "active") {
+        // Only clear when Firestore explicitly ends the session.
+        if (next.sessionStatus === "cancelled" || next.sessionStatus === "resolved") {
+          console.log("[EmergencyContext] emergency ended in Firestore:", next.id, next.sessionStatus);
           await setCurrentEmergency(null);
         }
       },
@@ -198,7 +322,6 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       restoringRef.current = false;
       setCurrentEmergencyState(null);
       stopListening();
-      SecureStore.deleteItemAsync(STORAGE_KEY).catch(() => {});
       return;
     }
 
@@ -207,13 +330,14 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const storedId = await SecureStore.getItemAsync(STORAGE_KEY);
+        const storedId = await SecureStore.getItemAsync(storageKeyForUser(user.uid));
         if (storedId) {
           const storedRef = doc(db, "emergencies", storedId);
           const storedSnap = await getDoc(storedRef);
           if (storedSnap.exists()) {
             const data = storedSnap.data() as any;
             if (data.userId === user.uid && data.sessionStatus === "active") {
+              console.log("[EmergencyContext] restored from SecureStore id:", storedSnap.id);
               setCurrentEmergencyState({
                 id: storedSnap.id,
                 sessionStatus: "active",
@@ -225,34 +349,50 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // No stored active emergency: find any active emergency by this user.
-        // We intentionally avoid `orderBy(timestamp)` here to prevent requiring a composite index.
-        const emergenciesRef = collection(db, "emergencies");
-        const q = query(
-          emergenciesRef,
-          where("userId", "==", user.uid),
-          where("sessionStatus", "==", "active")
-        );
-
-        // Read one matching doc (any) and then rely on per-doc onSnapshot for realtime.
-        const { getDocs } = await import("firebase/firestore");
-        const snap = await getDocs(q);
-        const first = snap.docs[0];
-        if (!first) return;
-        const data = first.data() as any;
-        await SecureStore.setItemAsync(STORAGE_KEY, first.id).catch(() => {});
-        setCurrentEmergencyState({
-          id: first.id,
-          sessionStatus: "active",
-          victimType: (data.victimType as VictimType) || "me",
-          status: typeof data.status === "string" ? data.status : undefined,
-        });
+        // Firestore source-of-truth restore
+        await syncActiveEmergencyFromFirestore("bootstrap");
       } catch (e) {
         console.error("Emergency restore error:", e);
       } finally {
         restoringRef.current = false;
       }
     })();
+  }, [user?.uid]);
+
+  // Auth user change isolation:
+  // - stop listener immediately
+  // - clear local state
+  // - clear previous user's persisted emergency key
+  useEffect(() => {
+    const nextUid = user?.uid ?? null;
+    const prevUid = lastUserIdRef.current;
+    if (prevUid === nextUid) return;
+
+    console.log("[EmergencyContext] auth user changed:", prevUid, "->", nextUid);
+
+    // Stop listening to previous user's doc
+    stopListening();
+    setCurrentEmergencyState(null);
+    restoringRef.current = false;
+    startingRef.current = false;
+
+    if (prevUid) {
+      SecureStore.deleteItemAsync(storageKeyForUser(prevUid)).catch(() => {});
+    }
+
+    lastUserIdRef.current = nextUid;
+  }, [user?.uid]);
+
+  // Foreground/background: when app returns to foreground, re-sync from Firestore.
+  useEffect(() => {
+    if (!user?.uid) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        syncActiveEmergencyFromFirestore("app_foreground");
+      }
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
 
   const value = useMemo(
