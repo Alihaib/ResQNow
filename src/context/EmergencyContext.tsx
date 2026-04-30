@@ -30,6 +30,7 @@ export type StartEmergencyErrorReason =
   | "not_logged_in"
   | "in_progress"
   | "location_permission_denied"
+  | "location_not_available"
   | "invalid_payload"
   | "firestore_permission_denied"
   | "network_error"
@@ -163,9 +164,10 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     timestamp,
     locationPermissionStatus,
   }) => {
-    if (startingRef.current) return { ok: false, reason: "in_progress" };
-    if (!user?.uid) return { ok: false, reason: "not_logged_in" };
-    if (currentEmergency?.sessionStatus === "active") return { ok: false, reason: "already_active" };
+    console.log("[SOS][0] user.uid exists?", !!user?.uid, "uid=", user?.uid ?? null);
+    if (startingRef.current) return { ok: false, reason: "in_progress", message: "IN_PROGRESS" };
+    if (!user?.uid) return { ok: false, reason: "not_logged_in", message: "NOT_LOGGED_IN" };
+    if (currentEmergency?.sessionStatus === "active") return { ok: false, reason: "already_active", message: "ALREADY_ACTIVE" };
 
     startingRef.current = true;
     setStartingEmergency(true);
@@ -177,6 +179,19 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
       if (locationPermissionStatus && locationPermissionStatus !== "granted") {
         console.warn("[SOS] location permission not granted:", locationPermissionStatus);
+        return { ok: false, reason: "location_permission_denied", message: "LOCATION_FAILED" };
+      }
+
+      // Explicit null/invalid location guard (do not treat 0 as invalid)
+      if (
+        !location ||
+        typeof location.latitude !== "number" ||
+        typeof location.longitude !== "number" ||
+        !Number.isFinite(location.latitude) ||
+        !Number.isFinite(location.longitude)
+      ) {
+        console.error("[SOS][3] LOCATION_NOT_AVAILABLE:", location);
+        return { ok: false, reason: "location_not_available", message: "LOCATION_NOT_AVAILABLE" };
       }
 
       const payload = {
@@ -204,24 +219,18 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       console.log("[SOS][4] payload before write:", payload);
 
       // Validation (debug-only): prevent undefined critical fields
-      const valid =
-        !!payload.patientLocation &&
-        typeof payload.patientLocation.latitude === "number" &&
-        typeof payload.patientLocation.longitude === "number" &&
-        typeof payload.sessionStatus === "string" &&
-        typeof payload.status === "string" &&
-        typeof payload.updatedAt === "string";
-
       if (
         !payload.patientLocation ||
         typeof payload.patientLocation.latitude !== "number" ||
         typeof payload.patientLocation.longitude !== "number" ||
+        !Number.isFinite(payload.patientLocation.latitude) ||
+        !Number.isFinite(payload.patientLocation.longitude) ||
         typeof payload.sessionStatus !== "string" ||
         typeof payload.status !== "string" ||
         typeof payload.updatedAt !== "string"
       ) {
         console.error("[SOS] Invalid emergency payload (critical fields missing):", payload);
-        return { ok: false, reason: "invalid_payload", message: "Invalid emergency payload" };
+        return { ok: false, reason: "invalid_payload", message: "INVALID_PAYLOAD" };
       }
 
       console.log("[SOS][5] Firestore setDoc start");
@@ -239,12 +248,12 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
         const code = String(e?.code || "").toLowerCase();
         if (code.includes("permission-denied") || code.includes("permission_denied")) {
-          return { ok: false, reason: "firestore_permission_denied", message: "Firestore permission denied" };
+          return { ok: false, reason: "firestore_permission_denied", message: "FIRESTORE_PERMISSION_DENIED" };
         }
         if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
-          return { ok: false, reason: "network_error", message: "Network error while writing to Firestore" };
+          return { ok: false, reason: "network_error", message: "NETWORK_ERROR" };
         }
-        return { ok: false, reason: "unknown_error", message: e?.message || "Unknown Firestore error" };
+        return { ok: false, reason: "unknown_error", message: e?.message || "UNKNOWN_ERROR" };
       }
 
       console.log("[SOS][6] Firestore setDoc success:", { id });

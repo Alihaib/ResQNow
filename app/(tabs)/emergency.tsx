@@ -29,6 +29,7 @@ export default function EmergencyScreen() {
   const [isVictimSelectOpen, setIsVictimSelectOpen] = useState(false);
 
   const locationDataRef = useRef<any>(null);
+  const permissionStatusRef = useRef<string | null>(null);
 
   const proceedToActiveEmergency = async (type: "me" | "other") => {
     setIsVictimSelectOpen(false);
@@ -52,7 +53,7 @@ export default function EmergencyScreen() {
           address: loc.address ?? null,
         },
         timestamp: loc.timestamp,
-        locationPermissionStatus: "granted",
+        locationPermissionStatus: permissionStatusRef.current ?? "unknown",
       });
       if (result.ok) {
         navigateToActiveEmergency();
@@ -84,6 +85,7 @@ export default function EmergencyScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       console.log("[SOS][UI] location permission status:", status);
+      permissionStatusRef.current = status;
       if (status !== "granted") {
         Alert.alert(t("error"), t("locationPermissionDenied"));
       } else {

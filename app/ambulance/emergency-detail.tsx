@@ -7,6 +7,7 @@ import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { rejectAndReassignEmergency } from "../../src/services/autoDispatch";
 
 interface Emergency {
   id: string;
@@ -28,6 +29,7 @@ interface Emergency {
   victimType?: "me" | "other";
   assignedAmbulanceId?: string | null;
   ambulanceLocation?: { latitude?: number; longitude?: number } | null;
+  assignedAt?: string | null;
 }
 
 const AMBULANCE_STATUSES = [
@@ -137,6 +139,7 @@ export default function EmergencyDetailScreen() {
           victimType: data.victimType === "other" ? "other" : "me",
           assignedAmbulanceId: data.assignedAmbulanceId ?? null,
           ambulanceLocation: data.ambulanceLocation ?? null,
+          assignedAt: typeof data.assignedAt === "string" ? data.assignedAt : null,
         };
         console.log(
           "[AmbulanceEmergencyDetail] emergency snapshot:",
@@ -267,6 +270,12 @@ export default function EmergencyDetailScreen() {
             ambulanceLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
             updatedAt: new Date().toISOString(),
           });
+
+          // Publish last known ambulance location for auto-dispatch selection (best effort).
+          updateDoc(doc(db, "users", latestUid), {
+            lastKnownLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+            lastKnownLocationUpdatedAt: new Date().toISOString(),
+          }).catch(() => {});
         } catch (e) {
           console.error("Failed to update ambulanceLocation:", e);
         }
@@ -336,6 +345,70 @@ export default function EmergencyDetailScreen() {
         timestamp: nowIso,
       }),
     });
+  };
+
+  const acceptEmergency = async () => {
+    const uid = userUidRef.current;
+    const e = emergencyRef.current;
+    if (!uid || !e?.id) return;
+    if (e.assignedAmbulanceId && e.assignedAmbulanceId !== uid) {
+      Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
+      return;
+    }
+    // If not yet assigned, try to claim and then accept
+    await claimIfUnassigned();
+
+    const latest = emergencyRef.current;
+    if (!latest?.id) return;
+    if (latest.assignedAmbulanceId && latest.assignedAmbulanceId !== uid) {
+      Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    console.log("[AmbulanceEmergencyDetail] ACCEPT:", latest.id, "by", uid);
+    await updateDoc(doc(db, "emergencies", latest.id), {
+      assignedAmbulanceId: uid,
+      status: "en_route",
+      updatedAt: nowIso,
+      timeline: arrayUnion({ status: "accepted", ambulanceId: uid, timestamp: nowIso }),
+    });
+  };
+
+  const rejectEmergency = async () => {
+    const uid = userUidRef.current;
+    const e = emergencyRef.current;
+    if (!uid || !e?.id) return;
+    if (e.assignedAmbulanceId !== uid) {
+      Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
+      return;
+    }
+    if (e.status !== "assigned") {
+      Alert.alert(t("error"), "This emergency is no longer awaiting acceptance.");
+      return;
+    }
+
+    const baseLoc = e.patientLocation ?? e.location;
+    const lat = baseLoc?.latitude;
+    const lng = baseLoc?.longitude;
+    if (typeof lat !== "number" || typeof lng !== "number") {
+      Alert.alert(t("error"), t("locationNotAvailable") || "Patient location not available.");
+      return;
+    }
+
+    // Stop GPS tracking if currently enabled.
+    stopTracking();
+
+    console.log("[AmbulanceEmergencyDetail] REJECT:", e.id, "by", uid);
+    await rejectAndReassignEmergency({
+      emergencyId: e.id,
+      rejectingAmbulanceId: uid,
+      patientLocation: { latitude: lat, longitude: lng },
+    });
+
+    Alert.alert("Reassigned", "This emergency was reassigned to another ambulance.");
+    if (router.canGoBack()) router.back();
+    else router.replace("/ambulance/dashboard");
   };
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -511,6 +584,39 @@ export default function EmergencyDetailScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Accept / Reject assignment (smart reassignment) */}
+        {emergency.status === "assigned" && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>✅ Assignment Response</Text>
+            <View style={styles.infoCard}>
+              <Text style={styles.navigateText}>
+                This emergency is awaiting ambulance response. Please accept or reject.
+              </Text>
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+                <TouchableOpacity
+                  style={[styles.navigateButton, { flex: 1, backgroundColor: "#16A34A" }]}
+                  onPress={acceptEmergency}
+                  disabled={!!emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user?.uid}
+                >
+                  <Text style={styles.navigateButtonText}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.navigateButton, { flex: 1, backgroundColor: "#DC2626" }]}
+                  onPress={rejectEmergency}
+                  disabled={emergency.assignedAmbulanceId !== user?.uid}
+                >
+                  <Text style={styles.navigateButtonText}>Reject</Text>
+                </TouchableOpacity>
+              </View>
+              {emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user?.uid ? (
+                <Text style={styles.navigateText}>
+                  Assigned to another ambulance. You cannot respond.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📢 Update Case Status</Text>

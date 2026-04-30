@@ -7,6 +7,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
@@ -26,6 +27,7 @@ import * as SecureStore from "expo-secure-store";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { autoDispatchEmergency, rejectAndReassignEmergency } from "../../src/services/autoDispatch";
 
 interface Emergency {
   id: string;
@@ -36,8 +38,11 @@ interface Emergency {
     accuracy?: number | null;
     address: string | null;
   };
+  patientLocation?: { latitude?: number; longitude?: number; address?: string | null } | null;
   timestamp: string;
   status: string;
+  assignedAmbulanceId?: string | null;
+  assignedAt?: string | null;
   victimType?: "me" | "other";
   userInfo?: any;
   distance?: number;
@@ -58,6 +63,9 @@ export default function AmbulanceDashboard() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const attemptedAutoDispatchRef = useRef<Record<string, true>>({});
+  const attemptedTimeoutReassignRef = useRef<Record<string, true>>({});
+  const DISPATCH_TIMEOUT_MS = 45000;
 
   // "Live alert" UI state (local only)
   const [lastSeenEmergencyTs, setLastSeenEmergencyTs] = useState<string | null>(null);
@@ -147,17 +155,28 @@ export default function AmbulanceDashboard() {
           const location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.High,
           });
-          setAmbulanceLocation({
+          const coords = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
-          });
+          };
+          setAmbulanceLocation(coords);
+
+          // Publish last known ambulance location for auto-dispatch selection.
+          if (user?.uid) {
+            updateDoc(doc(db, "users", user.uid), {
+              lastKnownLocation: coords,
+              lastKnownLocationUpdatedAt: new Date().toISOString(),
+            }).catch((e) => {
+              console.warn("[AmbulanceDashboard] failed to update lastKnownLocation:", e);
+            });
+          }
         }
       } catch (error) {
         console.error("Error getting ambulance location:", error);
       }
     };
     getAmbulanceLocation();
-  }, []);
+  }, [user?.uid]);
 
   // Calculate distance between two coordinates (Haversine formula)
   const calculateDistance = (
@@ -272,8 +291,11 @@ export default function AmbulanceDashboard() {
               id: docSnap.id,
               userId: data.userId,
               location: data.location,
+              patientLocation: data.patientLocation ?? null,
               timestamp: data.timestamp,
               status: data.status,
+              assignedAmbulanceId: data.assignedAmbulanceId ?? null,
+              assignedAt: typeof data.assignedAt === "string" ? data.assignedAt : null,
               victimType: data.victimType === "other" ? "other" : "me",
             };
 
@@ -312,6 +334,34 @@ export default function AmbulanceDashboard() {
           });
 
           setEmergencies(emergenciesList);
+
+          // AUTO DISPATCH: attempt closest-ambulance assignment for unassigned emergencies.
+          // Triggered by Firestore realtime only (no push, no backend). Transaction prevents races.
+          for (const e of emergenciesList) {
+            if (e.assignedAmbulanceId) continue;
+            if (attemptedAutoDispatchRef.current[e.id]) continue;
+
+            const baseLoc: any = e.patientLocation ?? e.location;
+            const lat = baseLoc?.latitude;
+            const lng = baseLoc?.longitude;
+            if (typeof lat !== "number" || typeof lng !== "number") continue;
+
+            attemptedAutoDispatchRef.current[e.id] = true;
+            autoDispatchEmergency({
+              emergencyId: e.id,
+              patientLocation: { latitude: lat, longitude: lng },
+            })
+              .then((res) => {
+                if (res.ok && res.assigned) {
+                  console.log("[AutoDispatch] assigned", e.id, "->", res.assignedAmbulanceId);
+                } else if (res.ok) {
+                  console.log("[AutoDispatch] skipped", e.id, "reason=", (res as any).reason);
+                } else {
+                  console.warn("[AutoDispatch] failed", e.id, "reason=", (res as any).reason);
+                }
+              })
+              .catch((err) => console.warn("[AutoDispatch] error", e.id, err));
+          }
 
           // Merge NEW ids into local state (so badge persists until seen)
           if (Object.keys(incomingNewIds).length > 0) {
@@ -353,6 +403,51 @@ export default function AmbulanceDashboard() {
 
     return () => unsubscribe();
   }, [ambulanceLocation, authLoading, user?.uid, role, approved, t, lastSeenEmergencyTs, liveCallsScrollY]);
+
+  // SMART REASSIGNMENT: timeout-based reassignment loop (local-only, Firestore-driven).
+  // Any approved ambulance client can act as a dispatcher; transaction guarantees single-winner updates.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user?.uid) return;
+    if (role !== "ambulance" || approved !== true) return;
+
+    const timer = setInterval(() => {
+      const now = Date.now();
+      for (const e of emergencies) {
+        if (e.status !== "assigned") continue; // only waiting-for-response state
+        if (!e.assignedAmbulanceId) continue;
+        if (!e.assignedAt) continue;
+        if (attemptedTimeoutReassignRef.current[e.id]) continue;
+
+        const assignedAtMs = new Date(e.assignedAt).getTime();
+        if (!Number.isFinite(assignedAtMs)) continue;
+        if (now - assignedAtMs < DISPATCH_TIMEOUT_MS) continue;
+
+        const baseLoc: any = e.patientLocation ?? e.location;
+        const lat = baseLoc?.latitude;
+        const lng = baseLoc?.longitude;
+        if (typeof lat !== "number" || typeof lng !== "number") continue;
+
+        attemptedTimeoutReassignRef.current[e.id] = true;
+        console.log("[AutoDispatch][timeout] reassigning emergency:", e.id, "assigned=", e.assignedAmbulanceId);
+        rejectAndReassignEmergency({
+          emergencyId: e.id,
+          rejectingAmbulanceId: e.assignedAmbulanceId,
+          patientLocation: { latitude: lat, longitude: lng },
+        })
+          .then((res) => console.log("[AutoDispatch][timeout] result:", e.id, res))
+          .catch((err) => console.warn("[AutoDispatch][timeout] error:", e.id, err))
+          .finally(() => {
+            // allow future attempts if still assigned after this run
+            setTimeout(() => {
+              delete attemptedTimeoutReassignRef.current[e.id];
+            }, 15000);
+          });
+      }
+    }, 5000);
+
+    return () => clearInterval(timer);
+  }, [authLoading, user?.uid, role, approved, emergencies]);
 
   // Open navigation to emergency location
   const openNavigation = (emergency: Emergency) => {
