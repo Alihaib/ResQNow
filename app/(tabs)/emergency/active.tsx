@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { arrayUnion, doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Linking, Platform, ScrollView,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useEmergency } from "../../../src/context/EmergencyContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
@@ -44,6 +45,60 @@ export default function ActiveEmergencyScreen() {
   const [autoShareEnabled, setAutoShareEnabled] = useState<boolean | null>(null);
   const [emergencyContacts, setEmergencyContacts] = useState<Contact[]>([]);
   const [ending, setEnding] = useState(false);
+  const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [ambulanceAssigned, setAmbulanceAssigned] = useState(false);
+
+  // Real-time ambulance location from the emergency doc
+  useEffect(() => {
+    if (!currentEmergency?.id) return;
+    const unsub = onSnapshot(doc(db, "emergencies", currentEmergency.id), (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      setAmbulanceAssigned(!!data.assignedAmbulanceId);
+      const loc = data.ambulanceLocation;
+      if (loc?.latitude && loc?.longitude) {
+        setAmbulanceLocation({ latitude: loc.latitude, longitude: loc.longitude });
+      }
+    });
+    return () => unsub();
+  }, [currentEmergency?.id]);
+
+  const mapRegion = useMemo(() => {
+    if (!location) return null;
+    if (!ambulanceLocation) {
+      return {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
+    const minLat = Math.min(location.latitude, ambulanceLocation.latitude);
+    const maxLat = Math.max(location.latitude, ambulanceLocation.latitude);
+    const minLon = Math.min(location.longitude, ambulanceLocation.longitude);
+    const maxLon = Math.max(location.longitude, ambulanceLocation.longitude);
+    const pad = 0.005;
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLon + maxLon) / 2,
+      latitudeDelta: Math.max(maxLat - minLat + pad, 0.01),
+      longitudeDelta: Math.max(maxLon - minLon + pad, 0.01),
+    };
+  }, [location, ambulanceLocation]);
+
+  const distanceText = useMemo(() => {
+    if (!location || !ambulanceLocation) return null;
+    const R = 6371000;
+    const dLat = ((ambulanceLocation.latitude - location.latitude) * Math.PI) / 180;
+    const dLon = ((ambulanceLocation.longitude - location.longitude) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((location.latitude * Math.PI) / 180) *
+        Math.cos((ambulanceLocation.latitude * Math.PI) / 180) *
+        Math.sin(dLon / 2) ** 2;
+    const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
+  }, [location, ambulanceLocation]);
 
   // Firestore is the source of truth: if the emergency ends in Firestore and
   // the context clears, navigate away from this screen.
@@ -583,6 +638,65 @@ Shared from ResQNow Emergency App
           <Text style={styles.shareIcon}>📤</Text>
         </TouchableOpacity>
 
+        {/* Ambulance Map */}
+        {location && (ambulanceAssigned || ambulanceLocation) && (
+          <View style={styles.mapCard}>
+            <View style={styles.mapHeader}>
+              <Text style={styles.mapTitle}>🚑 {translate("ambulanceOnWay") || "Ambulance On The Way"}</Text>
+              {distanceText && (
+                <View style={styles.distanceBadge}>
+                  <Text style={styles.distanceText}>📏 {distanceText}</Text>
+                </View>
+              )}
+            </View>
+
+            {mapRegion ? (
+              <MapView
+                style={styles.map}
+                region={mapRegion}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+              >
+                <Marker
+                  coordinate={{ latitude: location.latitude, longitude: location.longitude }}
+                  title={translate("yourLocation") || "Your Location"}
+                  pinColor="#DC2626"
+                />
+                {ambulanceLocation && (
+                  <Marker
+                    coordinate={ambulanceLocation}
+                    title={translate("ambulance") || "Ambulance"}
+                    pinColor="#1D4ED8"
+                  />
+                )}
+              </MapView>
+            ) : null}
+
+            {!ambulanceLocation && (
+              <View style={styles.mapWaiting}>
+                <Text style={styles.mapWaitingText}>
+                  {translate("ambulanceLocating") || "Locating ambulance..."}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.mapLegend}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: "#DC2626" }]} />
+                <Text style={styles.legendLabel}>{translate("you") || "You"}</Text>
+              </View>
+              {ambulanceLocation && (
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: "#1D4ED8" }]} />
+                  <Text style={styles.legendLabel}>{translate("ambulance") || "Ambulance"}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Instructions */}
         <View style={styles.instructionsCard}>
           <Text style={styles.instructionsTitle}>{translate("stayCalmTitle")}</Text>
@@ -803,6 +917,82 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 24,
     color: "#6C757D",
+  },
+  mapCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    marginBottom: 20,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 2,
+    borderColor: "#1D4ED8",
+  },
+  mapHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  mapTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#003049",
+  },
+  distanceBadge: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  distanceText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1D4ED8",
+  },
+  map: {
+    width: "100%",
+    height: 200,
+  },
+  mapWaiting: {
+    height: 80,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8F9FA",
+  },
+  mapWaitingText: {
+    fontSize: 14,
+    color: "#6C757D",
+    fontStyle: "italic",
+  },
+  mapLegend: {
+    flexDirection: "row",
+    gap: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E9ECEF",
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendLabel: {
+    fontSize: 13,
+    color: "#6C757D",
+    fontWeight: "600",
   },
   footer: {
     position: "absolute",
