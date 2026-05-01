@@ -293,6 +293,10 @@ hello_user: "שלום",
   stayCalmReassure: "הישאר רגוע והרגע את האדם",
   protectFromInfection: "הגן על עצמך מזיהום",
   stepByStepInstructions: "הוראות שלב אחר שלב",
+  step: "שלב",
+  prev: "הקודם",
+  next: "הבא",
+  done: "סיום",
   generalGuidelines: "אלו הנחיות כלליות. תמיד התקשר לשירותי חירום למצבים חמורים.",
   
   // First Aid Categories
@@ -493,4 +497,6 @@ hello_user: "שלום",
    showingEmergenciesWithin:"מציג מקרי חירום בטווח של",
   found:"נמצא",
   away:"רחוק",
+  ambulanceOnWay: "האמבולנס בדרך",
+  ambulanceLocating: "מאתר אמבולנס...",
 };

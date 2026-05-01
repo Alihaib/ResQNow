@@ -299,6 +299,10 @@ export default {
   stayCalmReassure: "Stay calm and reassure the person",
   protectFromInfection: "Protect yourself from infection",
   stepByStepInstructions: "Step-by-Step Instructions",
+  step: "Step",
+  prev: "Prev",
+  next: "Next",
+  done: "Done",
   generalGuidelines:
     "These are general guidelines. Always call emergency services for serious situations.",
 
@@ -510,5 +514,6 @@ export default {
   found: "found",
   away: "away",
   gettingLocations: "Getting locations...",
-  ambulanceOnWay: "Ambulance on the way",
+  ambulanceOnWay: "Ambulance On The Way",
+  ambulanceLocating: "Locating ambulance...",
 };

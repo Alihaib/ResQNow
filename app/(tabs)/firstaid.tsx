@@ -1,6 +1,70 @@
 import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { useLanguage } from "../../src/context/LanguageContext";
+
+const CATEGORY_COLORS: Record<string, string> = {
+  bleeding: "#DC2626",
+  burns: "#EA580C",
+  choking: "#D97706",
+  cpr: "#DC2626",
+  fractures: "#7C3AED",
+  poisoning: "#7C3AED",
+  shock: "#D97706",
+  unconscious: "#1D4ED8",
+};
+
+function CategoryCard({
+  id,
+  icon,
+  titleKey,
+  t,
+  onPress,
+}: {
+  id: string;
+  icon: string;
+  titleKey: string;
+  t: (k: string) => string;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const rotateX = useSharedValue(0);
+  const accent = CATEGORY_COLORS[id] || "#D62828";
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [
+      { perspective: 700 },
+      { rotateX: rotateX.value + "deg" },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <TouchableOpacity
+      style={styles.cardTouchable}
+      onPressIn={() => {
+        scale.value = withTiming(0.91, { duration: 110 });
+        rotateX.value = withTiming(8, { duration: 110 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 10, stiffness: 200 });
+        rotateX.value = withSpring(0, { damping: 10, stiffness: 200 });
+      }}
+      onPress={onPress}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.categoryCard, { borderTopColor: accent, borderTopWidth: 3 }, cardStyle]}>
+        <Text style={styles.categoryIcon}>{icon}</Text>
+        <Text style={styles.categoryTitle}>{t(titleKey)}</Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
 
 export default function FirstAidScreen() {
   const { t } = useLanguage();
@@ -38,14 +102,14 @@ export default function FirstAidScreen() {
         <Text style={styles.sectionTitle}>{t("categories")}</Text>
         <View style={styles.grid}>
           {categories.map((category) => (
-            <TouchableOpacity
+            <CategoryCard
               key={category.id}
-              style={styles.categoryCard}
+              id={category.id}
+              icon={category.icon}
+              titleKey={category.titleKey}
+              t={t}
               onPress={() => router.push(`/(tabs)/firstaid/${category.id}`)}
-            >
-              <Text style={styles.categoryIcon}>{category.icon}</Text>
-              <Text style={styles.categoryTitle}>{t(category.titleKey)}</Text>
-            </TouchableOpacity>
+            />
           ))}
         </View>
       </View>
@@ -127,8 +191,11 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
   },
-  categoryCard: {
+  cardTouchable: {
     width: "47%",
+  },
+  categoryCard: {
+    width: "100%",
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 20,
