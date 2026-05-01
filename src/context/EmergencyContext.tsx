@@ -413,7 +413,8 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       navigateToActiveEmergency,
       startEmergency,
     }),
-    [currentEmergency, isEmergencyActive, startingEmergency]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentEmergency, isEmergencyActive, startingEmergency, user?.uid]
   );
 
   return <EmergencyContext.Provider value={value}>{children}</EmergencyContext.Provider>;

@@ -1,5 +1,6 @@
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import {
   collection,
   doc,
@@ -23,11 +24,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import * as SecureStore from "expo-secure-store";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
-import { autoDispatchEmergency, rejectAndReassignEmergency } from "../../src/services/autoDispatch";
+import {
+  autoDispatchEmergency,
+  rejectAndReassignEmergency,
+} from "../../src/services/autoDispatch";
 
 interface Emergency {
   id: string;
@@ -38,7 +41,11 @@ interface Emergency {
     accuracy?: number | null;
     address: string | null;
   };
-  patientLocation?: { latitude?: number; longitude?: number; address?: string | null } | null;
+  patientLocation?: {
+    latitude?: number;
+    longitude?: number;
+    address?: string | null;
+  } | null;
   timestamp: string;
   status: string;
   assignedAmbulanceId?: string | null;
@@ -68,9 +75,15 @@ export default function AmbulanceDashboard() {
   const DISPATCH_TIMEOUT_MS = 45000;
 
   // "Live alert" UI state (local only)
-  const [lastSeenEmergencyTs, setLastSeenEmergencyTs] = useState<string | null>(null);
-  const [newEmergencyIds, setNewEmergencyIds] = useState<Record<string, true>>({});
-  const [bannerEmergencyId, setBannerEmergencyId] = useState<string | null>(null);
+  const [lastSeenEmergencyTs, setLastSeenEmergencyTs] = useState<string | null>(
+    null,
+  );
+  const [newEmergencyIds, setNewEmergencyIds] = useState<Record<string, true>>(
+    {},
+  );
+  const [bannerEmergencyId, setBannerEmergencyId] = useState<string | null>(
+    null,
+  );
   const [bannerVisible, setBannerVisible] = useState(false);
   const [liveCallsScrollY, setLiveCallsScrollY] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
@@ -121,9 +134,17 @@ export default function AmbulanceDashboard() {
     }
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 650, useNativeDriver: true }),
-      ])
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 650,
+          useNativeDriver: true,
+        }),
+      ]),
     );
     anim.start();
     return () => anim.stop();
@@ -167,7 +188,10 @@ export default function AmbulanceDashboard() {
               lastKnownLocation: coords,
               lastKnownLocationUpdatedAt: new Date().toISOString(),
             }).catch((e) => {
-              console.warn("[AmbulanceDashboard] failed to update lastKnownLocation:", e);
+              console.warn(
+                "[AmbulanceDashboard] failed to update lastKnownLocation:",
+                e,
+              );
             });
           }
         }
@@ -256,7 +280,10 @@ export default function AmbulanceDashboard() {
       q,
       async (snapshot) => {
         try {
-          console.log("[AmbulanceDashboard] active emergencies snapshot:", snapshot.size);
+          console.log(
+            "[AmbulanceDashboard] active emergencies snapshot:",
+            snapshot.size,
+          );
           console.log(
             "[AmbulanceDashboard] emergencies snapshot:",
             snapshot.size,
@@ -274,12 +301,18 @@ export default function AmbulanceDashboard() {
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data();
             // Defensive validation for legacy/malformed docs (don't crash UI)
-            const sessionStatus = typeof data.sessionStatus === "string" ? data.sessionStatus : "active";
+            const sessionStatus =
+              typeof data.sessionStatus === "string"
+                ? data.sessionStatus
+                : "active";
             if (sessionStatus !== "active") continue;
 
             // Determine if this emergency is "new" relative to the last seen timestamp.
-            const ts = typeof data.timestamp === "string" ? data.timestamp : null;
-            const isNew = !!ts && (!!lastSeenEmergencyTs ? ts > lastSeenEmergencyTs : false);
+            const ts =
+              typeof data.timestamp === "string" ? data.timestamp : null;
+            const isNew =
+              !!ts &&
+              (!!lastSeenEmergencyTs ? ts > lastSeenEmergencyTs : false);
             if (isNew) {
               incomingNewIds[docSnap.id] = true;
               if (!newestIncoming || ts! > newestIncoming.timestamp) {
@@ -295,7 +328,8 @@ export default function AmbulanceDashboard() {
               timestamp: data.timestamp,
               status: data.status,
               assignedAmbulanceId: data.assignedAmbulanceId ?? null,
-              assignedAt: typeof data.assignedAt === "string" ? data.assignedAt : null,
+              assignedAt:
+                typeof data.assignedAt === "string" ? data.assignedAt : null,
               victimType: data.victimType === "other" ? "other" : "me",
             };
 
@@ -353,11 +387,26 @@ export default function AmbulanceDashboard() {
             })
               .then((res) => {
                 if (res.ok && res.assigned) {
-                  console.log("[AutoDispatch] assigned", e.id, "->", res.assignedAmbulanceId);
+                  console.log(
+                    "[AutoDispatch] assigned",
+                    e.id,
+                    "->",
+                    res.assignedAmbulanceId,
+                  );
                 } else if (res.ok) {
-                  console.log("[AutoDispatch] skipped", e.id, "reason=", (res as any).reason);
+                  console.log(
+                    "[AutoDispatch] skipped",
+                    e.id,
+                    "reason=",
+                    (res as any).reason,
+                  );
                 } else {
-                  console.warn("[AutoDispatch] failed", e.id, "reason=", (res as any).reason);
+                  console.warn(
+                    "[AutoDispatch] failed",
+                    e.id,
+                    "reason=",
+                    (res as any).reason,
+                  );
                 }
               })
               .catch((err) => console.warn("[AutoDispatch] error", e.id, err));
@@ -372,16 +421,24 @@ export default function AmbulanceDashboard() {
           if (newestIncoming) {
             setBannerEmergencyId(newestIncoming.id);
             setBannerVisible(true);
-            console.log("[AmbulanceDashboard] NEW emergency alert:", newestIncoming.id);
+            console.log(
+              "[AmbulanceDashboard] NEW emergency alert:",
+              newestIncoming.id,
+            );
             if (liveCallsScrollY !== null && scrollRef.current?.scrollTo) {
-              scrollRef.current.scrollTo({ y: Math.max(0, liveCallsScrollY - 12), animated: true });
+              scrollRef.current.scrollTo({
+                y: Math.max(0, liveCallsScrollY - 12),
+                animated: true,
+              });
             }
           }
 
           setLoadingEmergencies(false);
         } catch (error) {
           console.error("Error processing emergencies snapshot:", error);
-          setEmergenciesError(t("failedToLoadEmergencies") || "Failed to load emergencies.");
+          setEmergenciesError(
+            t("failedToLoadEmergencies") || "Failed to load emergencies.",
+          );
           setLoadingEmergencies(false);
         }
       },
@@ -393,16 +450,26 @@ export default function AmbulanceDashboard() {
         );
         // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
         setEmergenciesError(
-          (error as any)?.code === "permission-denied" || (error as any)?.code === "PERMISSION_DENIED"
+          (error as any)?.code === "permission-denied" ||
+            (error as any)?.code === "PERMISSION_DENIED"
             ? "PERMISSION_DENIED: responder not approved or rules not deployed."
-            : t("failedToLoadEmergencies") || "Failed to load emergencies."
+            : t("failedToLoadEmergencies") || "Failed to load emergencies.",
         );
         setLoadingEmergencies(false);
       },
     );
 
     return () => unsubscribe();
-  }, [ambulanceLocation, authLoading, user?.uid, role, approved, t, lastSeenEmergencyTs, liveCallsScrollY]);
+  }, [
+    ambulanceLocation,
+    authLoading,
+    user?.uid,
+    role,
+    approved,
+    t,
+    lastSeenEmergencyTs,
+    liveCallsScrollY,
+  ]);
 
   // SMART REASSIGNMENT: timeout-based reassignment loop (local-only, Firestore-driven).
   // Any approved ambulance client can act as a dispatcher; transaction guarantees single-winner updates.
@@ -429,14 +496,23 @@ export default function AmbulanceDashboard() {
         if (typeof lat !== "number" || typeof lng !== "number") continue;
 
         attemptedTimeoutReassignRef.current[e.id] = true;
-        console.log("[AutoDispatch][timeout] reassigning emergency:", e.id, "assigned=", e.assignedAmbulanceId);
+        console.log(
+          "[AutoDispatch][timeout] reassigning emergency:",
+          e.id,
+          "assigned=",
+          e.assignedAmbulanceId,
+        );
         rejectAndReassignEmergency({
           emergencyId: e.id,
           rejectingAmbulanceId: e.assignedAmbulanceId,
           patientLocation: { latitude: lat, longitude: lng },
         })
-          .then((res) => console.log("[AutoDispatch][timeout] result:", e.id, res))
-          .catch((err) => console.warn("[AutoDispatch][timeout] error:", e.id, err))
+          .then((res) =>
+            console.log("[AutoDispatch][timeout] result:", e.id, res),
+          )
+          .catch((err) =>
+            console.warn("[AutoDispatch][timeout] error:", e.id, err),
+          )
           .finally(() => {
             // allow future attempts if still assigned after this run
             setTimeout(() => {
@@ -553,7 +629,9 @@ export default function AmbulanceDashboard() {
               });
             }}
           >
-            <Text style={styles.liveBannerTitle}>🚨 New Emergency Received</Text>
+            <Text style={styles.liveBannerTitle}>
+              🚨 New Emergency Received
+            </Text>
             <Text style={styles.liveBannerSub}>Tap to open</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -761,7 +839,9 @@ export default function AmbulanceDashboard() {
                 key={emergency.id}
                 style={[
                   styles.callCard,
-                  newEmergencyIds[emergency.id] ? styles.callCardNew : undefined,
+                  newEmergencyIds[emergency.id]
+                    ? styles.callCardNew
+                    : undefined,
                 ]}
                 onPress={async () => {
                   await markEmergencySeen(emergency.id);
