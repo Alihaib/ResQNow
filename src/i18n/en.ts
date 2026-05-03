@@ -176,6 +176,9 @@ export default {
   caller: "Caller",
   endEmergency: "End Emergency",
   endEmergencyConfirm: "Are you sure you want to end this emergency?",
+  emergencyLockedTitle: "Emergency Locked",
+  emergencyLockedAfterArrival:
+    "This emergency cannot be cancelled because the ambulance has already arrived or the case is in progress.",
   emergencyActive: "EMERGENCY ACTIVE",
   timeElapsed: "Time Elapsed",
   yourLocation: "Your Location",

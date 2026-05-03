@@ -48,6 +48,11 @@ type EmergencyContextType = {
   >;
   /** Re-query Firestore for an active doc (foreground / recovery) */
   refreshActiveEmergencyFromFirestore: (reason: string) => Promise<void>;
+  /**
+   * True after the first active-emergency Firestore sync completes for this session.
+   * Prevents SOS UI from treating a transient null `liveEmergency` as “no emergency” during hydration.
+   */
+  activeEmergencyHydrated: boolean;
 };
 
 const EmergencyContext = createContext<EmergencyContextType>({
@@ -59,6 +64,7 @@ const EmergencyContext = createContext<EmergencyContextType>({
   navigateToActiveEmergency: () => {},
   startEmergency: async () => ({ ok: false, reason: "not_logged_in", message: "Not logged in" }),
   refreshActiveEmergencyFromFirestore: async () => {},
+  activeEmergencyHydrated: false,
 });
 
 const STORAGE_KEY_PREFIX = "emergency_";
@@ -96,6 +102,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
   const [startingEmergency, setStartingEmergency] = useState(false);
   const lastSyncAtRef = useRef<number>(0);
   const lastUserIdRef = useRef<string | null>(null);
+  const [activeEmergencyHydrated, setActiveEmergencyHydrated] = useState(false);
 
   const stopListening = () => {
     if (unsubscribeRef.current) {
@@ -125,17 +132,17 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
    */
   const refreshActiveEmergencyFromFirestore = useCallback(
     async (reason: string) => {
-      if (!user?.uid) return;
-
-      const now = Date.now();
-      const skipDebounce =
-        reason === "bootstrap" || reason === "post_create" || reason === "doc_missing";
-      if (!skipDebounce && now - lastSyncAtRef.current < 800) {
-        return;
-      }
-      lastSyncAtRef.current = now;
-
       try {
+        if (!user?.uid) return;
+
+        const now = Date.now();
+        const skipDebounce =
+          reason === "bootstrap" || reason === "post_create" || reason === "doc_missing";
+        if (!skipDebounce && now - lastSyncAtRef.current < 800) {
+          return;
+        }
+        lastSyncAtRef.current = now;
+
         const emergenciesRef = collection(db, "emergencies");
         const q = query(
           emergenciesRef,
@@ -169,6 +176,10 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         await SecureStore.setItemAsync(storageKeyForUser(user.uid), id).catch(() => {});
       } catch (e) {
         console.error("[EmergencyContext] refreshActiveEmergencyFromFirestore:", reason, e);
+      } finally {
+        if (user?.uid) {
+          setActiveEmergencyHydrated(true);
+        }
       }
     },
     [user?.uid]
@@ -325,9 +336,11 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       stopListening();
       setSubscribedEmergencyId(null);
       setLiveEmergency(null);
+      setActiveEmergencyHydrated(false);
       return;
     }
 
+    setActiveEmergencyHydrated(false);
     (async () => {
       await refreshActiveEmergencyFromFirestore("bootstrap");
     })();
@@ -349,6 +362,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     }
 
     lastUserIdRef.current = nextUid;
+    setActiveEmergencyHydrated(false);
   }, [user?.uid]);
 
   // Foreground refresh
@@ -372,6 +386,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       navigateToActiveEmergency,
       startEmergency,
       refreshActiveEmergencyFromFirestore,
+      activeEmergencyHydrated,
     }),
     [
       currentEmergency,
@@ -381,6 +396,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       startingEmergency,
       startEmergency,
       refreshActiveEmergencyFromFirestore,
+      activeEmergencyHydrated,
     ]
   );
 

@@ -9,6 +9,7 @@ import { db } from "../../../src/firebase/config";
 import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 import type { PatientSnapshot } from "../../../src/emergency/patientSnapshot";
 import { snapshotFromFirestore } from "../../../src/emergency/patientSnapshot";
+import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
 
 type EmergencyDoc = {
   userId: string;
@@ -199,17 +200,32 @@ export default function DoctorCaseDetailScreen() {
   }, [emergency?.userId, emergency?.victimType]);
 
   const basePatientLoc = emergency?.patientLocation ?? emergency?.location;
-  const patientLat = basePatientLoc?.latitude;
-  const patientLng = basePatientLoc?.longitude;
-  const patientHasCoords = typeof patientLat === "number" && typeof patientLng === "number";
 
-  const ambLat = emergency?.ambulanceLocation?.latitude;
-  const ambLng = emergency?.ambulanceLocation?.longitude;
-  const ambulanceHasCoords = typeof ambLat === "number" && typeof ambLng === "number";
+  /** All map coordinates come from the emergency document Firestore `onSnapshot` only. */
+  const patientCoordsLive = useMemo(
+    () => parseLatLng(emergency?.patientLocation) ?? parseLatLng(emergency?.location),
+    [emergency?.patientLocation, emergency?.location, emergency?.updatedAt],
+  );
+  const ambulanceCoordsLive = useMemo(
+    () => parseLatLng(emergency?.ambulanceLocation),
+    [emergency?.ambulanceLocation, emergency?.updatedAt],
+  );
+  const doctorCoordsLive = useMemo(
+    () => parseLatLng(emergency?.doctorLocation ?? undefined),
+    [emergency?.doctorLocation, emergency?.updatedAt],
+  );
 
-  const docLat = emergency?.doctorLocation?.latitude;
-  const docLng = emergency?.doctorLocation?.longitude;
-  const doctorHasCoords = typeof docLat === "number" && typeof docLng === "number";
+  const patientLat = patientCoordsLive?.latitude;
+  const patientLng = patientCoordsLive?.longitude;
+  const patientHasCoords = patientCoordsLive != null;
+
+  const ambLat = ambulanceCoordsLive?.latitude;
+  const ambLng = ambulanceCoordsLive?.longitude;
+  const ambulanceHasCoords = ambulanceCoordsLive != null;
+
+  const docLat = doctorCoordsLive?.latitude;
+  const docLng = doctorCoordsLive?.longitude;
+  const doctorHasCoords = doctorCoordsLive != null;
 
   const distanceMeters = useMemo(() => {
     if (!patientHasCoords || !ambulanceHasCoords) return null;
@@ -458,6 +474,7 @@ export default function DoctorCaseDetailScreen() {
               showsUserLocation={false}
             >
               <Marker
+                key={`pat-${emergency.updatedAt ?? ""}-${patientLat}-${patientLng}`}
                 coordinate={{ latitude: patientLat as number, longitude: patientLng as number }}
                 title={t("mapLegendPatient")}
                 description={basePatientLoc?.address ?? `${patientLat}, ${patientLng}`}
@@ -466,6 +483,7 @@ export default function DoctorCaseDetailScreen() {
 
               {ambulanceHasCoords ? (
                 <Marker
+                  key={`amb-${emergency.updatedAt ?? ""}-${ambLat}-${ambLng}`}
                   coordinate={{ latitude: ambLat as number, longitude: ambLng as number }}
                   title={t("mapLegendAmbulance")}
                   description={t("ambulance")}
@@ -475,6 +493,7 @@ export default function DoctorCaseDetailScreen() {
 
               {doctorHasCoords ? (
                 <Marker
+                  key={`doc-${emergency.updatedAt ?? ""}-${docLat}-${docLng}`}
                   coordinate={{ latitude: docLat as number, longitude: docLng as number }}
                   title={t("mapLegendDoctor")}
                   description={t("doctor_role")}

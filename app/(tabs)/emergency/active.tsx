@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Linking, Platform, ScrollView,
   Share,
@@ -16,6 +17,7 @@ import { useEmergency } from "../../../src/context/EmergencyContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
 import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
+import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
 
 interface LocationData {
   latitude: number;
@@ -34,7 +36,7 @@ interface Contact {
 
 export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
-  const { currentEmergency, liveEmergency } = useEmergency();
+  const { currentEmergency, liveEmergency, activeEmergencyHydrated } = useEmergency();
   const { t: translate } = useLanguage();
   const router = useRouter();
   const params = useLocalSearchParams<{ locationData?: string; victimType?: string }>();
@@ -47,14 +49,11 @@ export default function ActiveEmergencyScreen() {
   const [emergencyContacts, setEmergencyContacts] = useState<Contact[]>([]);
   const [ending, setEnding] = useState(false);
   const ambulanceAssigned = !!liveEmergency?.assignedAmbulanceId;
-  const ambulanceLocation =
-    liveEmergency?.ambulanceLocation?.latitude != null &&
-    liveEmergency?.ambulanceLocation?.longitude != null
-      ? {
-          latitude: liveEmergency.ambulanceLocation.latitude as number,
-          longitude: liveEmergency.ambulanceLocation.longitude as number,
-        }
-      : null;
+  /** Crew position — parsed from `liveEmergency.ambulanceLocation` (Firestore via EmergencyContext onSnapshot). */
+  const ambulanceCoordsLive = useMemo(
+    () => parseLatLng(liveEmergency?.ambulanceLocation),
+    [liveEmergency?.ambulanceLocation, liveEmergency?.updatedAt],
+  );
 
   /** Patient scene coords — Firestore `patientLocation` ?? `location` (real-time via EmergencyContext onSnapshot). */
   const patientCoordsLive = useMemo(() => {
@@ -84,6 +83,20 @@ export default function ActiveEmergencyScreen() {
   /** Ignore snapshot ETA in UI once crew has marked arrived (field may still exist on doc). */
   const isAmbulanceArrived = lifecycleStatus === "arrived";
 
+  /** Caller may end session only before crew marks on-scene (dispatched / enRoute). */
+  const canCallerCancelEmergency = useMemo(() => {
+    if (!liveEmergency || liveEmergency.sessionStatus !== "active") return false;
+    const s = normalizeLifecycleStatus(String(liveEmergency.status));
+    return s !== "arrived" && s !== "completed" && s !== "cancelled";
+  }, [liveEmergency]);
+
+  /** After arrival (or terminal lifecycle while session still active), cancel is blocked. */
+  const emergencyLockedAfterArrival = useMemo(() => {
+    if (!liveEmergency || liveEmergency.sessionStatus !== "active") return false;
+    const s = normalizeLifecycleStatus(String(liveEmergency.status));
+    return s === "arrived" || s === "completed";
+  }, [liveEmergency]);
+
   const crewEtaMinutes =
     !isAmbulanceArrived &&
     typeof liveEmergency?.currentSnapshot?.eta === "number" &&
@@ -91,42 +104,48 @@ export default function ActiveEmergencyScreen() {
       ? liveEmergency.currentSnapshot.eta
       : null;
 
-  const mapRegion = useMemo(() => {
-    if (!mapPatientAnchor) return null;
-    if (!ambulanceLocation) {
-      return {
-        latitude: mapPatientAnchor.latitude,
-        longitude: mapPatientAnchor.longitude,
-        latitudeDelta: 0.012,
-        longitudeDelta: 0.012,
-      };
-    }
-    const minLat = Math.min(mapPatientAnchor.latitude, ambulanceLocation.latitude);
-    const maxLat = Math.max(mapPatientAnchor.latitude, ambulanceLocation.latitude);
-    const minLon = Math.min(mapPatientAnchor.longitude, ambulanceLocation.longitude);
-    const maxLon = Math.max(mapPatientAnchor.longitude, ambulanceLocation.longitude);
-    const pad = 0.006;
-    return {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLon + maxLon) / 2,
-      latitudeDelta: Math.max(maxLat - minLat + pad, 0.012),
-      longitudeDelta: Math.max(maxLon - minLon + pad, 0.012),
-    };
-  }, [mapPatientAnchor, ambulanceLocation]);
-
   const distanceText = useMemo(() => {
-    if (!mapPatientAnchor || !ambulanceLocation) return null;
+    if (!mapPatientAnchor || !ambulanceCoordsLive) return null;
     const R = 6371000;
-    const dLat = ((ambulanceLocation.latitude - mapPatientAnchor.latitude) * Math.PI) / 180;
-    const dLon = ((ambulanceLocation.longitude - mapPatientAnchor.longitude) * Math.PI) / 180;
+    const dLat = ((ambulanceCoordsLive.latitude - mapPatientAnchor.latitude) * Math.PI) / 180;
+    const dLon = ((ambulanceCoordsLive.longitude - mapPatientAnchor.longitude) * Math.PI) / 180;
     const a =
       Math.sin(dLat / 2) ** 2 +
       Math.cos((mapPatientAnchor.latitude * Math.PI) / 180) *
-        Math.cos((ambulanceLocation.latitude * Math.PI) / 180) *
+        Math.cos((ambulanceCoordsLive.latitude * Math.PI) / 180) *
         Math.sin(dLon / 2) ** 2;
     const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
-  }, [mapPatientAnchor, ambulanceLocation]);
+  }, [mapPatientAnchor, ambulanceCoordsLive]);
+
+  const mapRef = useRef<MapView | null>(null);
+
+  /** Refit viewport when Firestore pushes new patient or ambulance coordinates (same source as markers). */
+  useEffect(() => {
+    if (!mapPatientAnchor || !mapRef.current) return;
+    const coords: { latitude: number; longitude: number }[] = [
+      { latitude: mapPatientAnchor.latitude, longitude: mapPatientAnchor.longitude },
+    ];
+    if (ambulanceCoordsLive) {
+      coords.push({
+        latitude: ambulanceCoordsLive.latitude,
+        longitude: ambulanceCoordsLive.longitude,
+      });
+    }
+    const timer = setTimeout(() => {
+      mapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 56, right: 56, bottom: 56, left: 56 },
+        animated: true,
+      });
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [
+    mapPatientAnchor.latitude,
+    mapPatientAnchor.longitude,
+    ambulanceCoordsLive?.latitude,
+    ambulanceCoordsLive?.longitude,
+    liveEmergency?.updatedAt,
+  ]);
 
   // Keep on-screen address text aligned with Firestore patient location when it streams in.
   useEffect(() => {
@@ -153,19 +172,31 @@ export default function ActiveEmergencyScreen() {
 
   // Firestore is the source of truth: if the emergency ends in Firestore and
   // the context clears, navigate away from this screen.
+  // Wait until at least one sync — otherwise transient null during hydration navigates away incorrectly.
   useEffect(() => {
+    if (!activeEmergencyHydrated) return;
     if (!currentEmergency) {
-      // Emergency is no longer active (cancelled/resolved) → exit screen
       if (router.canGoBack()) router.back();
       else router.replace("/(tabs)/emergency");
       return;
     }
     if (currentEmergency.sessionStatus !== "active") {
-      // Extra guard (context usually clears already)
       if (router.canGoBack()) router.back();
       else router.replace("/(tabs)/emergency");
     }
-  }, [currentEmergency?.id, currentEmergency?.sessionStatus]);
+  }, [activeEmergencyHydrated, currentEmergency?.id, currentEmergency?.sessionStatus, router]);
+
+  /** Clear "Ending…" if context drops the doc (cancel confirmed) or after safety timeout. */
+  useEffect(() => {
+    if (!ending) return;
+    if (!liveEmergency) setEnding(false);
+  }, [ending, liveEmergency]);
+
+  useEffect(() => {
+    if (!ending) return;
+    const t = setTimeout(() => setEnding(false), 12000);
+    return () => clearTimeout(t);
+  }, [ending]);
 
   const shareMedicalInfo = async () => {
     if (victimType === "other") return;
@@ -607,6 +638,16 @@ Shared from ResQNow Emergency App
   };
 
   const endEmergency = () => {
+    if (!canCallerCancelEmergency) {
+      Alert.alert(
+        translate("error") || "Error",
+        translate(
+          "emergencyLockedAfterArrival",
+          "This emergency cannot be cancelled because the ambulance has already arrived or the case is in progress.",
+        ),
+      );
+      return;
+    }
     Alert.alert(translate("endEmergency"), translate("endEmergencyConfirm"), [
       { text: translate("cancel"), style: "cancel" },
       {
@@ -626,16 +667,12 @@ Shared from ResQNow Emergency App
                     timestamp: new Date().toISOString(),
                   }),
                 });
-                // Do NOT clear local state or navigate yet.
-                // Wait for Firestore confirmation via onSnapshot (EmergencyContext).
                 console.log("[ActiveEmergency] cancel requested; waiting for Firestore confirmation");
               }
             } catch (e) {
               console.error("Error ending emergency:", e);
               Alert.alert(translate("error"), translate("failedToEndEmergency") || translate("error"));
               setEnding(false);
-            } finally {
-              // no-op: snapshot drives the final UI state
             }
           })();
         },
@@ -718,39 +755,44 @@ Shared from ResQNow Emergency App
                   {translate("ambulanceArrivingMinutes").replace("{minutes}", String(crewEtaMinutes))}
                 </Text>
               </View>
-            ) : ambulanceAssigned || ambulanceLocation ? (
+            ) : ambulanceAssigned || ambulanceCoordsLive ? (
               <Text style={styles.etaPending}>
                 {translate("ambulanceLocating") || "Locating ambulance…"}
               </Text>
             ) : null}
 
-            {mapRegion ? (
-              <MapView
-                style={styles.map}
-                region={mapRegion}
-                scrollEnabled
-                zoomEnabled
-                pitchEnabled={false}
-                rotateEnabled={false}
-              >
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              initialRegion={{
+                latitude: mapPatientAnchor.latitude,
+                longitude: mapPatientAnchor.longitude,
+                latitudeDelta: 0.012,
+                longitudeDelta: 0.012,
+              }}
+              scrollEnabled
+              zoomEnabled
+              pitchEnabled={false}
+              rotateEnabled={false}
+            >
+              <Marker
+                coordinate={mapPatientAnchor}
+                title={translate("mapLegendPatient") || "Patient"}
+                description={translate("yourLocation") || "Your position"}
+                pinColor="#D62828"
+              />
+              {ambulanceCoordsLive ? (
                 <Marker
-                  coordinate={mapPatientAnchor}
-                  title={translate("mapLegendPatient") || "Patient"}
-                  description={translate("yourLocation") || "Your position"}
-                  pinColor="#D62828"
+                  key={`amb-${liveEmergency?.updatedAt ?? ""}-${ambulanceCoordsLive.latitude}-${ambulanceCoordsLive.longitude}`}
+                  coordinate={ambulanceCoordsLive}
+                  title={translate("mapLegendAmbulance") || "Ambulance"}
+                  description={translate("ambulance") || "Ambulance"}
+                  pinColor="#0074D9"
                 />
-                {ambulanceLocation ? (
-                  <Marker
-                    coordinate={ambulanceLocation}
-                    title={translate("mapLegendAmbulance") || "Ambulance"}
-                    description={translate("ambulance") || "Ambulance"}
-                    pinColor="#0074D9"
-                  />
-                ) : null}
-              </MapView>
-            ) : null}
+              ) : null}
+            </MapView>
 
-            {ambulanceAssigned && !ambulanceLocation && crewEtaMinutes == null && !isAmbulanceArrived ? (
+            {ambulanceAssigned && !ambulanceCoordsLive && crewEtaMinutes == null && !isAmbulanceArrived ? (
               <View style={styles.mapWaiting}>
                 <Text style={styles.mapWaitingText}>
                   {translate("ambulanceLocating") || "Locating ambulance..."}
@@ -763,7 +805,7 @@ Shared from ResQNow Emergency App
                 <View style={[styles.legendDot, { backgroundColor: "#D62828" }]} />
                 <Text style={styles.legendLabel}>{translate("mapLegendPatient") || "Patient"}</Text>
               </View>
-              {ambulanceLocation ? (
+              {ambulanceCoordsLive ? (
                 <View style={styles.legendItem}>
                   <View style={[styles.legendDot, { backgroundColor: "#0074D9" }]} />
                   <Text style={styles.legendLabel}>{translate("mapLegendAmbulance") || "Ambulance"}</Text>
@@ -813,13 +855,38 @@ Shared from ResQNow Emergency App
         </TouchableOpacity>
       </ScrollView>
 
-      {/* End Emergency Button */}
+      {/* End emergency — only before crew arrival; sync loading vs lifecycle lock */}
       <View style={styles.footer}>
-        <TouchableOpacity style={[styles.endBtn, ending && styles.endBtnDisabled]} onPress={endEmergency} disabled={ending}>
-          <Text style={styles.endBtnText}>
-            {ending ? (translate("loading") || "Ending...") : translate("endEmergency")}
-          </Text>
-        </TouchableOpacity>
+        {!activeEmergencyHydrated ? (
+          <View style={styles.footerSyncRow}>
+            <ActivityIndicator color="#FFFFFF" />
+            <Text style={styles.footerSyncText}>
+              {translate("loading") || "Loading…"}
+            </Text>
+          </View>
+        ) : emergencyLockedAfterArrival ? (
+          <View style={styles.footerLocked}>
+            <Text style={styles.footerLockedTitle}>
+              {translate("emergencyLockedTitle", "Emergency Locked")}
+            </Text>
+            <Text style={styles.footerLockedBody}>
+              {translate(
+                "emergencyLockedAfterArrival",
+                "This emergency cannot be cancelled because the ambulance has already arrived or the case is in progress.",
+              )}
+            </Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.endBtn, ending && styles.endBtnDisabled]}
+            onPress={endEmergency}
+            disabled={ending || !canCallerCancelEmergency}
+          >
+            <Text style={styles.endBtnText}>
+              {ending ? (translate("loading") || "Ending…") : translate("endEmergency")}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -1135,6 +1202,36 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "700",
+  },
+  footerSyncRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+  },
+  footerSyncText: {
+    marginLeft: 12,
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  footerLocked: {
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+  },
+  footerLockedTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 6,
+    textAlign: "center",
+  },
+  footerLockedBody: {
+    color: "#FEE2E2",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 20,
   },
 });
 

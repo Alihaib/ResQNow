@@ -33,8 +33,20 @@ service cloud.firestore {
       return resource.data.userId;
     }
 
+    // Patient/caller cancel — only while crew has not marked on-scene (blocks arrived + terminal lifecycle).
+    function lifecycleBlocksPatientCancel() {
+      let s = resource.data.status;
+      return s == "arrived"
+        || s == "completed"
+        || s == "cancelled"
+        || s == "arrived_patient"
+        || s == "patient_picked";
+    }
+
     function callerCancels() {
       return request.auth.uid == ownerUid()
+        && resource.data.sessionStatus == "active"
+        && !lifecycleBlocksPatientCancel()
         && request.resource.data.sessionStatus == "cancelled"
         && request.resource.data.status == "cancelled";
     }

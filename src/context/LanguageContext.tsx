@@ -9,7 +9,8 @@ type LanguageContextType = {
   lang: Lang;
   setLang: (lang: Lang) => Promise<void>;
   toggleLanguage: () => void;
-  t: (key: string) => string;
+  /** Optional English fallback when a key is missing (passed to i18n-js as defaultValue). */
+  t: (key: string, fallback?: string) => string;
 };
 
 const LanguageContext = createContext<LanguageContextType>({
@@ -63,8 +64,8 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
   };
 
   /** פונקציית תרגום */
-  const t = (key: string) => {
-    return i18n.t(key);
+  const t = (key: string, fallback?: string) => {
+    return String(i18n.t(key, fallback !== undefined ? { defaultValue: fallback } : {}));
   };
 
   if (!ready) return null;
