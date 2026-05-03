@@ -30,6 +30,8 @@ type EmergencyDoc = {
   severity?: string;
   assignedAmbulanceId?: string | null;
   ambulanceLocation?: { latitude?: number; longitude?: number } | null;
+  /** Optional — only shown when present on the document */
+  doctorLocation?: { latitude?: number; longitude?: number } | null;
   updatedAt?: string;
   timeline?: Array<{ status?: string; timestamp?: string; ambulanceId?: string; doctorId?: string; text?: string }>;
   doctorNotes?: Array<{ text?: string; timestamp?: string; doctorId?: string }>;
@@ -135,6 +137,16 @@ export default function DoctorCaseDetailScreen() {
           severity: data.severity,
           assignedAmbulanceId: data.assignedAmbulanceId ?? null,
           ambulanceLocation: data.ambulanceLocation ?? null,
+          doctorLocation:
+            data.doctorLocation &&
+            typeof data.doctorLocation === "object" &&
+            typeof (data.doctorLocation as any).latitude === "number" &&
+            typeof (data.doctorLocation as any).longitude === "number"
+              ? {
+                  latitude: (data.doctorLocation as any).latitude as number,
+                  longitude: (data.doctorLocation as any).longitude as number,
+                }
+              : null,
           updatedAt: data.updatedAt,
           timeline: Array.isArray(data.timeline) ? data.timeline : undefined,
           doctorNotes: Array.isArray(data.doctorNotes) ? data.doctorNotes : undefined,
@@ -195,24 +207,23 @@ export default function DoctorCaseDetailScreen() {
   const ambLng = emergency?.ambulanceLocation?.longitude;
   const ambulanceHasCoords = typeof ambLat === "number" && typeof ambLng === "number";
 
+  const docLat = emergency?.doctorLocation?.latitude;
+  const docLng = emergency?.doctorLocation?.longitude;
+  const doctorHasCoords = typeof docLat === "number" && typeof docLng === "number";
+
   const distanceMeters = useMemo(() => {
     if (!patientHasCoords || !ambulanceHasCoords) return null;
     return calculateDistanceMeters(patientLat as number, patientLng as number, ambLat as number, ambLng as number);
   }, [patientHasCoords, ambulanceHasCoords, patientLat, patientLng, ambLat, ambLng]);
 
-  const etaMinutes = useMemo(() => {
-    if (distanceMeters === null) return null;
-    // Simple ETA estimation (no routing API): assume average 40 km/h in-city.
-    const speedKmh = 40;
-    const speedMPerMin = (speedKmh * 1000) / 60;
-    return Math.max(1, Math.round(distanceMeters / speedMPerMin));
-  }, [distanceMeters]);
-
-  const etaLabel = useMemo(() => {
-    if (etaMinutes === null) return null;
-    if (etaMinutes < 2) return "Arriving now";
-    return `${etaMinutes} min`;
-  }, [etaMinutes]);
+  /** Crew ETA from snapshot — hidden once on scene (ETA may remain stale on doc). */
+  const crewEtaMinutes =
+    emergency != null &&
+    normalizeLifecycleStatus(String(emergency.status)) !== "arrived" &&
+    typeof emergency.currentSnapshot?.eta === "number" &&
+    Number.isFinite(emergency.currentSnapshot.eta)
+      ? emergency.currentSnapshot.eta
+      : null;
 
   const openInMaps = () => {
     if (!patientHasCoords) return;
@@ -229,6 +240,9 @@ export default function DoctorCaseDetailScreen() {
     const coords = [patientCoord];
     if (ambulanceHasCoords) {
       coords.push({ latitude: ambLat as number, longitude: ambLng as number });
+    }
+    if (doctorHasCoords) {
+      coords.push({ latitude: docLat as number, longitude: docLng as number });
     }
 
     const timer = setTimeout(() => {
@@ -252,7 +266,7 @@ export default function DoctorCaseDetailScreen() {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [patientHasCoords, ambulanceHasCoords, patientLat, patientLng, ambLat, ambLng]);
+  }, [patientHasCoords, ambulanceHasCoords, doctorHasCoords, patientLat, patientLng, ambLat, ambLng, docLat, docLng]);
 
   const timelineSorted = useMemo(() => {
     const items = emergency?.timeline ?? [];
@@ -340,7 +354,11 @@ export default function DoctorCaseDetailScreen() {
             <View style={styles.snapshotRow}>
               <Text style={styles.snapshotLabel}>ETA (crew)</Text>
               <Text style={styles.snapshotValue}>
-                {emergency.currentSnapshot.eta != null ? `${emergency.currentSnapshot.eta} min` : "—"}
+                {normalizeLifecycleStatus(String(emergency.status)) === "arrived"
+                  ? t("ambulanceArrivedShort")
+                  : emergency.currentSnapshot.eta != null
+                    ? `${emergency.currentSnapshot.eta} min`
+                    : "—"}
               </Text>
             </View>
             <View style={styles.snapshotRow}>
@@ -405,10 +423,10 @@ export default function DoctorCaseDetailScreen() {
         </Text>
       </View>
 
-      {/* Map */}
+      {/* Map — patient (red), ambulance (blue), optional doctor (green); live via onSnapshot */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.sectionHeadingSecondary}>Location</Text>
+          <Text style={styles.sectionHeadingSecondary}>Live map</Text>
           <TouchableOpacity onPress={openInMaps} disabled={!patientHasCoords}>
             <Text style={[styles.link, !patientHasCoords && styles.linkDisabled]}>{t("openInMaps")}</Text>
           </TouchableOpacity>
@@ -417,9 +435,12 @@ export default function DoctorCaseDetailScreen() {
           {basePatientLoc?.address ||
             (patientHasCoords ? `${patientLat}, ${patientLng}` : "Not provided")}
         </Text>
-        {!ambulanceHasCoords && (
-          <Text style={styles.muted}>Ambulance location not available yet.</Text>
-        )}
+        {crewEtaMinutes != null ? (
+          <Text style={styles.mapEtaCaption}>ETA (crew) · {crewEtaMinutes} min</Text>
+        ) : null}
+        {!ambulanceHasCoords ? (
+          <Text style={styles.muted}>Ambulance GPS not available yet.</Text>
+        ) : null}
 
         {patientHasCoords ? (
           <View style={styles.mapFrame}>
@@ -438,7 +459,7 @@ export default function DoctorCaseDetailScreen() {
             >
               <Marker
                 coordinate={{ latitude: patientLat as number, longitude: patientLng as number }}
-                title="Patient"
+                title={t("mapLegendPatient")}
                 description={basePatientLoc?.address ?? `${patientLat}, ${patientLng}`}
                 pinColor="#D62828"
               />
@@ -446,9 +467,18 @@ export default function DoctorCaseDetailScreen() {
               {ambulanceHasCoords ? (
                 <Marker
                   coordinate={{ latitude: ambLat as number, longitude: ambLng as number }}
-                  title="Ambulance"
-                  description="Live ambulance location"
+                  title={t("mapLegendAmbulance")}
+                  description={t("ambulance")}
                   pinColor="#0074D9"
+                />
+              ) : null}
+
+              {doctorHasCoords ? (
+                <Marker
+                  coordinate={{ latitude: docLat as number, longitude: docLng as number }}
+                  title={t("mapLegendDoctor")}
+                  description={t("doctor_role")}
+                  pinColor="#15803D"
                 />
               ) : null}
             </MapView>
@@ -456,22 +486,36 @@ export default function DoctorCaseDetailScreen() {
         ) : (
           <Text style={styles.muted}>{t("mapUnavailable")}</Text>
         )}
+        <View style={styles.mapLegendRow}>
+          <View style={styles.legendChip}>
+            <View style={[styles.legendDotMap, { backgroundColor: "#D62828" }]} />
+            <Text style={styles.legendChipText}>{t("mapLegendPatient")}</Text>
+          </View>
+          <View style={styles.legendChip}>
+            <View style={[styles.legendDotMap, { backgroundColor: "#0074D9" }]} />
+            <Text style={styles.legendChipText}>{t("mapLegendAmbulance")}</Text>
+          </View>
+          {doctorHasCoords ? (
+            <View style={styles.legendChip}>
+              <View style={[styles.legendDotMap, { backgroundColor: "#15803D" }]} />
+              <Text style={styles.legendChipText}>{t("mapLegendDoctor")}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
-      {/* GPS-derived approach (read-only; complements crew ETA above) */}
+      {/* GPS distance only — ETA comes from crew snapshot above */}
       <View style={styles.card}>
-        <Text style={styles.sectionHeadingSecondary}>Live approach (GPS)</Text>
+        <Text style={styles.sectionHeadingSecondary}>Approach (GPS)</Text>
         <View style={styles.row}>
-          <Text style={styles.label}>Distance</Text>
+          <Text style={styles.label}>Ambulance ↔ patient</Text>
           <Text style={styles.value}>
             {distanceMeters === null ? "—" : formatDistance(distanceMeters)}
           </Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.label}>ETA (estimated)</Text>
-          <Text style={[styles.value, etaMinutes !== null && etaMinutes < 2 ? styles.etaArriving : undefined]}>
-            {etaLabel ?? "—"}
-          </Text>
+          <Text style={styles.label}>ETA (crew snapshot)</Text>
+          <Text style={styles.value}>{crewEtaMinutes != null ? `${crewEtaMinutes} min` : "—"}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Ambulance GPS</Text>
@@ -754,6 +798,22 @@ const styles = StyleSheet.create({
   linkDisabled: { color: "#ADB5BD" },
   mapFrame: { height: 220, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#E9ECEF" },
   map: { width: "100%", height: "100%" },
+  mapEtaCaption: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#065F46",
+    marginBottom: 8,
+  },
+  mapLegendRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 12,
+    alignItems: "center",
+  },
+  legendChip: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDotMap: { width: 10, height: 10, borderRadius: 5 },
+  legendChipText: { fontSize: 12, fontWeight: "700", color: "#495057" },
   etaArriving: { color: "#DC2626" },
   timelineRow: { flexDirection: "row", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F3F5" },
   timelineDot: { color: "#D62828", fontWeight: "900" },

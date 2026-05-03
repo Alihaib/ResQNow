@@ -15,6 +15,7 @@ import { useAuth } from "../../../src/context/AuthContext";
 import { useEmergency } from "../../../src/context/EmergencyContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
+import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 
 interface LocationData {
   latitude: number;
@@ -55,42 +56,100 @@ export default function ActiveEmergencyScreen() {
         }
       : null;
 
+  /** Patient scene coords — Firestore `patientLocation` ?? `location` (real-time via EmergencyContext onSnapshot). */
+  const patientCoordsLive = useMemo(() => {
+    const live = liveEmergency;
+    if (!live) return null;
+    const pl = live.patientLocation ?? live.location;
+    if (
+      pl?.latitude != null &&
+      pl?.longitude != null &&
+      typeof pl.latitude === "number" &&
+      typeof pl.longitude === "number"
+    ) {
+      return { latitude: pl.latitude, longitude: pl.longitude };
+    }
+    return null;
+  }, [liveEmergency]);
+
+  /** Prefer live Firestore patient pin; fall back to locally captured coords from SOS flow. */
+  const mapPatientAnchor = patientCoordsLive
+    ?? (location
+      ? { latitude: location.latitude, longitude: location.longitude }
+      : null);
+
+  const lifecycleStatus = liveEmergency?.status
+    ? normalizeLifecycleStatus(String(liveEmergency.status))
+    : null;
+  /** Ignore snapshot ETA in UI once crew has marked arrived (field may still exist on doc). */
+  const isAmbulanceArrived = lifecycleStatus === "arrived";
+
+  const crewEtaMinutes =
+    !isAmbulanceArrived &&
+    typeof liveEmergency?.currentSnapshot?.eta === "number" &&
+    Number.isFinite(liveEmergency.currentSnapshot.eta)
+      ? liveEmergency.currentSnapshot.eta
+      : null;
+
   const mapRegion = useMemo(() => {
-    if (!location) return null;
+    if (!mapPatientAnchor) return null;
     if (!ambulanceLocation) {
       return {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+        latitude: mapPatientAnchor.latitude,
+        longitude: mapPatientAnchor.longitude,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
       };
     }
-    const minLat = Math.min(location.latitude, ambulanceLocation.latitude);
-    const maxLat = Math.max(location.latitude, ambulanceLocation.latitude);
-    const minLon = Math.min(location.longitude, ambulanceLocation.longitude);
-    const maxLon = Math.max(location.longitude, ambulanceLocation.longitude);
-    const pad = 0.005;
+    const minLat = Math.min(mapPatientAnchor.latitude, ambulanceLocation.latitude);
+    const maxLat = Math.max(mapPatientAnchor.latitude, ambulanceLocation.latitude);
+    const minLon = Math.min(mapPatientAnchor.longitude, ambulanceLocation.longitude);
+    const maxLon = Math.max(mapPatientAnchor.longitude, ambulanceLocation.longitude);
+    const pad = 0.006;
     return {
       latitude: (minLat + maxLat) / 2,
       longitude: (minLon + maxLon) / 2,
-      latitudeDelta: Math.max(maxLat - minLat + pad, 0.01),
-      longitudeDelta: Math.max(maxLon - minLon + pad, 0.01),
+      latitudeDelta: Math.max(maxLat - minLat + pad, 0.012),
+      longitudeDelta: Math.max(maxLon - minLon + pad, 0.012),
     };
-  }, [location, ambulanceLocation]);
+  }, [mapPatientAnchor, ambulanceLocation]);
 
   const distanceText = useMemo(() => {
-    if (!location || !ambulanceLocation) return null;
+    if (!mapPatientAnchor || !ambulanceLocation) return null;
     const R = 6371000;
-    const dLat = ((ambulanceLocation.latitude - location.latitude) * Math.PI) / 180;
-    const dLon = ((ambulanceLocation.longitude - location.longitude) * Math.PI) / 180;
+    const dLat = ((ambulanceLocation.latitude - mapPatientAnchor.latitude) * Math.PI) / 180;
+    const dLon = ((ambulanceLocation.longitude - mapPatientAnchor.longitude) * Math.PI) / 180;
     const a =
       Math.sin(dLat / 2) ** 2 +
-      Math.cos((location.latitude * Math.PI) / 180) *
+      Math.cos((mapPatientAnchor.latitude * Math.PI) / 180) *
         Math.cos((ambulanceLocation.latitude * Math.PI) / 180) *
         Math.sin(dLon / 2) ** 2;
     const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(1)} km`;
-  }, [location, ambulanceLocation]);
+  }, [mapPatientAnchor, ambulanceLocation]);
+
+  // Keep on-screen address text aligned with Firestore patient location when it streams in.
+  useEffect(() => {
+    if (!patientCoordsLive) return;
+    const addr =
+      liveEmergency?.patientLocation?.address ?? liveEmergency?.location?.address ?? null;
+    setLocationDisplay(
+      addr ?? `${patientCoordsLive.latitude.toFixed(6)}, ${patientCoordsLive.longitude.toFixed(6)}`,
+    );
+    setLocation((prev) => ({
+      latitude: patientCoordsLive.latitude,
+      longitude: patientCoordsLive.longitude,
+      accuracy: prev?.accuracy ?? null,
+      address: addr ?? prev?.address ?? null,
+      timestamp: liveEmergency?.updatedAt ?? prev?.timestamp ?? new Date().toISOString(),
+    }));
+  }, [
+    patientCoordsLive?.latitude,
+    patientCoordsLive?.longitude,
+    liveEmergency?.updatedAt,
+    liveEmergency?.patientLocation?.address,
+    liveEmergency?.location?.address,
+  ]);
 
   // Firestore is the source of truth: if the emergency ends in Firestore and
   // the context clears, navigate away from this screen.
@@ -630,61 +689,86 @@ Shared from ResQNow Emergency App
           <Text style={styles.shareIcon}>📤</Text>
         </TouchableOpacity>
 
-        {/* Ambulance Map */}
-        {location && (ambulanceAssigned || ambulanceLocation) && (
+        {/* Live tracking map — locations & ETA from Firestore (EmergencyContext onSnapshot) */}
+        {mapPatientAnchor && (
           <View style={styles.mapCard}>
             <View style={styles.mapHeader}>
-              <Text style={styles.mapTitle}>🚑 {translate("ambulanceOnWay") || "Ambulance On The Way"}</Text>
-              {distanceText && (
+              <Text style={styles.mapTitle}>
+                🚑{" "}
+                {isAmbulanceArrived
+                  ? translate("ambulanceArrivedShort")
+                  : translate("ambulanceOnWay") || "Ambulance On The Way"}
+              </Text>
+              {distanceText ? (
                 <View style={styles.distanceBadge}>
                   <Text style={styles.distanceText}>📏 {distanceText}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
+
+            {isAmbulanceArrived ? (
+              <View style={styles.etaBannerArrived}>
+                <Text style={styles.etaBannerArrivedText}>
+                  {translate("ambulanceArrivedBanner")}
+                </Text>
+              </View>
+            ) : crewEtaMinutes != null ? (
+              <View style={styles.etaBanner}>
+                <Text style={styles.etaBannerText}>
+                  {translate("ambulanceArrivingMinutes").replace("{minutes}", String(crewEtaMinutes))}
+                </Text>
+              </View>
+            ) : ambulanceAssigned || ambulanceLocation ? (
+              <Text style={styles.etaPending}>
+                {translate("ambulanceLocating") || "Locating ambulance…"}
+              </Text>
+            ) : null}
 
             {mapRegion ? (
               <MapView
                 style={styles.map}
                 region={mapRegion}
-                scrollEnabled={false}
-                zoomEnabled={false}
+                scrollEnabled
+                zoomEnabled
                 pitchEnabled={false}
                 rotateEnabled={false}
               >
                 <Marker
-                  coordinate={{ latitude: location.latitude, longitude: location.longitude }}
-                  title={translate("yourLocation") || "Your Location"}
-                  pinColor="#DC2626"
+                  coordinate={mapPatientAnchor}
+                  title={translate("mapLegendPatient") || "Patient"}
+                  description={translate("yourLocation") || "Your position"}
+                  pinColor="#D62828"
                 />
-                {ambulanceLocation && (
+                {ambulanceLocation ? (
                   <Marker
                     coordinate={ambulanceLocation}
-                    title={translate("ambulance") || "Ambulance"}
-                    pinColor="#1D4ED8"
+                    title={translate("mapLegendAmbulance") || "Ambulance"}
+                    description={translate("ambulance") || "Ambulance"}
+                    pinColor="#0074D9"
                   />
-                )}
+                ) : null}
               </MapView>
             ) : null}
 
-            {!ambulanceLocation && (
+            {ambulanceAssigned && !ambulanceLocation && crewEtaMinutes == null && !isAmbulanceArrived ? (
               <View style={styles.mapWaiting}>
                 <Text style={styles.mapWaitingText}>
                   {translate("ambulanceLocating") || "Locating ambulance..."}
                 </Text>
               </View>
-            )}
+            ) : null}
 
             <View style={styles.mapLegend}>
               <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: "#DC2626" }]} />
-                <Text style={styles.legendLabel}>{translate("you") || "You"}</Text>
+                <View style={[styles.legendDot, { backgroundColor: "#D62828" }]} />
+                <Text style={styles.legendLabel}>{translate("mapLegendPatient") || "Patient"}</Text>
               </View>
-              {ambulanceLocation && (
+              {ambulanceLocation ? (
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: "#1D4ED8" }]} />
-                  <Text style={styles.legendLabel}>{translate("ambulance") || "Ambulance"}</Text>
+                  <View style={[styles.legendDot, { backgroundColor: "#0074D9" }]} />
+                  <Text style={styles.legendLabel}>{translate("mapLegendAmbulance") || "Ambulance"}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           </View>
         )}
@@ -947,6 +1031,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#1D4ED8",
+  },
+  etaBanner: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: "#ECFDF5",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  etaBannerText: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#065F46",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  etaPending: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6C757D",
+    textAlign: "center",
+  },
+  etaBannerArrived: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: "#DCFCE7",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+  },
+  etaBannerArrivedText: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#166534",
+    textAlign: "center",
+    lineHeight: 22,
   },
   map: {
     width: "100%",

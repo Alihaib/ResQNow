@@ -10,7 +10,6 @@ import { db } from "../../src/firebase/config";
 import {
   allowsMedicalSnapshotFields,
   ambulanceStatusLabel,
-  etaMinutesFromDistanceMeters,
   mergePatientSnapshot,
   snapshotPayloadForLifecycle,
   type ConditionLevel,
@@ -23,6 +22,11 @@ import {
   normalizeLifecycleStatus,
   type LifecycleStatus,
 } from "../../src/emergency/stateMachine";
+import { useAmbulanceGps } from "../../src/hooks/useAmbulanceGps";
+import {
+  startAmbulanceGpsTracking,
+  stopAmbulanceGpsTracking,
+} from "../../src/services/ambulanceGpsService";
 import { claimEmergencyTransaction, updateLifecycleTransaction } from "../../src/services/emergencyAssignment";
 import { rejectAndReassignEmergency } from "../../src/services/autoDispatch";
 
@@ -47,6 +51,8 @@ interface Emergency {
   assignedAmbulanceId?: string | null;
   ambulanceLocation?: { latitude?: number; longitude?: number } | null;
   assignedAt?: string | null;
+  /** Mission GPS session flag (synced for resume after app restart). */
+  gpsActive?: boolean;
   currentSnapshot?: PatientSnapshot | null;
   timeline?: Array<{ status?: string; timestamp?: string; ambulanceId?: string; text?: string }>;
 }
@@ -84,10 +90,11 @@ export default function EmergencyDetailScreen() {
   const [emergency, setEmergency] = useState<Emergency | null>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [tracking, setTracking] = useState(false);
-  const trackingSubRef = useRef<Location.LocationSubscription | null>(null);
-  const lastWriteAtRef = useRef<number>(0);
+  const ambulanceGps = useAmbulanceGps();
+  const trackingThisMission =
+    ambulanceGps.isGpsActive && ambulanceGps.activeEmergencyId === params.emergencyId;
+  /** One-shot device location before Firestore / mission GPS fills the marker. */
+  const [geoBootstrapLoc, setGeoBootstrapLoc] = useState<{ latitude: number; longitude: number } | null>(null);
   const emergencyRef = useRef<Emergency | null>(null);
   const userUidRef = useRef<string | null>(null);
   const mapRef = useRef<MapView | null>(null);
@@ -150,6 +157,7 @@ export default function EmergencyDetailScreen() {
           assignedAmbulanceId: data.assignedAmbulanceId ?? null,
           ambulanceLocation: data.ambulanceLocation ?? null,
           assignedAt: typeof data.assignedAt === "string" ? data.assignedAt : null,
+          gpsActive: data.gpsActive === true,
           currentSnapshot: snapshotFromFirestore(data.currentSnapshot),
           timeline: Array.isArray(data.timeline) ? data.timeline : undefined,
         };
@@ -202,7 +210,7 @@ export default function EmergencyDetailScreen() {
           const location = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.High,
           });
-          setAmbulanceLocation({
+          setGeoBootstrapLoc({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           });
@@ -219,6 +227,36 @@ export default function EmergencyDetailScreen() {
     if (!emergency?.assignedAmbulanceId) return false;
     return emergency.assignedAmbulanceId === user.uid;
   }, [user?.uid, emergency?.assignedAmbulanceId]);
+
+  const ambulanceLocation = useMemo(() => {
+    if (trackingThisMission && ambulanceGps.lastCoords) return ambulanceGps.lastCoords;
+    const al = emergency?.ambulanceLocation;
+    if (al != null && typeof al.latitude === "number" && typeof al.longitude === "number") {
+      return { latitude: al.latitude, longitude: al.longitude };
+    }
+    return geoBootstrapLoc;
+  }, [trackingThisMission, ambulanceGps.lastCoords, emergency?.ambulanceLocation, geoBootstrapLoc]);
+
+  /** Resume mission GPS after process kill when Firestore still marks the session active. */
+  useEffect(() => {
+    if (!emergency?.id || !user?.uid) return;
+    if (emergency.gpsActive !== true) return;
+    if (emergency.assignedAmbulanceId !== user.uid) return;
+    if (emergency.sessionStatus !== "active") return;
+    const lc = normalizeLifecycleStatus(String(emergency.status));
+    if (lc === "completed" || lc === "cancelled") return;
+
+    void startAmbulanceGpsTracking(emergency.id, user.uid).catch((err) => {
+      console.warn("[AmbulanceEmergencyDetail] resume GPS failed:", err);
+    });
+  }, [
+    emergency?.id,
+    emergency?.gpsActive,
+    emergency?.assignedAmbulanceId,
+    emergency?.sessionStatus,
+    emergency?.status,
+    user?.uid,
+  ]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
     const R = 6371;
@@ -252,111 +290,27 @@ export default function EmergencyDetailScreen() {
       Alert.alert(t("error"), t("mustBeLoggedInToTrack"));
       return;
     }
-    if (trackingSubRef.current) return;
+    if (ambulanceGps.isBootstrapping) return;
 
-    await claimIfUnassigned();
-
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(t("error"), t("locationPermissionDenied"));
-      return;
-    }
-
-    setTracking(true);
-    trackingSubRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 5000,
-        distanceInterval: 10,
-      },
-      async (loc) => {
-        setAmbulanceLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-
-        // Throttle Firestore writes (avoid spamming)
-        const now = Date.now();
-        if (now - lastWriteAtRef.current < 3500) return;
-        lastWriteAtRef.current = now;
-
-        try {
-          // Only the assigned ambulance should publish location
-          const latest = emergencyRef.current;
-          const latestUid = userUidRef.current;
-          if (!latest?.id || !latestUid) return;
-          const assigned = latest.assignedAmbulanceId;
-          if (assigned && assigned !== latestUid) {
-            console.log(
-              "[AmbulanceEmergencyDetail] skip GPS write: assigned to another ambulance",
-              assigned
-            );
-            return;
-          }
-
-          console.log(
-            "[AmbulanceEmergencyDetail] sending ambulanceLocation:",
-            latest.id,
-            loc.coords.latitude,
-            loc.coords.longitude
-          );
-
-          const pat = latest.patientLocation ?? latest.location;
-          let distM: number | null = null;
-          if (
-            pat &&
-            typeof pat.latitude === "number" &&
-            typeof pat.longitude === "number"
-          ) {
-            const km = calculateDistance(
-              loc.coords.latitude,
-              loc.coords.longitude,
-              pat.latitude,
-              pat.longitude
-            );
-            distM = km * 1000;
-          }
-          const eta = etaMinutesFromDistanceMeters(distM);
-          const lc = normalizeLifecycleStatus(String(latest.status));
-          const snapshot = mergePatientSnapshot(
-            latest.currentSnapshot as Record<string, unknown> | undefined,
-            {
-              eta,
-              ambulanceStatus: ambulanceStatusLabel(lc),
-            },
-            lc,
-          );
-
-          await updateDoc(
-            doc(db, "emergencies", latest.id),
-            stripUndefinedDeep({
-              assignedAmbulanceId: assigned ?? latestUid,
-              ambulanceLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-              updatedAt: new Date().toISOString(),
-              currentSnapshot: snapshotPayloadForLifecycle(lc, snapshot),
-            })
-          );
-
-          updateDoc(doc(db, "users", latestUid), {
-            lastKnownLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-            lastKnownLocationUpdatedAt: new Date().toISOString(),
-          }).catch(() => {});
-        } catch (e) {
-          console.error("Failed to update ambulanceLocation:", e);
-        }
+    try {
+      await startAmbulanceGpsTracking(e.id, uid);
+    } catch (err: unknown) {
+      console.error("[AmbulanceEmergencyDetail] startTracking failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === "location_permission_denied") {
+        Alert.alert(t("error"), t("locationPermissionDenied"));
+      } else {
+        Alert.alert(
+          t("error"),
+          t("locationPermissionDenied") || "Could not start GPS tracking. Check location services.",
+        );
       }
-    );
+    }
   };
 
   const stopTracking = () => {
-    trackingSubRef.current?.remove();
-    trackingSubRef.current = null;
-    setTracking(false);
+    void stopAmbulanceGpsTracking("user_stop");
   };
-
-  useEffect(() => {
-    return () => {
-      trackingSubRef.current?.remove();
-      trackingSubRef.current = null;
-    };
-  }, []);
 
   // Auto-fit map to show both patient and ambulance markers
   useEffect(() => {
@@ -447,7 +401,7 @@ export default function EmergencyDetailScreen() {
       return;
     }
 
-    stopTracking();
+    await stopAmbulanceGpsTracking("release_assignment");
 
     await rejectAndReassignEmergency({
       emergencyId: e.id,
@@ -617,7 +571,9 @@ export default function EmergencyDetailScreen() {
                 : "Cancelled"}
           </Text>
 
-          {typeof emergency.currentSnapshot?.eta === "number" && Number.isFinite(emergency.currentSnapshot.eta) ? (
+          {lifecycle !== "arrived" &&
+          typeof emergency.currentSnapshot?.eta === "number" &&
+          Number.isFinite(emergency.currentSnapshot.eta) ? (
             <View style={styles.missionEtaRow}>
               <Text style={styles.missionEtaLabel}>ETA</Text>
               <Text style={styles.missionEtaValue}>{emergency.currentSnapshot.eta} min</Text>
@@ -697,20 +653,38 @@ export default function EmergencyDetailScreen() {
             >
               <Marker
                 coordinate={{ latitude: baseLoc.latitude, longitude: baseLoc.longitude }}
-                title="Patient"
+                title={t("mapLegendPatient")}
                 description={baseLoc.address ?? `${baseLoc.latitude.toFixed(5)}, ${baseLoc.longitude.toFixed(5)}`}
                 pinColor="#D62828"
               />
               {ambulanceLocation && (
                 <Marker
                   coordinate={{ latitude: ambulanceLocation.latitude, longitude: ambulanceLocation.longitude }}
-                  title="Ambulance"
-                  description="Your current location"
+                  title={t("mapLegendAmbulance")}
+                  description={t("you")}
                   pinColor="#0074D9"
                 />
               )}
             </MapView>
-            {tracking && (
+            <View style={styles.mapTrackingOverlay} pointerEvents="none">
+              {lifecycle !== "arrived" &&
+              typeof emergency.currentSnapshot?.eta === "number" &&
+              Number.isFinite(emergency.currentSnapshot.eta) ? (
+                <Text style={styles.mapTrackingEta}>
+                  ETA (crew) · {emergency.currentSnapshot.eta} min
+                </Text>
+              ) : null}
+              {distance != null ? (
+                <Text style={styles.mapTrackingDist}>
+                  ≈{" "}
+                  {distance < 1
+                    ? `${Math.round(distance * 1000)} m`
+                    : `${distance.toFixed(1)} km`}{" "}
+                  to patient
+                </Text>
+              ) : null}
+            </View>
+            {trackingThisMission && (
               <View style={styles.liveIndicator}>
                 <View style={styles.liveDot} />
                 <Text style={styles.liveText}>LIVE</Text>
@@ -730,23 +704,38 @@ export default function EmergencyDetailScreen() {
           <Text style={styles.sectionOverline}>{transportOnly ? "Transport" : assessmentMode ? "On scene" : "Actions"}</Text>
           <Text style={styles.sectionTitle}>Quick actions</Text>
           <View style={styles.infoCard}>
-            {transportOnly && emergency.sessionStatus === "active" ? (
+            {emergency.sessionStatus === "active" && isAssignedToMe ? (
               <>
-                <TouchableOpacity style={styles.actionOutlineBtn} onPress={openNavigation}>
-                  <Text style={styles.actionOutlineBtnText}>Continue navigation</Text>
-                </TouchableOpacity>
+                {transportOnly ? (
+                  <TouchableOpacity style={styles.actionOutlineBtn} onPress={openNavigation}>
+                    <Text style={styles.actionOutlineBtnText}>Continue navigation</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <TouchableOpacity
-                  style={[styles.actionOutlineBtn, tracking && styles.actionOutlineBtnActive]}
-                  onPress={tracking ? stopTracking : startTracking}
+                  style={[
+                    styles.actionOutlineBtn,
+                    trackingThisMission && styles.actionOutlineBtnActive,
+                  ]}
+                  onPress={() => (trackingThisMission ? stopTracking() : void startTracking())}
+                  disabled={ambulanceGps.isBootstrapping}
                 >
-                  <Text style={[styles.actionOutlineBtnText, tracking && styles.actionOutlineBtnTextActive]}>
-                    {tracking ? t("stopGps") : t("startGps")}
+                  <Text
+                    style={[
+                      styles.actionOutlineBtnText,
+                      trackingThisMission && styles.actionOutlineBtnTextActive,
+                    ]}
+                  >
+                    {ambulanceGps.isBootstrapping
+                      ? t("loading")
+                      : trackingThisMission
+                        ? t("stopGps")
+                        : t("startGps")}
                   </Text>
                 </TouchableOpacity>
                 <Text style={styles.actionHelp}>
-                  GPS publishes your position for dispatch while enabled.
+                  GPS publishes your position for dispatch while enabled (updates about every 4s).
                 </Text>
-                {isAssignedToMe && lifecycle === "dispatched" ? (
+                {transportOnly && lifecycle === "dispatched" ? (
                   <TouchableOpacity style={styles.actionMutedBtn} onPress={releaseAssignment}>
                     <Text style={styles.actionMutedBtnText}>Release assignment</Text>
                   </TouchableOpacity>
@@ -1681,6 +1670,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  mapTrackingOverlay: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    bottom: 10,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  mapTrackingEta: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#0F5132",
+  },
+  mapTrackingDist: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#495057",
+    marginTop: 4,
   },
   map: {
     width: "100%",

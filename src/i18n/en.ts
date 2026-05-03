@@ -516,4 +516,10 @@ export default {
   gettingLocations: "Getting locations...",
   ambulanceOnWay: "Ambulance On The Way",
   ambulanceLocating: "Locating ambulance...",
+  ambulanceArrivingMinutes: "Ambulance arriving in {minutes} minutes",
+  ambulanceArrivedBanner: "Ambulance has arrived",
+  ambulanceArrivedShort: "Arrived",
+  mapLegendPatient: "Patient",
+  mapLegendAmbulance: "Ambulance",
+  mapLegendDoctor: "Doctor",
 };
