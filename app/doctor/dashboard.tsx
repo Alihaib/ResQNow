@@ -6,6 +6,12 @@ import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 
+const truncateOneLine = (s: string, max: number) => {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+};
+
 type Patient = {
   id: string;
   role?: string;
@@ -29,6 +35,9 @@ type Emergency = {
   timestamp?: string;
   status?: string;
   location?: { address?: string | null; latitude?: number; longitude?: number };
+  /** Display-only lines from existing doc snapshot (optional). */
+  snapshotEtaMin?: number | null;
+  snapshotAmbulanceLine?: string | null;
 };
 
 export default function DoctorDashboard() {
@@ -86,6 +95,15 @@ export default function DoctorDashboard() {
 
         const list: Emergency[] = snap.docs.map((d) => {
           const data = d.data() as any;
+          const cs = data.currentSnapshot;
+          const eta =
+            cs && typeof cs === "object" && typeof (cs as any).eta === "number" && Number.isFinite((cs as any).eta)
+              ? (cs as any).eta
+              : null;
+          const ambLine =
+            cs && typeof cs === "object" && typeof (cs as any).ambulanceStatus === "string"
+              ? String((cs as any).ambulanceStatus)
+              : null;
           return {
             id: d.id,
             userId: data.userId,
@@ -93,6 +111,8 @@ export default function DoctorDashboard() {
             timestamp: data.timestamp,
             status: data.status,
             location: data.location,
+            snapshotEtaMin: eta,
+            snapshotAmbulanceLine: ambLine,
           };
         });
         // Sort newest first if timestamp is ISO string
@@ -209,7 +229,8 @@ export default function DoctorDashboard() {
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Patient Search for Emergency Access */}
-        <View style={styles.section}>
+        <View style={[styles.section, styles.sectionCard]}>
+          <Text style={styles.sectionOverline}>Directory</Text>
           <Text style={styles.sectionTitle}>🔍 {t("searchPatient") || "Search Patient"}</Text>
           <Text style={styles.searchSubtitle}>
             {t("searchPatientNote") || "Enter Israeli ID or name to access medical information"}
@@ -345,7 +366,8 @@ export default function DoctorDashboard() {
         </View>
 
         {/* Live Emergencies (real) */}
-        <View style={styles.section}>
+        <View style={[styles.section, styles.sectionCard]}>
+          <Text style={styles.sectionOverline}>Live</Text>
           <Text style={styles.sectionTitle}>{t("activeEmergencyCases") || "Active Emergencies"}</Text>
           {loadingEmergencies ? (
             <View style={styles.loadingBox}>
@@ -375,6 +397,18 @@ export default function DoctorDashboard() {
                 <Text style={styles.caseType}>
                   {e.victimType === "other" ? t("someoneElseNeedsHelp") : t("userNeedsHelp")}
                 </Text>
+                {(e.snapshotEtaMin != null || e.snapshotAmbulanceLine) && (
+                  <View style={styles.caseLiveRow}>
+                    {e.snapshotEtaMin != null ? (
+                      <Text style={styles.caseLiveMeta}>ETA ~{e.snapshotEtaMin} min</Text>
+                    ) : null}
+                    {e.snapshotAmbulanceLine ? (
+                      <Text style={styles.caseLiveSub} numberOfLines={2}>
+                        {truncateOneLine(e.snapshotAmbulanceLine, 72)}
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
                 <Text style={styles.caseLocation}>
                   📍 {e.location?.address || (e.location?.latitude && e.location?.longitude ? `${e.location.latitude}, ${e.location.longitude}` : t("locationNotAvailable"))}
                 </Text>
@@ -385,7 +419,8 @@ export default function DoctorDashboard() {
         </View>
 
         {/* Quick Actions */}
-        <View style={styles.section}>
+        <View style={[styles.section, styles.sectionCard]}>
+          <Text style={styles.sectionOverline}>Shortcuts</Text>
           <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
           
           <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(tabs)/firstaid")}>
@@ -464,6 +499,26 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
+  sectionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  sectionOverline: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#868E96",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: "800",
@@ -516,6 +571,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
     color: "#D62828",
+  },
+  caseLiveRow: {
+    marginTop: 10,
+    marginBottom: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#F8F9FA",
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: "#D62828",
+  },
+  caseLiveMeta: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#003049",
+    marginBottom: 4,
+  },
+  caseLiveSub: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#495057",
+    lineHeight: 16,
   },
   chevron: {
     position: "absolute",

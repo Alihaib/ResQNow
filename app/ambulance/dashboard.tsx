@@ -668,7 +668,8 @@ export default function AmbulanceDashboard() {
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
         {/* Patient Search for Emergency Access */}
-        <View style={styles.section}>
+        <View style={[styles.section, styles.sectionCard]}>
+          <Text style={styles.sectionOverline}>Directory</Text>
           <Text style={styles.sectionTitle}>
             🔍 {t("searchPatient") || "Search Patient"}
           </Text>
@@ -809,12 +810,13 @@ export default function AmbulanceDashboard() {
 
         {/* Live Emergency Calls */}
         <View
-          style={styles.section}
+          style={[styles.section, styles.sectionCard]}
           onLayout={(e) => {
             const y = e.nativeEvent.layout.y;
             setLiveCallsScrollY(y);
           }}
         >
+          <Text style={styles.sectionOverline}>Active</Text>
           <Text style={styles.sectionTitle}>
             {t("live_calls") || "Live Emergency Calls"}
           </Text>
@@ -936,7 +938,8 @@ export default function AmbulanceDashboard() {
         </View>
 
         {/* Vehicle Status */}
-        <View style={styles.section}>
+        <View style={[styles.section, styles.sectionCard]}>
+          <Text style={styles.sectionOverline}>Unit</Text>
           <Text style={styles.sectionTitle}>{t("vehicle_status")}</Text>
           <View style={styles.statusCard}>
             <View style={styles.statusRow}>
@@ -957,7 +960,8 @@ export default function AmbulanceDashboard() {
         </View>
 
         {/* Quick Actions */}
-        <View style={styles.section}>
+        <View style={[styles.section, styles.sectionCard]}>
+          <Text style={styles.sectionOverline}>Shortcuts</Text>
           <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
 
           <TouchableOpacity
@@ -1087,6 +1091,26 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 24,
+  },
+  sectionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  sectionOverline: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#868E96",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 6,
   },
   sectionTitle: {
     fontSize: 20,

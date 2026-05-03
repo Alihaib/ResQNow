@@ -306,7 +306,7 @@ export default function DoctorCaseDetailScreen() {
         <Text style={styles.title}>{t("caseMonitorTitle")}</Text>
       </View>
 
-      {/* Live patient snapshot (ambulance-maintained; same doc subscription = real-time) */}
+      {/* Top: live snapshot summary — condition, ETA, ambulance line (ambulance-maintained) */}
       <View
         style={[
           styles.snapshotPanel,
@@ -315,101 +315,100 @@ export default function DoctorCaseDetailScreen() {
           emergency.currentSnapshot?.conditionLevel === "stable" && styles.snapshotPanelStable,
         ]}
       >
-        <Text style={styles.snapshotPanelTitle}>Live patient status</Text>
+        <Text style={styles.sectionHeadingPrimary}>Live dispatch</Text>
         {!emergency.currentSnapshot ? (
           <Text style={styles.snapshotMuted}>
-            No snapshot yet. Ambulance updates will appear here instantly — timeline below remains the historical log.
+            Waiting for ambulance snapshot. ETA and status will appear here as soon as the crew updates.
           </Text>
         ) : (
           <>
+            <View style={styles.conditionHeroWrap}>
+              <Text style={styles.conditionHeroLabel}>Condition</Text>
+              <View
+                style={[
+                  styles.conditionPill,
+                  emergency.currentSnapshot.conditionLevel === "critical" && styles.conditionPillCritical,
+                  emergency.currentSnapshot.conditionLevel === "moderate" && styles.conditionPillModerate,
+                  emergency.currentSnapshot.conditionLevel === "stable" && styles.conditionPillStable,
+                ]}
+              >
+                <Text style={styles.conditionPillText}>
+                  {emergency.currentSnapshot.conditionLevel.toUpperCase()}
+                </Text>
+              </View>
+            </View>
             <View style={styles.snapshotRow}>
-              <Text style={styles.snapshotLabel}>Priority</Text>
-              <Text style={styles.snapshotValueEmphasis}>
-                {emergency.currentSnapshot.conditionLevel.toUpperCase()}
+              <Text style={styles.snapshotLabel}>ETA (crew)</Text>
+              <Text style={styles.snapshotValue}>
+                {emergency.currentSnapshot.eta != null ? `${emergency.currentSnapshot.eta} min` : "—"}
               </Text>
             </View>
-            {emergency.currentSnapshot.symptoms?.length ? (
-              <View style={styles.snapshotBlock}>
-                <Text style={styles.snapshotLabel}>Symptoms</Text>
-                <Text style={styles.snapshotBody}>
-                  {emergency.currentSnapshot.symptoms.join(" · ")}
-                </Text>
-              </View>
-            ) : null}
-            {(emergency.currentSnapshot.vitals?.heartRate != null ||
-              emergency.currentSnapshot.vitals?.oxygen != null ||
-              emergency.currentSnapshot.vitals?.bloodPressure) ? (
-              <View style={styles.snapshotBlock}>
-                <Text style={styles.snapshotLabel}>Vitals</Text>
-                <Text style={styles.snapshotBody}>
-                  {[
-                    emergency.currentSnapshot.vitals?.heartRate != null
-                      ? `HR ${emergency.currentSnapshot.vitals.heartRate}`
-                      : null,
-                    emergency.currentSnapshot.vitals?.oxygen != null
-                      ? `SpO₂ ${emergency.currentSnapshot.vitals.oxygen}%`
-                      : null,
-                    emergency.currentSnapshot.vitals?.bloodPressure
-                      ? `BP ${emergency.currentSnapshot.vitals.bloodPressure}`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </Text>
-              </View>
-            ) : null}
             <View style={styles.snapshotRow}>
-              <Text style={styles.snapshotLabel}>Ambulance</Text>
-              <Text style={styles.snapshotValue}>{formatMaybe(emergency.currentSnapshot.ambulanceStatus)}</Text>
+              <Text style={styles.snapshotLabel}>Ambulance status</Text>
+              <Text style={[styles.snapshotValue, { flex: 1 }]}>
+                {formatMaybe(emergency.currentSnapshot.ambulanceStatus)}
+              </Text>
             </View>
-            {emergency.currentSnapshot.eta != null ? (
-              <View style={styles.snapshotRow}>
-                <Text style={styles.snapshotLabel}>ETA (approx.)</Text>
-                <Text style={styles.snapshotValue}>{`${emergency.currentSnapshot.eta} min`}</Text>
-              </View>
-            ) : null}
+            <View style={styles.snapshotRow}>
+              <Text style={styles.snapshotLabel}>Case lifecycle</Text>
+              <Text style={styles.snapshotValue}>{formatMaybe(String(emergency.status || "dispatched"))}</Text>
+            </View>
             <Text style={styles.snapshotUpdated}>
-              Updated {new Date(emergency.currentSnapshot.lastUpdate).toLocaleTimeString()}
+              Snapshot updated {new Date(emergency.currentSnapshot.lastUpdate).toLocaleTimeString()}
             </Text>
           </>
         )}
       </View>
 
-      {/* Case summary */}
+      {/* Middle: symptoms */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>🚨 Emergency</Text>
-        <View style={styles.row}>
-          <Text style={styles.label}>Status</Text>
-          <Text style={styles.value}>{formatMaybe(String(emergency.status || "dispatched"))}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Session</Text>
-          <Text style={styles.value}>{formatMaybe(emergency.sessionStatus || "active")}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Severity</Text>
-          <Text style={styles.value}>{formatMaybe(emergency.severity || "Unknown")}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Victim</Text>
-          <Text style={styles.value}>{emergency.victimType === "other" ? t("someoneElse") : t("caller")}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Time</Text>
-          <Text style={styles.value}>
-            {emergency.timestamp ? new Date(emergency.timestamp).toLocaleString() : "Not provided"}
-          </Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Ambulance</Text>
-          <Text style={styles.value}>{formatMaybe(emergency.assignedAmbulanceId || t("unassigned"))}</Text>
-        </View>
+        <Text style={styles.sectionHeadingSecondary}>Patient Status</Text>
+        {!emergency.currentSnapshot?.symptoms?.length ? (
+          <Text style={styles.muted}>No symptoms reported yet.</Text>
+        ) : (
+          <Text style={styles.snapshotBody}>{emergency.currentSnapshot.symptoms.join(" · ")}</Text>
+        )}
+      </View>
+
+      {/* Middle: vitals */}
+      <View style={styles.card}>
+        <Text style={styles.sectionHeadingSecondary}>Vitals</Text>
+        {(() => {
+          const v = emergency.currentSnapshot?.vitals;
+          const hasVitals =
+            v?.heartRate != null ||
+            v?.oxygen != null ||
+            String(v?.bloodPressure ?? "").trim().length > 0;
+          if (!hasVitals) {
+            return <Text style={styles.muted}>No vitals reported yet.</Text>;
+          }
+          return (
+            <Text style={styles.snapshotBody}>
+              {[
+                v?.heartRate != null ? `HR ${v.heartRate}` : null,
+                v?.oxygen != null ? `SpO₂ ${v.oxygen}%` : null,
+                v?.bloodPressure ? `BP ${v.bloodPressure}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </Text>
+          );
+        })()}
+      </View>
+
+      {/* Compact case context */}
+      <View style={styles.metaStrip}>
+        <Text style={styles.metaStripText}>
+          {emergency.victimType === "other" ? t("someoneElse") : t("caller")} ·{" "}
+          {emergency.timestamp ? new Date(emergency.timestamp).toLocaleString() : "—"} ·{" "}
+          {formatMaybe(emergency.assignedAmbulanceId || t("unassigned"))}
+        </Text>
       </View>
 
       {/* Map */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardTitle}>📍 Location</Text>
+          <Text style={styles.sectionHeadingSecondary}>Location</Text>
           <TouchableOpacity onPress={openInMaps} disabled={!patientHasCoords}>
             <Text style={[styles.link, !patientHasCoords && styles.linkDisabled]}>{t("openInMaps")}</Text>
           </TouchableOpacity>
@@ -459,40 +458,31 @@ export default function DoctorCaseDetailScreen() {
         )}
       </View>
 
-      {/* Ambulance tracking (read-only) */}
+      {/* GPS-derived approach (read-only; complements crew ETA above) */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>🚑 Live Ambulance Tracking</Text>
-        <View style={styles.row}>
-          <Text style={styles.label}>Status</Text>
-          <Text style={styles.value}>{formatMaybe(emergency.status || "Not available")}</Text>
-        </View>
+        <Text style={styles.sectionHeadingSecondary}>Live approach (GPS)</Text>
         <View style={styles.row}>
           <Text style={styles.label}>Distance</Text>
           <Text style={styles.value}>
-            {distanceMeters === null ? "Not available" : formatDistance(distanceMeters)}
+            {distanceMeters === null ? "—" : formatDistance(distanceMeters)}
           </Text>
         </View>
         <View style={styles.row}>
-          <Text style={styles.label}>ETA</Text>
+          <Text style={styles.label}>ETA (estimated)</Text>
           <Text style={[styles.value, etaMinutes !== null && etaMinutes < 2 ? styles.etaArriving : undefined]}>
-            {etaLabel ?? "Not available"}
+            {etaLabel ?? "—"}
           </Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Ambulance GPS</Text>
-          <Text style={styles.value}>{ambulanceHasCoords ? `${ambLat}, ${ambLng}` : "Not available"}</Text>
+          <Text style={styles.valueSmall}>{ambulanceHasCoords ? `${ambLat?.toFixed(5)}, ${ambLng?.toFixed(5)}` : "—"}</Text>
         </View>
-        {!ambulanceHasCoords && (
-          <Text style={styles.muted}>Waiting for ambulance…</Text>
-        )}
-        <Text style={styles.muted}>
-          Updates stream in real time from Firestore (`ambulanceLocation`, `status`, `timeline`).
-        </Text>
+        {!ambulanceHasCoords ? <Text style={styles.muted}>Waiting for ambulance GPS…</Text> : null}
       </View>
 
       {/* Timeline */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>🕒 Timeline</Text>
+        <Text style={styles.sectionHeadingSecondary}>Timeline</Text>
         {timelineSorted.length === 0 ? (
           <Text style={styles.muted}>No timeline updates yet.</Text>
         ) : (
@@ -515,7 +505,7 @@ export default function DoctorCaseDetailScreen() {
 
       {/* Doctor notes */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>🧠 Medical Notes (optional)</Text>
+        <Text style={styles.sectionHeadingSecondary}>Medical Notes</Text>
         <TextInput
           value={noteText}
           onChangeText={setNoteText}
@@ -549,7 +539,7 @@ export default function DoctorCaseDetailScreen() {
 
       {/* Patient medical summary */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>🩺 Patient Medical Summary</Text>
+        <Text style={styles.sectionHeadingSecondary}>Patient record</Text>
         {emergency.victimType === "other" ? (
           <Text style={styles.muted}>
             {t("privacyModeNoProfile")}
@@ -638,6 +628,66 @@ const styles = StyleSheet.create({
     color: "#003049",
     marginBottom: 12,
   },
+  sectionHeadingPrimary: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#6C757D",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 12,
+  },
+  sectionHeadingSecondary: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#003049",
+    marginBottom: 12,
+  },
+  conditionHeroWrap: {
+    marginBottom: 14,
+  },
+  conditionHeroLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#6C757D",
+    marginBottom: 8,
+  },
+  conditionPill: {
+    alignSelf: "flex-start",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    backgroundColor: "#E9ECEF",
+  },
+  conditionPillStable: {
+    backgroundColor: "#DCFCE7",
+  },
+  conditionPillModerate: {
+    backgroundColor: "#FEF3C7",
+  },
+  conditionPillCritical: {
+    backgroundColor: "#FEE2E2",
+  },
+  conditionPillText: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#003049",
+    letterSpacing: 0.5,
+  },
+  metaStrip: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  metaStripText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#495057",
+    lineHeight: 18,
+  },
   snapshotMuted: {
     fontSize: 13,
     color: "#6C757D",
@@ -688,6 +738,14 @@ const styles = StyleSheet.create({
   },
   label: { fontSize: 13, fontWeight: "700", color: "#6C757D" },
   value: { flex: 1, textAlign: "right", fontSize: 13, fontWeight: "800", color: "#003049" },
+  valueSmall: {
+    flex: 1,
+    textAlign: "right",
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#495057",
+    fontFamily: "monospace",
+  },
   block: { marginTop: 10 },
   blockValue: { marginTop: 6, fontSize: 13, fontWeight: "700", color: "#003049", lineHeight: 18 },
   smallText: { fontSize: 13, color: "#003049", fontWeight: "700", marginBottom: 10 },

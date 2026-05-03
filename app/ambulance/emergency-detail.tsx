@@ -48,6 +48,7 @@ interface Emergency {
   ambulanceLocation?: { latitude?: number; longitude?: number } | null;
   assignedAt?: string | null;
   currentSnapshot?: PatientSnapshot | null;
+  timeline?: Array<{ status?: string; timestamp?: string; ambulanceId?: string; text?: string }>;
 }
 
 const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
@@ -57,6 +58,23 @@ const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
 };
+
+function phaseAccentBar(lc: LifecycleStatus) {
+  switch (lc) {
+    case "dispatched":
+      return styles.phaseBarDispatched;
+    case "enRoute":
+      return styles.phaseBarEnRoute;
+    case "arrived":
+      return styles.phaseBarArrived;
+    case "completed":
+      return styles.phaseBarCompleted;
+    case "cancelled":
+      return styles.phaseBarCancelled;
+    default:
+      return styles.phaseBarDispatched;
+  }
+}
 
 export default function EmergencyDetailScreen() {
   const router = useRouter();
@@ -133,6 +151,7 @@ export default function EmergencyDetailScreen() {
           ambulanceLocation: data.ambulanceLocation ?? null,
           assignedAt: typeof data.assignedAt === "string" ? data.assignedAt : null,
           currentSnapshot: snapshotFromFirestore(data.currentSnapshot),
+          timeline: Array.isArray(data.timeline) ? data.timeline : undefined,
         };
         console.log(
           "[AmbulanceEmergencyDetail] emergency snapshot:",
@@ -526,6 +545,15 @@ export default function EmergencyDetailScreen() {
     return `${Math.floor(diffInSeconds / 86400)} day${Math.floor(diffInSeconds / 86400) > 1 ? "s" : ""} ago`;
   };
 
+  const timelineSorted = useMemo(() => {
+    const items = emergency?.timeline ?? [];
+    return [...items].sort((a, b) => {
+      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return bt - at;
+    });
+  }, [emergency?.timeline]);
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -577,122 +605,82 @@ export default function EmergencyDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Emergency Status */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>
-              {emergency.sessionStatus === "active"
-                ? `🚨 ${t("activeEmergency") || "ACTIVE EMERGENCY"}`
-                : emergency.sessionStatus === "resolved"
-                  ? "✓ Case resolved"
-                  : "Case cancelled"}
+        {/* 1 — Mission header: phase, ETA, primary action */}
+        <View style={[styles.missionCard, phaseAccentBar(lifecycle)]}>
+          <Text style={styles.missionKicker}>Mission</Text>
+          <Text style={styles.missionPhaseTitle}>{LIFECYCLE_LABELS[lifecycle]}</Text>
+          <Text style={styles.missionSessionTag}>
+            {emergency.sessionStatus === "active"
+              ? "ACTIVE"
+              : emergency.sessionStatus === "resolved"
+                ? "Resolved"
+                : "Cancelled"}
+          </Text>
+
+          {typeof emergency.currentSnapshot?.eta === "number" && Number.isFinite(emergency.currentSnapshot.eta) ? (
+            <View style={styles.missionEtaRow}>
+              <Text style={styles.missionEtaLabel}>ETA</Text>
+              <Text style={styles.missionEtaValue}>{emergency.currentSnapshot.eta} min</Text>
+            </View>
+          ) : null}
+
+          {distance != null ? (
+            <Text style={styles.missionDistance}>
+              ≈{" "}
+              {distance < 1
+                ? `${Math.round(distance * 1000)} m`
+                : `${distance.toFixed(1)} km`}{" "}
+              to scene
+            </Text>
+          ) : null}
+
+          {emergency.sessionStatus === "active" ? (
+            <>
+              {!emergency.assignedAmbulanceId ? (
+                <TouchableOpacity style={styles.missionPrimaryBtn} onPress={onClaimPress}>
+                  <Text style={styles.missionPrimaryBtnText}>Claim emergency</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user?.uid ? (
+                <Text style={styles.missionBlocked}>{t("caseAssignedToAnotherAmbulance")}</Text>
+              ) : null}
+
+              {isAssignedToMe && getNextLifecycle(lifecycle) ? (
+                <TouchableOpacity style={styles.missionPrimaryBtn} onPress={advanceOneStep}>
+                  <Text style={styles.missionPrimaryBtnText}>
+                    Next: {LIFECYCLE_LABELS[getNextLifecycle(lifecycle)!]}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {isAssignedToMe && !getNextLifecycle(lifecycle) ? (
+                <Text style={styles.missionHint}>No further status updates</Text>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.missionHint}>This case is no longer active.</Text>
+          )}
+
+          <View style={styles.missionMetaRow}>
+            <Text style={styles.missionMeta} numberOfLines={2}>
+              {emergency.victimType === "other" ? `🆘 ${t("victimHelpingOther")}` : "Caller"} ·{" "}
+              {formatTimeAgo(emergency.timestamp)}
+            </Text>
+            <Text style={styles.missionMeta} numberOfLines={1}>
+              {emergency.assignedAmbulanceId
+                ? isAssignedToMe
+                  ? `✓ ${t("you")}`
+                  : t("assignedLabel")
+                : t("unassigned")}
             </Text>
           </View>
-          <Text style={styles.timeText}>{formatTimeAgo(emergency.timestamp)}</Text>
-          {emergency.victimType === "other" && (
-            <Text style={styles.victimBadge}>🆘 {t("victimHelpingOther")}</Text>
-          )}
-          <Text style={styles.callerBadge}>
-            🚑 {t("caseStatusLabel")}:{" "}
-            {LIFECYCLE_LABELS[normalizeLifecycleStatus(String(emergency.status))] ?? emergency.status}
-          </Text>
-          {emergency.assignedAmbulanceId ? (
-            <Text style={styles.callerBadge}>
-              {t("assignedLabel")}: {isAssignedToMe ? t("you") : emergency.assignedAmbulanceId}
-            </Text>
-          ) : (
-            <Text style={styles.callerBadge}>{t("unassigned")}</Text>
-          )}
         </View>
 
-        {transportOnly ? (
-          <View style={styles.transportBanner}>
-            <Text style={styles.transportBannerTitle}>🚑 Transport phase</Text>
-            <Text style={styles.transportBannerText}>
-              Use navigation, live map, and GPS below. ETA updates the doctor dashboard automatically. Patient assessment
-              (condition, symptoms, vitals) unlocks after you advance status to Arrived.
-            </Text>
-          </View>
-        ) : null}
-
-        {assessmentMode ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>🫀 Patient assessment</Text>
-            <View style={styles.infoCard}>
-              <Text style={styles.snapHint}>
-                On-scene clinical snapshot — visible to doctors in real time. Timeline is unchanged.
-              </Text>
-              <Text style={styles.snapLabel}>Condition</Text>
-              <View style={styles.conditionRow}>
-                {(["stable", "moderate", "critical"] as const).map((c) => (
-                  <TouchableOpacity
-                    key={c}
-                    style={[
-                      styles.conditionChip,
-                      snapCondition === c && styles.conditionChipActive,
-                      c === "critical" && styles.conditionChipDanger,
-                    ]}
-                    onPress={() => setSnapCondition(c)}
-                  >
-                    <Text
-                      style={[styles.conditionChipText, snapCondition === c && { color: "#FFF" }]}
-                    >
-                      {c}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={styles.snapLabel}>Symptoms (comma-separated)</Text>
-              <TextInput
-                style={styles.snapInput}
-                value={snapSymptoms}
-                onChangeText={setSnapSymptoms}
-                placeholder="e.g. chest pain, shortness of breath"
-                placeholderTextColor="#ADB5BD"
-                multiline
-              />
-              <Text style={styles.snapLabel}>Vitals (optional)</Text>
-              <View style={styles.vitalsRow}>
-                <TextInput
-                  style={[styles.snapInput, styles.vitalsField]}
-                  value={snapHr}
-                  onChangeText={setSnapHr}
-                  placeholder="HR"
-                  keyboardType="numeric"
-                  placeholderTextColor="#ADB5BD"
-                />
-                <TextInput
-                  style={[styles.snapInput, styles.vitalsField]}
-                  value={snapO2}
-                  onChangeText={setSnapO2}
-                  placeholder="SpO₂ %"
-                  keyboardType="numeric"
-                  placeholderTextColor="#ADB5BD"
-                />
-              </View>
-              <TextInput
-                style={styles.snapInput}
-                value={snapBp}
-                onChangeText={setSnapBp}
-                placeholder="Blood pressure e.g. 120/80"
-                placeholderTextColor="#ADB5BD"
-              />
-              <TouchableOpacity
-                style={[styles.navigateButton, { marginTop: 12 }, snapSaving && { opacity: 0.7 }]}
-                onPress={saveClinicalSnapshot}
-                disabled={snapSaving}
-              >
-                <Text style={styles.navigateButtonText}>
-                  {snapSaving ? "Saving…" : "Save assessment"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
-
-        {/* Live Map */}
+        {/* 2 — Map & route */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🗺️ Live Map</Text>
+          <Text style={styles.sectionOverline}>Navigation</Text>
+          <Text style={styles.sectionTitle}>Map & route</Text>
           <View style={styles.mapWrapper}>
             <MapView
               ref={mapRef}
@@ -729,86 +717,171 @@ export default function EmergencyDetailScreen() {
               </View>
             )}
           </View>
+          <TouchableOpacity style={styles.mapNavButton} onPress={openNavigation} activeOpacity={0.85}>
+            <Text style={styles.mapNavButtonText}>🗺️ {t("openNavigation") || "Open turn-by-turn navigation"}</Text>
+          </TouchableOpacity>
+          <Text style={styles.destOneLine} numberOfLines={2}>
+            {baseLoc.address || `${baseLoc.latitude.toFixed(5)}, ${baseLoc.longitude.toFixed(5)}`}
+          </Text>
         </View>
 
-        {/* Ambulance controls */}
+        {/* 3 — Context actions (secondary; primary lifecycle control is in Mission) */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🚑 Live Updates</Text>
+          <Text style={styles.sectionOverline}>{transportOnly ? "Transport" : assessmentMode ? "On scene" : "Actions"}</Text>
+          <Text style={styles.sectionTitle}>Quick actions</Text>
           <View style={styles.infoCard}>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity
-                style={[styles.navigateButton, { flex: 1, backgroundColor: tracking ? "#6C757D" : "#D62828" }]}
-                onPress={tracking ? stopTracking : startTracking}
-              >
-                <Text style={styles.navigateButtonText}>
-                  {tracking ? t("stopGps") : t("startGps")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.navigateText}>
-              GPS updates are published every few seconds while enabled.
-            </Text>
-          </View>
-        </View>
-
-        {emergency.sessionStatus === "active" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📢 Dispatch control</Text>
-            <View style={styles.infoCard}>
-              {!emergency.assignedAmbulanceId ? (
-                <TouchableOpacity style={styles.navigateButton} onPress={onClaimPress}>
-                  <Text style={styles.navigateButtonText}>Claim emergency</Text>
+            {transportOnly && emergency.sessionStatus === "active" ? (
+              <>
+                <TouchableOpacity style={styles.actionOutlineBtn} onPress={openNavigation}>
+                  <Text style={styles.actionOutlineBtnText}>Continue navigation</Text>
                 </TouchableOpacity>
-              ) : null}
-
-              {emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user?.uid ? (
-                <Text style={styles.navigateText}>{t("caseAssignedToAnotherAmbulance")}</Text>
-              ) : null}
-
-              {isAssignedToMe && normalizeLifecycleStatus(String(emergency.status)) === "dispatched" ? (
                 <TouchableOpacity
-                  style={[styles.navigateButton, { backgroundColor: "#6C757D", marginTop: 12 }]}
-                  onPress={releaseAssignment}
+                  style={[styles.actionOutlineBtn, tracking && styles.actionOutlineBtnActive]}
+                  onPress={tracking ? stopTracking : startTracking}
                 >
-                  <Text style={styles.navigateButtonText}>Release assignment</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {isAssignedToMe && getNextLifecycle(normalizeLifecycleStatus(String(emergency.status))) ? (
-                <TouchableOpacity style={[styles.navigateButton, { marginTop: 12 }]} onPress={advanceOneStep}>
-                  <Text style={styles.navigateButtonText}>
-                    Next:{" "}
-                    {LIFECYCLE_LABELS[getNextLifecycle(normalizeLifecycleStatus(String(emergency.status)))!]}
+                  <Text style={[styles.actionOutlineBtnText, tracking && styles.actionOutlineBtnTextActive]}>
+                    {tracking ? t("stopGps") : t("startGps")}
                   </Text>
                 </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
-        ) : (
-          <View style={styles.section}>
-            <Text style={styles.navigateText}>This case is no longer active.</Text>
-          </View>
-        )}
+                <Text style={styles.actionHelp}>
+                  GPS publishes your position for dispatch while enabled.
+                </Text>
+                {isAssignedToMe && lifecycle === "dispatched" ? (
+                  <TouchableOpacity style={styles.actionMutedBtn} onPress={releaseAssignment}>
+                    <Text style={styles.actionMutedBtnText}>Release assignment</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            ) : null}
 
-        {/* Location Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📍 {t("location") || "Location"}</Text>
-          <TouchableOpacity style={styles.locationCard} onPress={openNavigation}>
-            <Text style={styles.locationAddress}>
-              {baseLoc.address || `${baseLoc.latitude.toFixed(6)}, ${baseLoc.longitude.toFixed(6)}`}
-            </Text>
-            <Text style={styles.locationCoords}>
-              {baseLoc.latitude.toFixed(6)}, {baseLoc.longitude.toFixed(6)}
-            </Text>
-            {distance && (
-              <Text style={styles.distanceText}>
-                📏 {distance < 1 
-                  ? `${(distance * 1000).toFixed(0)} meters away`
-                  : `${distance.toFixed(2)} km away`}
+            {assessmentMode ? (
+              <Text style={styles.actionHelp}>
+                Document condition, symptoms, and vitals below, then use Mission → Next when ready to complete transport.
               </Text>
+            ) : null}
+
+            {!transportOnly && !assessmentMode && emergency.sessionStatus === "active" ? (
+              <TouchableOpacity style={styles.actionOutlineBtn} onPress={openNavigation}>
+                <Text style={styles.actionOutlineBtnText}>Open navigation</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {emergency.sessionStatus !== "active" ? (
+              <Text style={styles.missionHint}>Read-only — case closed.</Text>
+            ) : null}
+          </View>
+        </View>
+
+        {/* 4 — Patient snapshot (compact) + on-scene edits when arrived */}
+        <View style={styles.section}>
+          <Text style={styles.sectionOverline}>Patient</Text>
+          <Text style={styles.sectionTitle}>Live snapshot</Text>
+          <View style={styles.compactSnapCard}>
+            {transportOnly ? (
+              <Text style={styles.compactLine}>
+                <Text style={styles.compactBold}>Crew · </Text>
+                {emergency.currentSnapshot?.ambulanceStatus?.trim() || "—"}
+              </Text>
+            ) : assessmentMode ? (
+              <>
+                <Text style={styles.compactLine}>
+                  <Text style={styles.compactBold}>Condition · </Text>
+                  {emergency.currentSnapshot?.conditionLevel ?? "—"}
+                </Text>
+                <Text style={styles.compactLine} numberOfLines={4}>
+                  <Text style={styles.compactBold}>Symptoms · </Text>
+                  {emergency.currentSnapshot?.symptoms?.length
+                    ? emergency.currentSnapshot.symptoms.join(", ")
+                    : "—"}
+                </Text>
+                <Text style={styles.compactLine} numberOfLines={3}>
+                  <Text style={styles.compactBold}>Vitals · </Text>
+                  {[
+                    emergency.currentSnapshot?.vitals?.heartRate != null
+                      ? `HR ${emergency.currentSnapshot.vitals.heartRate}`
+                      : null,
+                    emergency.currentSnapshot?.vitals?.oxygen != null
+                      ? `SpO₂ ${emergency.currentSnapshot.vitals.oxygen}%`
+                      : null,
+                    emergency.currentSnapshot?.vitals?.bloodPressure
+                      ? `BP ${emergency.currentSnapshot.vitals.bloodPressure}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "—"}
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.compactMuted}>Snapshot details follow crew updates for this phase.</Text>
             )}
-            <Text style={styles.navigateText}>🗺️ Tap to open navigation</Text>
-          </TouchableOpacity>
+          </View>
+
+          {assessmentMode ? (
+            <View style={styles.infoCard}>
+              <Text style={styles.assessmentIntroTitle}>Patient Assessment Mode</Text>
+              <Text style={styles.assessmentIntroText}>
+                Updates sync to dispatch live. Use Mission → Next when transport is complete.
+              </Text>
+              <Text style={styles.snapSectionHeading}>Condition level</Text>
+              <View style={styles.conditionRow}>
+                {(["stable", "moderate", "critical"] as const).map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      styles.conditionChip,
+                      snapCondition === c && styles.conditionChipActive,
+                      c === "critical" && styles.conditionChipDanger,
+                    ]}
+                    onPress={() => setSnapCondition(c)}
+                  >
+                    <Text style={[styles.conditionChipText, snapCondition === c && { color: "#FFF" }]}>{c}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.snapSectionHeading}>Symptoms</Text>
+              <TextInput
+                style={styles.snapInput}
+                value={snapSymptoms}
+                onChangeText={setSnapSymptoms}
+                placeholder="Comma-separated, e.g. chest pain, dyspnea"
+                placeholderTextColor="#ADB5BD"
+                multiline
+              />
+              <Text style={styles.snapSectionHeading}>Vitals</Text>
+              <View style={styles.vitalsRow}>
+                <TextInput
+                  style={[styles.snapInput, styles.vitalsField]}
+                  value={snapHr}
+                  onChangeText={setSnapHr}
+                  placeholder="HR"
+                  keyboardType="numeric"
+                  placeholderTextColor="#ADB5BD"
+                />
+                <TextInput
+                  style={[styles.snapInput, styles.vitalsField]}
+                  value={snapO2}
+                  onChangeText={setSnapO2}
+                  placeholder="SpO₂ %"
+                  keyboardType="numeric"
+                  placeholderTextColor="#ADB5BD"
+                />
+              </View>
+              <TextInput
+                style={styles.snapInput}
+                value={snapBp}
+                onChangeText={setSnapBp}
+                placeholder="Blood pressure e.g. 120/80"
+                placeholderTextColor="#ADB5BD"
+              />
+              <TouchableOpacity
+                style={[styles.saveAssessmentBtn, snapSaving && { opacity: 0.7 }]}
+                onPress={saveClinicalSnapshot}
+                disabled={snapSaving}
+              >
+                <Text style={styles.saveAssessmentBtnText}>{snapSaving ? "Saving…" : "Save assessment"}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
         {/* Privacy message for "other" */}
@@ -822,6 +895,27 @@ export default function EmergencyDetailScreen() {
             </View>
           </View>
         )}
+
+        {/* 5 — Timeline / log */}
+        <View style={styles.section}>
+          <Text style={styles.sectionOverline}>Secondary</Text>
+          <Text style={styles.sectionTitle}>Timeline</Text>
+          <View style={styles.timelineCard}>
+            {timelineSorted.length === 0 ? (
+              <Text style={styles.compactMuted}>No timeline entries yet.</Text>
+            ) : (
+              timelineSorted.slice(0, 20).map((item, idx) => (
+                <View key={idx} style={styles.timelineEntry}>
+                  <Text style={styles.timelineStatus}>{item.status ?? "—"}</Text>
+                  <Text style={styles.timelineTime}>
+                    {item.timestamp ? new Date(item.timestamp).toLocaleString() : "—"}
+                  </Text>
+                  {item.text ? <Text style={styles.timelineNote}>{item.text}</Text> : null}
+                </View>
+              ))
+            )}
+          </View>
+        </View>
 
         {/* User Information (only when victimType is "me") */}
         {emergency.victimType !== "other" && userInfo && (
@@ -925,11 +1019,6 @@ export default function EmergencyDetailScreen() {
             )}
           </>
         )}
-
-        {/* Navigation Button */}
-        <TouchableOpacity style={styles.navigateButton} onPress={openNavigation}>
-          <Text style={styles.navigateButtonText}>🗺️ {t("openNavigation") || "Open Navigation"}</Text>
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -977,7 +1066,258 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 30,
+    paddingBottom: 36,
+  },
+  missionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  phaseBarDispatched: {
+    borderLeftWidth: 6,
+    borderLeftColor: "#F59E0B",
+  },
+  phaseBarEnRoute: {
+    borderLeftWidth: 6,
+    borderLeftColor: "#2563EB",
+  },
+  phaseBarArrived: {
+    borderLeftWidth: 6,
+    borderLeftColor: "#16A34A",
+  },
+  phaseBarCompleted: {
+    borderLeftWidth: 6,
+    borderLeftColor: "#64748B",
+  },
+  phaseBarCancelled: {
+    borderLeftWidth: 6,
+    borderLeftColor: "#9CA3AF",
+  },
+  missionKicker: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#868E96",
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  missionPhaseTitle: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: "#003049",
+    letterSpacing: -0.5,
+  },
+  missionSessionTag: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#D62828",
+    letterSpacing: 0.5,
+  },
+  missionEtaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#FFF5F5",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  missionEtaLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#991B1B",
+  },
+  missionEtaValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#D62828",
+  },
+  missionDistance: {
+    marginTop: 10,
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#495057",
+  },
+  missionPrimaryBtn: {
+    marginTop: 16,
+    backgroundColor: "#D62828",
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  missionPrimaryBtnText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "900",
+    letterSpacing: 0.3,
+  },
+  missionBlocked: {
+    marginTop: 14,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#991B1B",
+    textAlign: "center",
+  },
+  missionHint: {
+    marginTop: 12,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#6C757D",
+    textAlign: "center",
+  },
+  missionMetaRow: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#E9ECEF",
+    gap: 6,
+  },
+  missionMeta: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6C757D",
+    lineHeight: 17,
+  },
+  mapNavButton: {
+    marginTop: 14,
+    backgroundColor: "#003049",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  mapNavButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  destOneLine: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#495057",
+    lineHeight: 18,
+  },
+  actionOutlineBtn: {
+    borderWidth: 2,
+    borderColor: "#003049",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 10,
+    backgroundColor: "#FFFFFF",
+  },
+  actionOutlineBtnActive: {
+    borderColor: "#6C757D",
+    backgroundColor: "#F8F9FA",
+  },
+  actionOutlineBtnText: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#003049",
+  },
+  actionOutlineBtnTextActive: {
+    color: "#495057",
+  },
+  actionHelp: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6C757D",
+    lineHeight: 17,
+    marginBottom: 12,
+  },
+  actionMutedBtn: {
+    marginTop: 4,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  actionMutedBtnText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#6C757D",
+    textDecorationLine: "underline",
+  },
+  compactSnapCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  compactLine: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#212529",
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  compactBold: {
+    fontWeight: "900",
+    color: "#003049",
+  },
+  compactMuted: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#868E96",
+    fontStyle: "italic",
+  },
+  saveAssessmentBtn: {
+    marginTop: 16,
+    backgroundColor: "#D62828",
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  saveAssessmentBtnText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  timelineCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  timelineEntry: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F3F5",
+  },
+  timelineStatus: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#003049",
+  },
+  timelineTime: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#868E96",
+    marginTop: 4,
+  },
+  timelineNote: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#495057",
+    marginTop: 6,
+    lineHeight: 17,
   },
   statusCard: {
     backgroundColor: "#DC2626",
@@ -1085,11 +1425,68 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 24,
   },
+  sectionOverline: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#868E96",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: "800",
     color: "#003049",
     marginBottom: 12,
+  },
+  etaPill: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFF8F8",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: "#F5C2C7",
+  },
+  etaPillLabel: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#495057",
+  },
+  etaPillValue: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#D62828",
+  },
+  assessmentIntro: {
+    backgroundColor: "#F8F9FA",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  assessmentIntroTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#003049",
+    marginBottom: 6,
+  },
+  assessmentIntroText: {
+    fontSize: 13,
+    color: "#495057",
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  snapSectionHeading: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#495057",
+    marginBottom: 8,
+    marginTop: 4,
   },
   transportBanner: {
     backgroundColor: "#E7F1FF",
