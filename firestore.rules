@@ -13,16 +13,66 @@ service cloud.firestore {
       return isSignedIn() ? userDoc(request.auth.uid).role : null;
     }
 
+    function isApprovedDoctor() {
+      return role() == "doctor" && userDoc(request.auth.uid).approved == true;
+    }
+
+    function isApprovedAmbulance() {
+      return role() == "ambulance" && userDoc(request.auth.uid).approved == true;
+    }
+
     function isApprovedResponder() {
-      return (role() == "doctor" || role() == "ambulance") && userDoc(request.auth.uid).approved == true;
+      return isApprovedDoctor() || isApprovedAmbulance();
     }
 
     function isAdmin() {
       return role() == "admin";
     }
 
-    // Users collection: users can read/write their own profile.
-    // Responders/admin can read user profiles as needed (medical info access).
+    function ownerUid() {
+      return resource.data.userId;
+    }
+
+    function callerCancels() {
+      return request.auth.uid == ownerUid()
+        && request.resource.data.sessionStatus == "cancelled"
+        && request.resource.data.status == "cancelled";
+    }
+
+    // Doctors may change only notes/timeline/updatedAt — all incident + dispatch fields locked.
+    function doctorMedicalNoteOnly() {
+      return request.resource.data.userId == resource.data.userId
+        && request.resource.data.victimType == resource.data.victimType
+        && request.resource.data.location == resource.data.location
+        && request.resource.data.patientLocation == resource.data.patientLocation
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.sessionStatus == resource.data.sessionStatus
+        && request.resource.data.assignedAmbulanceId == resource.data.assignedAmbulanceId
+        && request.resource.data.ambulanceLocation == resource.data.ambulanceLocation
+        && request.resource.data.timestamp == resource.data.timestamp
+        && request.resource.data.currentSnapshot == resource.data.currentSnapshot;
+    }
+
+    // Ambulances may change dispatch/GPS/timeline — not patient identity blob or doctor notes.
+    function ambulanceOpsOnly() {
+      return request.resource.data.userId == resource.data.userId
+        && request.resource.data.victimType == resource.data.victimType
+        && request.resource.data.location == resource.data.location
+        && request.resource.data.patientLocation == resource.data.patientLocation
+        && request.resource.data.timestamp == resource.data.timestamp
+        && request.resource.data.doctorNotes == resource.data.doctorNotes;
+    }
+
+    // currentSnapshot may include clinical fields (symptoms, vitals, conditionLevel) only when on-scene.
+    function hasMedicalSnapshotFields(cs) {
+      return cs is map && cs.keys().hasAny(['symptoms', 'vitals', 'conditionLevel']);
+    }
+
+    function ambulanceSnapshotPhaseOk() {
+      return request.resource.data.status == "arrived"
+        || !hasMedicalSnapshotFields(request.resource.data.currentSnapshot);
+    }
+
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isApprovedResponder() || isAdmin());
       allow create: if isSignedIn() && request.auth.uid == uid;
@@ -30,11 +80,6 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isAdmin();
     }
 
-    // Emergencies:
-    // - Any signed-in user can create an emergency doc for themselves.
-    // - The owner can read their own emergency.
-    // - Approved responders (doctor/ambulance) can list/read active emergencies.
-    // - Status updates are restricted to responders/admin.
     match /emergencies/{id} {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
@@ -48,21 +93,14 @@ service cloud.firestore {
           || isAdmin()
         );
 
-      // Allow responders/admin to update emergencies (status, assignment, timeline, gps, etc).
-      // Allow the owner to cancel their own emergency (sessionStatus/status -> cancelled).
-      allow update: if isSignedIn()
-        && (
+      allow update: if isSignedIn() && (
           isAdmin()
-          || isApprovedResponder()
-          || (
-            resource.data.userId == request.auth.uid
-            && request.resource.data.sessionStatus == "cancelled"
-            && request.resource.data.status == "cancelled"
-          )
+          || callerCancels()
+          || (isApprovedDoctor() && doctorMedicalNoteOnly())
+          || (isApprovedAmbulance() && ambulanceOpsOnly() && ambulanceSnapshotPhaseOk())
         );
 
       allow delete: if isSignedIn() && isAdmin();
     }
   }
 }
-

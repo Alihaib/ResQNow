@@ -6,6 +6,9 @@ import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
+import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
+import type { PatientSnapshot } from "../../../src/emergency/patientSnapshot";
+import { snapshotFromFirestore } from "../../../src/emergency/patientSnapshot";
 
 type EmergencyDoc = {
   userId: string;
@@ -30,6 +33,7 @@ type EmergencyDoc = {
   updatedAt?: string;
   timeline?: Array<{ status?: string; timestamp?: string; ambulanceId?: string; doctorId?: string; text?: string }>;
   doctorNotes?: Array<{ text?: string; timestamp?: string; doctorId?: string }>;
+  currentSnapshot?: PatientSnapshot | null;
 };
 
 type PatientDoc = {
@@ -123,7 +127,7 @@ export default function DoctorCaseDetailScreen() {
         const e: EmergencyDoc = {
           userId: data.userId,
           victimType: data.victimType === "other" ? "other" : "me",
-          status: data.status,
+          status: normalizeLifecycleStatus(data.status),
           sessionStatus: data.sessionStatus,
           timestamp: data.timestamp,
           location: data.location,
@@ -134,6 +138,7 @@ export default function DoctorCaseDetailScreen() {
           updatedAt: data.updatedAt,
           timeline: Array.isArray(data.timeline) ? data.timeline : undefined,
           doctorNotes: Array.isArray(data.doctorNotes) ? data.doctorNotes : undefined,
+          currentSnapshot: snapshotFromFirestore(data.currentSnapshot),
         };
         setEmergency(e);
         setLoading(false);
@@ -147,6 +152,13 @@ export default function DoctorCaseDetailScreen() {
     );
     return () => unsub();
   }, [id]);
+
+  useEffect(() => {
+    if (!emergency?.sessionStatus) return;
+    if (emergency.sessionStatus !== "active") {
+      router.replace("/doctor/dashboard");
+    }
+  }, [emergency?.sessionStatus, router]);
 
   // Subscribe to patient doc (only when victimType === "me")
   useEffect(() => {
@@ -253,6 +265,7 @@ export default function DoctorCaseDetailScreen() {
 
   const addDoctorNote = async () => {
     if (!id || !user?.uid) return;
+    if (emergency?.sessionStatus !== "active") return;
     const text = noteText.trim();
     if (!text) return;
     const nowIso = new Date().toISOString();
@@ -293,12 +306,81 @@ export default function DoctorCaseDetailScreen() {
         <Text style={styles.title}>{t("caseMonitorTitle")}</Text>
       </View>
 
+      {/* Live patient snapshot (ambulance-maintained; same doc subscription = real-time) */}
+      <View
+        style={[
+          styles.snapshotPanel,
+          emergency.currentSnapshot?.conditionLevel === "critical" && styles.snapshotPanelCritical,
+          emergency.currentSnapshot?.conditionLevel === "moderate" && styles.snapshotPanelModerate,
+          emergency.currentSnapshot?.conditionLevel === "stable" && styles.snapshotPanelStable,
+        ]}
+      >
+        <Text style={styles.snapshotPanelTitle}>Live patient status</Text>
+        {!emergency.currentSnapshot ? (
+          <Text style={styles.snapshotMuted}>
+            No snapshot yet. Ambulance updates will appear here instantly — timeline below remains the historical log.
+          </Text>
+        ) : (
+          <>
+            <View style={styles.snapshotRow}>
+              <Text style={styles.snapshotLabel}>Priority</Text>
+              <Text style={styles.snapshotValueEmphasis}>
+                {emergency.currentSnapshot.conditionLevel.toUpperCase()}
+              </Text>
+            </View>
+            {emergency.currentSnapshot.symptoms?.length ? (
+              <View style={styles.snapshotBlock}>
+                <Text style={styles.snapshotLabel}>Symptoms</Text>
+                <Text style={styles.snapshotBody}>
+                  {emergency.currentSnapshot.symptoms.join(" · ")}
+                </Text>
+              </View>
+            ) : null}
+            {(emergency.currentSnapshot.vitals?.heartRate != null ||
+              emergency.currentSnapshot.vitals?.oxygen != null ||
+              emergency.currentSnapshot.vitals?.bloodPressure) ? (
+              <View style={styles.snapshotBlock}>
+                <Text style={styles.snapshotLabel}>Vitals</Text>
+                <Text style={styles.snapshotBody}>
+                  {[
+                    emergency.currentSnapshot.vitals?.heartRate != null
+                      ? `HR ${emergency.currentSnapshot.vitals.heartRate}`
+                      : null,
+                    emergency.currentSnapshot.vitals?.oxygen != null
+                      ? `SpO₂ ${emergency.currentSnapshot.vitals.oxygen}%`
+                      : null,
+                    emergency.currentSnapshot.vitals?.bloodPressure
+                      ? `BP ${emergency.currentSnapshot.vitals.bloodPressure}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.snapshotRow}>
+              <Text style={styles.snapshotLabel}>Ambulance</Text>
+              <Text style={styles.snapshotValue}>{formatMaybe(emergency.currentSnapshot.ambulanceStatus)}</Text>
+            </View>
+            {emergency.currentSnapshot.eta != null ? (
+              <View style={styles.snapshotRow}>
+                <Text style={styles.snapshotLabel}>ETA (approx.)</Text>
+                <Text style={styles.snapshotValue}>{`${emergency.currentSnapshot.eta} min`}</Text>
+              </View>
+            ) : null}
+            <Text style={styles.snapshotUpdated}>
+              Updated {new Date(emergency.currentSnapshot.lastUpdate).toLocaleTimeString()}
+            </Text>
+          </>
+        )}
+      </View>
+
       {/* Case summary */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🚨 Emergency</Text>
         <View style={styles.row}>
           <Text style={styles.label}>Status</Text>
-          <Text style={styles.value}>{formatMaybe(emergency.status || "dispatched")}</Text>
+          <Text style={styles.value}>{formatMaybe(String(emergency.status || "dispatched"))}</Text>
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Session</Text>
@@ -530,6 +612,57 @@ const styles = StyleSheet.create({
   header: { marginBottom: 16 },
   backText: { fontSize: 18, color: "#003049", fontWeight: "700", marginBottom: 10 },
   title: { fontSize: 28, fontWeight: "900", color: "#003049" },
+  snapshotPanel: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 2,
+    borderColor: "#E9ECEF",
+    backgroundColor: "#FFFFFF",
+  },
+  snapshotPanelStable: {
+    borderColor: "#16A34A",
+    backgroundColor: "#F0FDF4",
+  },
+  snapshotPanelModerate: {
+    borderColor: "#D97706",
+    backgroundColor: "#FFFBEB",
+  },
+  snapshotPanelCritical: {
+    borderColor: "#DC2626",
+    backgroundColor: "#FEF2F2",
+  },
+  snapshotPanelTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#003049",
+    marginBottom: 12,
+  },
+  snapshotMuted: {
+    fontSize: 13,
+    color: "#6C757D",
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  snapshotRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 10,
+  },
+  snapshotBlock: { marginBottom: 12 },
+  snapshotLabel: { fontSize: 12, fontWeight: "800", color: "#6C757D", marginBottom: 4 },
+  snapshotValue: { flex: 1, fontSize: 14, fontWeight: "800", color: "#003049", textAlign: "right" },
+  snapshotValueEmphasis: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#991B1B",
+    textAlign: "right",
+  },
+  snapshotBody: { fontSize: 14, fontWeight: "700", color: "#212529", lineHeight: 20 },
+  snapshotUpdated: { marginTop: 8, fontSize: 11, fontWeight: "700", color: "#6C757D" },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,

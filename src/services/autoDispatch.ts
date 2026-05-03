@@ -8,11 +8,18 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import {
+  etaMinutesFromDistanceMeters,
+  mergePatientSnapshot,
+  snapshotPayloadForLifecycle,
+} from "../emergency/patientSnapshot";
+import type { LifecycleStatus } from "../emergency/stateMachine";
+import { normalizeLifecycleStatus } from "../emergency/stateMachine";
 
 type LatLng = { latitude: number; longitude: number };
 
 function haversineMeters(a: LatLng, b: LatLng) {
-  const R = 6371000; // meters
+  const R = 6371000;
   const dLat = (b.latitude - a.latitude) * (Math.PI / 180);
   const dLon = (b.longitude - a.longitude) * (Math.PI / 180);
   const lat1 = a.latitude * (Math.PI / 180);
@@ -29,6 +36,9 @@ type AutoDispatchOptions = {
   excludeAmbulanceIds?: string[];
 };
 
+/**
+ * Auto-assign closest ambulance. Keeps lifecycle `dispatched` until ambulance advances status.
+ */
 export async function autoDispatchEmergency(input: {
   emergencyId: string;
   patientLocation: LatLng;
@@ -37,7 +47,6 @@ export async function autoDispatchEmergency(input: {
   const { emergencyId, patientLocation, options } = input;
   const exclude = new Set(options?.excludeAmbulanceIds ?? []);
 
-  // 1) Fetch approved ambulances with last known location
   const usersRef = collection(db, "users");
   const q = query(usersRef, where("role", "==", "ambulance"), where("approved", "==", true));
   const snap = await getDocs(q);
@@ -62,7 +71,6 @@ export async function autoDispatchEmergency(input: {
     return { ok: true as const, assigned: false as const, reason: "no_ambulance_locations" as const };
   }
 
-  // 2) Transaction: only assign if currently unassigned
   const emergencyRef = doc(db, "emergencies", emergencyId);
   const nowIso = new Date().toISOString();
 
@@ -74,17 +82,33 @@ export async function autoDispatchEmergency(input: {
 
     const data = emergencySnap.data() as any;
     if (data.assignedAmbulanceId) {
-      return { ok: true as const, assigned: false as const, reason: "already_assigned" as const, assignedAmbulanceId: data.assignedAmbulanceId as string };
+      return {
+        ok: true as const,
+        assigned: false as const,
+        reason: "already_assigned" as const,
+        assignedAmbulanceId: data.assignedAmbulanceId as string,
+      };
     }
+    if (data.sessionStatus !== "active") {
+      return { ok: true as const, assigned: false as const, reason: "session_not_active" as const };
+    }
+
+    const etaMin = etaMinutesFromDistanceMeters(closest.distanceMeters);
+    const dispatchPhase: LifecycleStatus = "dispatched";
+    const snapshot = mergePatientSnapshot(
+      data.currentSnapshot as Record<string, unknown> | undefined,
+      {
+        ambulanceStatus: "Nearest ambulance auto-assigned",
+        eta: etaMin,
+      },
+      dispatchPhase,
+    );
 
     tx.update(emergencyRef, {
       assignedAmbulanceId: closest.uid,
-      status: "assigned",
       assignedAt: nowIso,
-      assignmentAttempts: typeof data.assignmentAttempts === "number" ? data.assignmentAttempts : 0,
-      maxAttempts: typeof data.maxAttempts === "number" ? data.maxAttempts : 3,
-      assignmentHistory: Array.isArray(data.assignmentHistory) ? data.assignmentHistory : [],
       updatedAt: nowIso,
+      currentSnapshot: snapshotPayloadForLifecycle(dispatchPhase, snapshot),
       timeline: arrayUnion({
         status: "auto_assigned",
         ambulanceId: closest.uid,
@@ -92,7 +116,12 @@ export async function autoDispatchEmergency(input: {
       }),
     });
 
-    return { ok: true as const, assigned: true as const, assignedAmbulanceId: closest.uid, distanceMeters: closest.distanceMeters };
+    return {
+      ok: true as const,
+      assigned: true as const,
+      assignedAmbulanceId: closest.uid,
+      distanceMeters: closest.distanceMeters,
+    };
   });
 }
 
@@ -100,21 +129,18 @@ export async function rejectAndReassignEmergency(input: {
   emergencyId: string;
   rejectingAmbulanceId: string;
   patientLocation: LatLng;
-  timeoutMs?: number;
 }) {
   const { emergencyId, rejectingAmbulanceId, patientLocation } = input;
   const emergencyRef = doc(db, "emergencies", emergencyId);
   const nowIso = new Date().toISOString();
 
-  // First, update attempts/history + clear assignment transactionally IF still assigned to rejecting ambulance.
   const res = await runTransaction(db, async (tx) => {
     const snap = await tx.get(emergencyRef);
     if (!snap.exists()) return { ok: false as const, reason: "missing_emergency" as const };
     const data = snap.data() as any;
 
-    const status = typeof data.status === "string" ? data.status : null;
-    if (status !== "assigned") {
-      return { ok: true as const, reassigned: false as const, reason: "not_waiting_for_response" as const };
+    if (data.sessionStatus !== "active") {
+      return { ok: true as const, reassigned: false as const, reason: "session_not_active" as const };
     }
 
     const assigned = data.assignedAmbulanceId ?? null;
@@ -122,11 +148,16 @@ export async function rejectAndReassignEmergency(input: {
       return { ok: true as const, reassigned: false as const, reason: "assigned_to_other" as const };
     }
 
+    const lifecycle = normalizeLifecycleStatus(data.status);
+    // Only reassign while ambulance has not left "dispatched" (hasn't acknowledged enRoute).
+    if (lifecycle !== "dispatched") {
+      return { ok: true as const, reassigned: false as const, reason: "already_in_progress" as const };
+    }
+
     const attempts = typeof data.assignmentAttempts === "number" ? data.assignmentAttempts : 0;
     const maxAttempts = typeof data.maxAttempts === "number" ? data.maxAttempts : 3;
     const history: string[] = Array.isArray(data.assignmentHistory) ? data.assignmentHistory : [];
     const nextAttempts = attempts + 1;
-
     const nextHistory = history.includes(rejectingAmbulanceId) ? history : [...history, rejectingAmbulanceId];
 
     if (nextAttempts >= maxAttempts) {
@@ -135,7 +166,7 @@ export async function rejectAndReassignEmergency(input: {
         maxAttempts,
         assignmentHistory: nextHistory,
         assignedAmbulanceId: null,
-        status: "unassigned",
+        assignedAt: null,
         updatedAt: nowIso,
         timeline: arrayUnion({
           status: "dispatch_exhausted",
@@ -151,6 +182,7 @@ export async function rejectAndReassignEmergency(input: {
       maxAttempts,
       assignmentHistory: nextHistory,
       assignedAmbulanceId: null,
+      assignedAt: null,
       updatedAt: nowIso,
       timeline: arrayUnion({
         status: "rejected",
@@ -166,7 +198,6 @@ export async function rejectAndReassignEmergency(input: {
   if ((res as any).reason === "max_attempts_reached") return res;
   if ((res as any).reassigned !== true) return res;
 
-  // Now attempt a new auto-dispatch excluding previously tried ambulances.
   const excludeIds: string[] = (res as any).excludeIds ?? [rejectingAmbulanceId];
   return await autoDispatchEmergency({
     emergencyId,
@@ -174,4 +205,3 @@ export async function rejectAndReassignEmergency(input: {
     options: { excludeAmbulanceIds: excludeIds },
   });
 }
-

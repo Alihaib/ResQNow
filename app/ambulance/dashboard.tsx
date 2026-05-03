@@ -27,6 +27,7 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { normalizeLifecycleStatus } from "../../src/emergency/stateMachine";
 import {
   autoDispatchEmergency,
   rejectAndReassignEmergency,
@@ -481,7 +482,7 @@ export default function AmbulanceDashboard() {
     const timer = setInterval(() => {
       const now = Date.now();
       for (const e of emergencies) {
-        if (e.status !== "assigned") continue; // only waiting-for-response state
+        if (normalizeLifecycleStatus(e.status) !== "dispatched") continue;
         if (!e.assignedAmbulanceId) continue;
         if (!e.assignedAt) continue;
         if (attemptedTimeoutReassignRef.current[e.id]) continue;

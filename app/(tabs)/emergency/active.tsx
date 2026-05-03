@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { arrayUnion, doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -33,7 +33,7 @@ interface Contact {
 
 export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
-  const { currentEmergency } = useEmergency();
+  const { currentEmergency, liveEmergency } = useEmergency();
   const { t: translate } = useLanguage();
   const router = useRouter();
   const params = useLocalSearchParams<{ locationData?: string; victimType?: string }>();
@@ -45,23 +45,15 @@ export default function ActiveEmergencyScreen() {
   const [autoShareEnabled, setAutoShareEnabled] = useState<boolean | null>(null);
   const [emergencyContacts, setEmergencyContacts] = useState<Contact[]>([]);
   const [ending, setEnding] = useState(false);
-  const [ambulanceLocation, setAmbulanceLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [ambulanceAssigned, setAmbulanceAssigned] = useState(false);
-
-  // Real-time ambulance location from the emergency doc
-  useEffect(() => {
-    if (!currentEmergency?.id) return;
-    const unsub = onSnapshot(doc(db, "emergencies", currentEmergency.id), (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data() as any;
-      setAmbulanceAssigned(!!data.assignedAmbulanceId);
-      const loc = data.ambulanceLocation;
-      if (loc?.latitude && loc?.longitude) {
-        setAmbulanceLocation({ latitude: loc.latitude, longitude: loc.longitude });
-      }
-    });
-    return () => unsub();
-  }, [currentEmergency?.id]);
+  const ambulanceAssigned = !!liveEmergency?.assignedAmbulanceId;
+  const ambulanceLocation =
+    liveEmergency?.ambulanceLocation?.latitude != null &&
+    liveEmergency?.ambulanceLocation?.longitude != null
+      ? {
+          latitude: liveEmergency.ambulanceLocation.latitude as number,
+          longitude: liveEmergency.ambulanceLocation.longitude as number,
+        }
+      : null;
 
   const mapRegion = useMemo(() => {
     if (!location) return null;

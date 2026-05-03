@@ -1,12 +1,29 @@
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { arrayUnion, doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import {
+  allowsMedicalSnapshotFields,
+  ambulanceStatusLabel,
+  etaMinutesFromDistanceMeters,
+  mergePatientSnapshot,
+  snapshotPayloadForLifecycle,
+  type ConditionLevel,
+  type PatientSnapshot,
+  snapshotFromFirestore,
+} from "../../src/emergency/patientSnapshot";
+import { stripUndefinedDeep } from "../../src/utils/firestoreSanitize";
+import {
+  canTransitionLifecycle,
+  normalizeLifecycleStatus,
+  type LifecycleStatus,
+} from "../../src/emergency/stateMachine";
+import { claimEmergencyTransaction, updateLifecycleTransaction } from "../../src/services/emergencyAssignment";
 import { rejectAndReassignEmergency } from "../../src/services/autoDispatch";
 
 interface Emergency {
@@ -24,21 +41,22 @@ interface Emergency {
     address?: string | null;
   };
   timestamp: string;
-  status: string;
+  status: LifecycleStatus | string;
   sessionStatus?: "active" | "resolved" | "cancelled";
   victimType?: "me" | "other";
   assignedAmbulanceId?: string | null;
   ambulanceLocation?: { latitude?: number; longitude?: number } | null;
   assignedAt?: string | null;
+  currentSnapshot?: PatientSnapshot | null;
 }
 
-const AMBULANCE_STATUSES = [
-  { key: "en_route", label: "En route" },
-  { key: "arrived_patient", label: "Arrived at patient" },
-  { key: "patient_picked", label: "Patient picked up" },
-  { key: "en_route_hospital", label: "Transporting to hospital" },
-  { key: "completed", label: "Completed" },
-] as const;
+const LIFECYCLE_LABELS: Record<LifecycleStatus, string> = {
+  dispatched: "Dispatched",
+  enRoute: "En route",
+  arrived: "Arrived",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
 
 export default function EmergencyDetailScreen() {
   const router = useRouter();
@@ -55,6 +73,13 @@ export default function EmergencyDetailScreen() {
   const emergencyRef = useRef<Emergency | null>(null);
   const userUidRef = useRef<string | null>(null);
   const mapRef = useRef<MapView | null>(null);
+
+  const [snapCondition, setSnapCondition] = useState<ConditionLevel>("moderate");
+  const [snapSymptoms, setSnapSymptoms] = useState("");
+  const [snapHr, setSnapHr] = useState("");
+  const [snapO2, setSnapO2] = useState("");
+  const [snapBp, setSnapBp] = useState("");
+  const [snapSaving, setSnapSaving] = useState(false);
 
   // Access control: block non-ambulance users and non-approved responders
   useEffect(() => {
@@ -81,52 +106,19 @@ export default function EmergencyDetailScreen() {
     userUidRef.current = user?.uid ?? null;
   }, [user?.uid]);
 
-  useEffect(() => {
-    const loadEmergency = async () => {
-      if (!params.emergencyId) {
-        Alert.alert(t("error"), t("emergencyIdNotProvided"));
-        router.back();
-        return;
-      }
-
-      try {
-        // Initial fetch (so UI can render quickly) + then realtime subscription below
-        const emergencyDoc = await getDoc(doc(db, "emergencies", params.emergencyId));
-        if (!emergencyDoc.exists()) throw new Error("Emergency not found");
-        const data = emergencyDoc.data() as any;
-        console.log("[AmbulanceEmergencyDetail] initial load:", emergencyDoc.id, data?.sessionStatus, data?.status);
-        setEmergency({
-          id: emergencyDoc.id,
-          userId: data.userId,
-          location: data.location,
-          patientLocation: data.patientLocation,
-          timestamp: data.timestamp,
-          status: data.status,
-          sessionStatus: data.sessionStatus,
-          victimType: data.victimType === "other" ? "other" : "me",
-          assignedAmbulanceId: data.assignedAmbulanceId ?? null,
-          ambulanceLocation: data.ambulanceLocation ?? null,
-        });
-      } catch (error) {
-        console.error("Error loading emergency:", error);
-        Alert.alert(t("error"), t("failedToLoadEmergencyDetails"));
-        router.back();
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadEmergency();
-  }, [params.emergencyId]);
-
-  // Realtime subscribe to emergency doc (status + assignment + patient/ambulance locations)
+  // Realtime subscribe to emergency doc (single source of truth)
   useEffect(() => {
     if (!params.emergencyId) return;
+    setLoading(true);
     const ref = doc(db, "emergencies", params.emergencyId);
     const unsub = onSnapshot(
       ref,
       async (snap) => {
-        if (!snap.exists()) return;
+        if (!snap.exists()) {
+          setEmergency(null);
+          setLoading(false);
+          return;
+        }
         const data = snap.data() as any;
         const next: Emergency = {
           id: snap.id,
@@ -134,12 +126,13 @@ export default function EmergencyDetailScreen() {
           location: data.location,
           patientLocation: data.patientLocation,
           timestamp: data.timestamp,
-          status: data.status,
+          status: normalizeLifecycleStatus(data.status),
           sessionStatus: data.sessionStatus,
           victimType: data.victimType === "other" ? "other" : "me",
           assignedAmbulanceId: data.assignedAmbulanceId ?? null,
           ambulanceLocation: data.ambulanceLocation ?? null,
           assignedAt: typeof data.assignedAt === "string" ? data.assignedAt : null,
+          currentSnapshot: snapshotFromFirestore(data.currentSnapshot),
         };
         console.log(
           "[AmbulanceEmergencyDetail] emergency snapshot:",
@@ -154,6 +147,7 @@ export default function EmergencyDetailScreen() {
           !!next.ambulanceLocation
         );
         setEmergency(next);
+        setLoading(false);
 
         // Privacy: if victimType is "other", do NOT load any medical profile data.
         if (next.victimType !== "other" && next.userId) {
@@ -168,6 +162,18 @@ export default function EmergencyDetailScreen() {
     );
     return () => unsub();
   }, [params.emergencyId]);
+
+  useEffect(() => {
+    if (!emergency) return;
+    if (!allowsMedicalSnapshotFields(normalizeLifecycleStatus(String(emergency.status)))) return;
+    const s = emergency.currentSnapshot;
+    if (!s) return;
+    setSnapCondition(s.conditionLevel);
+    setSnapSymptoms(s.symptoms?.length ? s.symptoms.join(", ") : "");
+    setSnapHr(s.vitals?.heartRate != null ? String(s.vitals.heartRate) : "");
+    setSnapO2(s.vitals?.oxygen != null ? String(s.vitals.oxygen) : "");
+    setSnapBp(s.vitals?.bloodPressure ?? "");
+  }, [emergency?.currentSnapshot?.lastUpdate, emergency?.status]);
 
   useEffect(() => {
     const getAmbulanceLocation = async () => {
@@ -195,21 +201,29 @@ export default function EmergencyDetailScreen() {
     return emergency.assignedAmbulanceId === user.uid;
   }, [user?.uid, emergency?.assignedAmbulanceId]);
 
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) *
+        Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
   const claimIfUnassigned = async () => {
     const uid = userUidRef.current;
     const e = emergencyRef.current;
     if (!uid || !e?.id) return;
     if (e.assignedAmbulanceId) return;
-    console.log("[AmbulanceEmergencyDetail] claiming unassigned case:", e.id, "as", uid);
-    await updateDoc(doc(db, "emergencies", e.id), {
-      assignedAmbulanceId: uid,
-      updatedAt: new Date().toISOString(),
-      timeline: arrayUnion({
-        status: "assigned_ambulance",
-        ambulanceId: uid,
-        timestamp: new Date().toISOString(),
-      }),
-    });
+    const res = await claimEmergencyTransaction(e.id, uid);
+    if (!res.ok && res.reason !== "already_claimed") {
+      console.warn("[AmbulanceEmergencyDetail] claim failed:", res);
+    }
   };
 
   const startTracking = async () => {
@@ -265,13 +279,42 @@ export default function EmergencyDetailScreen() {
             loc.coords.longitude
           );
 
-          await updateDoc(doc(db, "emergencies", latest.id), {
-            assignedAmbulanceId: assigned ?? latestUid,
-            ambulanceLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-            updatedAt: new Date().toISOString(),
-          });
+          const pat = latest.patientLocation ?? latest.location;
+          let distM: number | null = null;
+          if (
+            pat &&
+            typeof pat.latitude === "number" &&
+            typeof pat.longitude === "number"
+          ) {
+            const km = calculateDistance(
+              loc.coords.latitude,
+              loc.coords.longitude,
+              pat.latitude,
+              pat.longitude
+            );
+            distM = km * 1000;
+          }
+          const eta = etaMinutesFromDistanceMeters(distM);
+          const lc = normalizeLifecycleStatus(String(latest.status));
+          const snapshot = mergePatientSnapshot(
+            latest.currentSnapshot as Record<string, unknown> | undefined,
+            {
+              eta,
+              ambulanceStatus: ambulanceStatusLabel(lc),
+            },
+            lc,
+          );
 
-          // Publish last known ambulance location for auto-dispatch selection (best effort).
+          await updateDoc(
+            doc(db, "emergencies", latest.id),
+            stripUndefinedDeep({
+              assignedAmbulanceId: assigned ?? latestUid,
+              ambulanceLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+              updatedAt: new Date().toISOString(),
+              currentSnapshot: snapshotPayloadForLifecycle(lc, snapshot),
+            })
+          );
+
           updateDoc(doc(db, "users", latestUid), {
             lastKnownLocation: { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
             lastKnownLocationUpdatedAt: new Date().toISOString(),
@@ -319,63 +362,51 @@ export default function EmergencyDetailScreen() {
     return () => clearTimeout(timer);
   }, [ambulanceLocation, emergency]);
 
-  const updateCaseStatus = async (nextStatus: (typeof AMBULANCE_STATUSES)[number]["key"]) => {
+  const getNextLifecycle = (current: LifecycleStatus): LifecycleStatus | null => {
+    if (current === "dispatched") return "enRoute";
+    if (current === "enRoute") return "arrived";
+    if (current === "arrived") return "completed";
+    return null;
+  };
+
+  const advanceOneStep = async () => {
     const uid = userUidRef.current;
     const e = emergencyRef.current;
     if (!uid || !e?.id) return;
-
     await claimIfUnassigned();
-
-    // If assigned to someone else, block updates
-    const latest = emergencyRef.current;
-    if (latest?.assignedAmbulanceId && latest.assignedAmbulanceId !== uid) {
+    const snap = await getDoc(doc(db, "emergencies", e.id));
+    const assigned = snap.exists() ? (snap.data() as any).assignedAmbulanceId : null;
+    if (assigned && assigned !== uid) {
       Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
       return;
     }
-
-    const nowIso = new Date().toISOString();
-    console.log("[AmbulanceEmergencyDetail] update status:", e.id, "->", nextStatus);
-    await updateDoc(doc(db, "emergencies", e.id), {
-      status: nextStatus,
-      sessionStatus: nextStatus === "completed" ? "resolved" : "active",
-      updatedAt: nowIso,
-      timeline: arrayUnion({
-        status: nextStatus,
-        ambulanceId: uid,
-        timestamp: nowIso,
-      }),
-    });
+    if (!assigned) {
+      Alert.alert(t("error"), "Claim this emergency before advancing status.");
+      return;
+    }
+    const cur = normalizeLifecycleStatus(snap.data()?.status);
+    const next = getNextLifecycle(cur);
+    if (!next || !canTransitionLifecycle(cur, next)) {
+      Alert.alert(t("error"), "Invalid step");
+      return;
+    }
+    const res = await updateLifecycleTransaction(e.id, uid, next);
+    if (!res.ok) {
+      Alert.alert(t("error"), String((res as any).reason ?? "Update failed"));
+    }
   };
 
-  const acceptEmergency = async () => {
+  const onClaimPress = async () => {
     const uid = userUidRef.current;
     const e = emergencyRef.current;
     if (!uid || !e?.id) return;
-    if (e.assignedAmbulanceId && e.assignedAmbulanceId !== uid) {
+    const res = await claimEmergencyTransaction(e.id, uid);
+    if (!res.ok && (res as any).reason === "already_claimed") {
       Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
-      return;
     }
-    // If not yet assigned, try to claim and then accept
-    await claimIfUnassigned();
-
-    const latest = emergencyRef.current;
-    if (!latest?.id) return;
-    if (latest.assignedAmbulanceId && latest.assignedAmbulanceId !== uid) {
-      Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
-      return;
-    }
-
-    const nowIso = new Date().toISOString();
-    console.log("[AmbulanceEmergencyDetail] ACCEPT:", latest.id, "by", uid);
-    await updateDoc(doc(db, "emergencies", latest.id), {
-      assignedAmbulanceId: uid,
-      status: "en_route",
-      updatedAt: nowIso,
-      timeline: arrayUnion({ status: "accepted", ambulanceId: uid, timestamp: nowIso }),
-    });
   };
 
-  const rejectEmergency = async () => {
+  const releaseAssignment = async () => {
     const uid = userUidRef.current;
     const e = emergencyRef.current;
     if (!uid || !e?.id) return;
@@ -383,8 +414,9 @@ export default function EmergencyDetailScreen() {
       Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
       return;
     }
-    if (e.status !== "assigned") {
-      Alert.alert(t("error"), "This emergency is no longer awaiting acceptance.");
+    const cur = normalizeLifecycleStatus(e.status);
+    if (cur !== "dispatched") {
+      Alert.alert(t("error"), "Release is only available before leaving for the scene.");
       return;
     }
 
@@ -396,10 +428,8 @@ export default function EmergencyDetailScreen() {
       return;
     }
 
-    // Stop GPS tracking if currently enabled.
     stopTracking();
 
-    console.log("[AmbulanceEmergencyDetail] REJECT:", e.id, "by", uid);
     await rejectAndReassignEmergency({
       emergencyId: e.id,
       rejectingAmbulanceId: uid,
@@ -411,18 +441,55 @@ export default function EmergencyDetailScreen() {
     else router.replace("/ambulance/dashboard");
   };
 
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Radius of the Earth in km
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * (Math.PI / 180)) *
-        Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+  const saveClinicalSnapshot = async () => {
+    const e = emergencyRef.current;
+    const uid = userUidRef.current;
+    if (!e?.id || !uid) return;
+    const lc = normalizeLifecycleStatus(String(e.status));
+    if (!allowsMedicalSnapshotFields(lc)) {
+      Alert.alert(t("error"), "Patient assessment is only available after you mark Arrived.");
+      return;
+    }
+    if (e.assignedAmbulanceId && e.assignedAmbulanceId !== uid) {
+      Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
+      return;
+    }
+    setSnapSaving(true);
+    try {
+      const snapDoc = await getDoc(doc(db, "emergencies", e.id));
+      const prev = snapDoc.data()?.currentSnapshot;
+      const symptomsArr = snapSymptoms.split(",").map((x) => x.trim()).filter(Boolean);
+      const hrN = snapHr.trim() ? Number(snapHr) : NaN;
+      const o2N = snapO2.trim() ? Number(snapO2) : NaN;
+      const vitals: NonNullable<PatientSnapshot["vitals"]> = {};
+      if (Number.isFinite(hrN)) vitals.heartRate = hrN;
+      if (Number.isFinite(o2N)) vitals.oxygen = o2N;
+      if (snapBp.trim()) vitals.bloodPressure = snapBp.trim();
+
+      const snapshot = mergePatientSnapshot(
+        prev as Record<string, unknown> | undefined,
+        {
+          conditionLevel: snapCondition,
+          symptoms: symptomsArr,
+          vitals: Object.keys(vitals).length ? vitals : undefined,
+          ambulanceStatus: ambulanceStatusLabel(lc),
+        },
+        "arrived",
+      );
+
+      await updateDoc(
+        doc(db, "emergencies", e.id),
+        stripUndefinedDeep({
+          currentSnapshot: snapshotPayloadForLifecycle("arrived", snapshot),
+          updatedAt: new Date().toISOString(),
+        })
+      );
+    } catch (err) {
+      console.error(err);
+      Alert.alert(t("error"), "Could not save patient snapshot");
+    } finally {
+      setSnapSaving(false);
+    }
   };
 
   const openNavigation = () => {
@@ -485,6 +552,13 @@ export default function EmergencyDetailScreen() {
       )
     : null;
 
+  const lifecycle = normalizeLifecycleStatus(String(emergency.status));
+  const assessmentMode =
+    emergency.sessionStatus === "active" && allowsMedicalSnapshotFields(lifecycle);
+  const transportOnly =
+    emergency.sessionStatus === "active" &&
+    (lifecycle === "dispatched" || lifecycle === "enRoute");
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -506,14 +580,21 @@ export default function EmergencyDetailScreen() {
         {/* Emergency Status */}
         <View style={styles.statusCard}>
           <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>🚨 {t("activeEmergency") || "ACTIVE EMERGENCY"}</Text>
+            <Text style={styles.statusText}>
+              {emergency.sessionStatus === "active"
+                ? `🚨 ${t("activeEmergency") || "ACTIVE EMERGENCY"}`
+                : emergency.sessionStatus === "resolved"
+                  ? "✓ Case resolved"
+                  : "Case cancelled"}
+            </Text>
           </View>
           <Text style={styles.timeText}>{formatTimeAgo(emergency.timestamp)}</Text>
           {emergency.victimType === "other" && (
             <Text style={styles.victimBadge}>🆘 {t("victimHelpingOther")}</Text>
           )}
           <Text style={styles.callerBadge}>
-            🚑 {t("caseStatusLabel")}: {emergency.status || t("statusDispatched")}
+            🚑 {t("caseStatusLabel")}:{" "}
+            {LIFECYCLE_LABELS[normalizeLifecycleStatus(String(emergency.status))] ?? emergency.status}
           </Text>
           {emergency.assignedAmbulanceId ? (
             <Text style={styles.callerBadge}>
@@ -523,6 +604,91 @@ export default function EmergencyDetailScreen() {
             <Text style={styles.callerBadge}>{t("unassigned")}</Text>
           )}
         </View>
+
+        {transportOnly ? (
+          <View style={styles.transportBanner}>
+            <Text style={styles.transportBannerTitle}>🚑 Transport phase</Text>
+            <Text style={styles.transportBannerText}>
+              Use navigation, live map, and GPS below. ETA updates the doctor dashboard automatically. Patient assessment
+              (condition, symptoms, vitals) unlocks after you advance status to Arrived.
+            </Text>
+          </View>
+        ) : null}
+
+        {assessmentMode ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🫀 Patient assessment</Text>
+            <View style={styles.infoCard}>
+              <Text style={styles.snapHint}>
+                On-scene clinical snapshot — visible to doctors in real time. Timeline is unchanged.
+              </Text>
+              <Text style={styles.snapLabel}>Condition</Text>
+              <View style={styles.conditionRow}>
+                {(["stable", "moderate", "critical"] as const).map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      styles.conditionChip,
+                      snapCondition === c && styles.conditionChipActive,
+                      c === "critical" && styles.conditionChipDanger,
+                    ]}
+                    onPress={() => setSnapCondition(c)}
+                  >
+                    <Text
+                      style={[styles.conditionChipText, snapCondition === c && { color: "#FFF" }]}
+                    >
+                      {c}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.snapLabel}>Symptoms (comma-separated)</Text>
+              <TextInput
+                style={styles.snapInput}
+                value={snapSymptoms}
+                onChangeText={setSnapSymptoms}
+                placeholder="e.g. chest pain, shortness of breath"
+                placeholderTextColor="#ADB5BD"
+                multiline
+              />
+              <Text style={styles.snapLabel}>Vitals (optional)</Text>
+              <View style={styles.vitalsRow}>
+                <TextInput
+                  style={[styles.snapInput, styles.vitalsField]}
+                  value={snapHr}
+                  onChangeText={setSnapHr}
+                  placeholder="HR"
+                  keyboardType="numeric"
+                  placeholderTextColor="#ADB5BD"
+                />
+                <TextInput
+                  style={[styles.snapInput, styles.vitalsField]}
+                  value={snapO2}
+                  onChangeText={setSnapO2}
+                  placeholder="SpO₂ %"
+                  keyboardType="numeric"
+                  placeholderTextColor="#ADB5BD"
+                />
+              </View>
+              <TextInput
+                style={styles.snapInput}
+                value={snapBp}
+                onChangeText={setSnapBp}
+                placeholder="Blood pressure e.g. 120/80"
+                placeholderTextColor="#ADB5BD"
+              />
+              <TouchableOpacity
+                style={[styles.navigateButton, { marginTop: 12 }, snapSaving && { opacity: 0.7 }]}
+                onPress={saveClinicalSnapshot}
+                disabled={snapSaving}
+              >
+                <Text style={styles.navigateButtonText}>
+                  {snapSaving ? "Saving…" : "Save assessment"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
 
         {/* Live Map */}
         <View style={styles.section}>
@@ -585,60 +751,44 @@ export default function EmergencyDetailScreen() {
           </View>
         </View>
 
-        {/* Accept / Reject assignment (smart reassignment) */}
-        {emergency.status === "assigned" && (
+        {emergency.sessionStatus === "active" ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>✅ Assignment Response</Text>
+            <Text style={styles.sectionTitle}>📢 Dispatch control</Text>
             <View style={styles.infoCard}>
-              <Text style={styles.navigateText}>
-                This emergency is awaiting ambulance response. Please accept or reject.
-              </Text>
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-                <TouchableOpacity
-                  style={[styles.navigateButton, { flex: 1, backgroundColor: "#16A34A" }]}
-                  onPress={acceptEmergency}
-                  disabled={!!emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user?.uid}
-                >
-                  <Text style={styles.navigateButtonText}>Accept</Text>
+              {!emergency.assignedAmbulanceId ? (
+                <TouchableOpacity style={styles.navigateButton} onPress={onClaimPress}>
+                  <Text style={styles.navigateButtonText}>Claim emergency</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.navigateButton, { flex: 1, backgroundColor: "#DC2626" }]}
-                  onPress={rejectEmergency}
-                  disabled={emergency.assignedAmbulanceId !== user?.uid}
-                >
-                  <Text style={styles.navigateButtonText}>Reject</Text>
-                </TouchableOpacity>
-              </View>
+              ) : null}
+
               {emergency.assignedAmbulanceId && emergency.assignedAmbulanceId !== user?.uid ? (
-                <Text style={styles.navigateText}>
-                  Assigned to another ambulance. You cannot respond.
-                </Text>
+                <Text style={styles.navigateText}>{t("caseAssignedToAnotherAmbulance")}</Text>
+              ) : null}
+
+              {isAssignedToMe && normalizeLifecycleStatus(String(emergency.status)) === "dispatched" ? (
+                <TouchableOpacity
+                  style={[styles.navigateButton, { backgroundColor: "#6C757D", marginTop: 12 }]}
+                  onPress={releaseAssignment}
+                >
+                  <Text style={styles.navigateButtonText}>Release assignment</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {isAssignedToMe && getNextLifecycle(normalizeLifecycleStatus(String(emergency.status))) ? (
+                <TouchableOpacity style={[styles.navigateButton, { marginTop: 12 }]} onPress={advanceOneStep}>
+                  <Text style={styles.navigateButtonText}>
+                    Next:{" "}
+                    {LIFECYCLE_LABELS[getNextLifecycle(normalizeLifecycleStatus(String(emergency.status)))!]}
+                  </Text>
+                </TouchableOpacity>
               ) : null}
             </View>
           </View>
-        )}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📢 Update Case Status</Text>
-          <View style={styles.infoCard}>
-            {AMBULANCE_STATUSES.map((s) => (
-              <TouchableOpacity
-                key={s.key}
-                style={[styles.actionStatusBtn, emergency.status === s.key && styles.actionStatusBtnActive]}
-                onPress={() => updateCaseStatus(s.key)}
-              >
-                <Text
-                  style={[
-                    styles.actionStatusBtnText,
-                    emergency.status === s.key && { color: "#FFFFFF" },
-                  ]}
-                >
-                  {s.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        ) : (
+          <View style={styles.section}>
+            <Text style={styles.navigateText}>This case is no longer active.</Text>
           </View>
-        </View>
+        )}
 
         {/* Location Section */}
         <View style={styles.section}>
@@ -861,6 +1011,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
+  snapHint: {
+    fontSize: 12,
+    color: "#6C757D",
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  snapLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#003049",
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  conditionRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  conditionChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#E9ECEF",
+    backgroundColor: "#F8F9FA",
+  },
+  conditionChipActive: {
+    backgroundColor: "#003049",
+    borderColor: "#003049",
+  },
+  conditionChipDanger: {},
+  conditionChipText: {
+    fontWeight: "800",
+    color: "#003049",
+    textTransform: "capitalize",
+  },
+  snapInput: {
+    borderWidth: 1.5,
+    borderColor: "#E9ECEF",
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 15,
+    color: "#003049",
+    backgroundColor: "#FFFFFF",
+  },
+  vitalsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  vitalsField: {
+    flex: 1,
+  },
   notFoundCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -888,6 +1090,25 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#003049",
     marginBottom: 12,
+  },
+  transportBanner: {
+    backgroundColor: "#E7F1FF",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1.5,
+    borderColor: "#B6D4FE",
+  },
+  transportBannerTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: "#003049",
+    marginBottom: 8,
+  },
+  transportBannerText: {
+    fontSize: 14,
+    color: "#495057",
+    lineHeight: 20,
   },
   locationCard: {
     backgroundColor: "#FFFFFF",
