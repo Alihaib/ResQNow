@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,7 @@ import { useEmergency } from "../../../src/context/EmergencyContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
 import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
+import { SosSmartFirstAid } from "../../../src/firstAid/SosSmartFirstAid";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
 
 interface LocationData {
@@ -37,7 +38,7 @@ interface Contact {
 export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
   const { currentEmergency, liveEmergency, activeEmergencyHydrated } = useEmergency();
-  const { t: translate } = useLanguage();
+  const { t: translate, lang } = useLanguage();
   const router = useRouter();
   const params = useLocalSearchParams<{ locationData?: string; victimType?: string }>();
   const initialVictimType = params.victimType === "other" ? "other" : "me";
@@ -104,6 +105,11 @@ export default function ActiveEmergencyScreen() {
       ? liveEmergency.currentSnapshot.eta
       : null;
 
+  const ambulanceStatusLine =
+    typeof liveEmergency?.currentSnapshot?.ambulanceStatus === "string"
+      ? liveEmergency.currentSnapshot.ambulanceStatus.trim() || null
+      : null;
+
   const distanceText = useMemo(() => {
     if (!mapPatientAnchor || !ambulanceCoordsLive) return null;
     const R = 6371000;
@@ -119,6 +125,14 @@ export default function ActiveEmergencyScreen() {
   }, [mapPatientAnchor, ambulanceCoordsLive]);
 
   const mapRef = useRef<MapView | null>(null);
+  const mainScrollRef = useRef<ScrollView>(null);
+  const firstAidSectionYRef = useRef(0);
+  const scrollToFirstAidSection = useCallback(() => {
+    mainScrollRef.current?.scrollTo({
+      y: Math.max(0, firstAidSectionYRef.current - 12),
+      animated: true,
+    });
+  }, []);
 
   /** Refit viewport when Firestore pushes new patient or ambulance coordinates (same source as markers). */
   useEffect(() => {
@@ -688,7 +702,7 @@ Shared from ResQNow Emergency App
         <Text style={styles.statusText}>{translate("emergencyActive")}</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={mainScrollRef} contentContainerStyle={styles.content}>
         {/* Timer */}
         <View style={styles.timerContainer}>
           <Text style={styles.timerLabel}>{translate("timeElapsed")}</Text>
@@ -702,7 +716,7 @@ Shared from ResQNow Emergency App
           </Text>
         </View>
 
-        {/* Location */}
+        {/* Location / share — kept above smart triage so it stays near the top */}
         <TouchableOpacity 
           style={styles.infoCard}
           onPress={shareLocation}
@@ -725,6 +739,22 @@ Shared from ResQNow Emergency App
           </View>
           <Text style={styles.shareIcon}>📤</Text>
         </TouchableOpacity>
+
+        <View
+          onLayout={(e) => {
+            firstAidSectionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <SosSmartFirstAid
+            lang={lang}
+            translate={translate}
+            crewEtaMinutes={crewEtaMinutes}
+            ambulanceStatusText={ambulanceStatusLine}
+            isAmbulanceArrived={isAmbulanceArrived}
+            victimType={victimType}
+            onScrollToFirstAidSection={scrollToFirstAidSection}
+          />
+        </View>
 
         {/* Live tracking map — locations & ETA from Firestore (EmergencyContext onSnapshot) */}
         {mapPatientAnchor && (
@@ -815,14 +845,9 @@ Shared from ResQNow Emergency App
           </View>
         )}
 
-        {/* Instructions */}
-        <View style={styles.instructionsCard}>
-          <Text style={styles.instructionsTitle}>{translate("stayCalmTitle")}</Text>
-          <Text style={styles.instructionsText}>
-            {translate("helpOnWay")}{'\n'}
-            {translate("stayWhereYouAre")}{'\n'}
-            {translate("keepPhoneNearby")}{'\n'}
-            {translate("followInstructions")}
+        <View style={styles.instructionsCardCompact}>
+          <Text style={styles.instructionsCompactText}>
+            {translate("stayCalmTitle")} — {translate("helpOnWay")}
           </Text>
         </View>
 
@@ -841,18 +866,6 @@ Shared from ResQNow Emergency App
           </TouchableOpacity>
         )}
 
-        {/* First Aid */}
-        <TouchableOpacity
-          style={styles.actionCard}
-          onPress={() => router.push("/(tabs)/firstaid")}
-        >
-          <Text style={styles.actionIcon}>⛑</Text>
-          <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>{translate("medical_guides")}</Text>
-            <Text style={styles.actionSubtitle}>{translate("getGuidance")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* End emergency — only before crew arrival; sync loading vs lifecycle lock */}
@@ -1026,6 +1039,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#212529",
     lineHeight: 28,
+  },
+  instructionsCardCompact: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  instructionsCompactText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#003049",
+    lineHeight: 22,
+    textAlign: "center",
   },
   actionCard: {
     backgroundColor: "#FFFFFF",

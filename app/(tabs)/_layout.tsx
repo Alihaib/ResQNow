@@ -68,12 +68,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="firstaid/[category]"
-        options={{
-          href: null, // Hide from tab bar
-        }}
-      />
-      <Tabs.Screen
         name="profile/medical"
         options={{
           href: null,
