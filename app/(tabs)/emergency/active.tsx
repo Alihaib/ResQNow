@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import MapView, { Marker, Polyline } from "react-native-maps";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useEmergency } from "../../../src/context/EmergencyContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
@@ -805,6 +805,15 @@ Shared from ResQNow Emergency App
               pitchEnabled={false}
               rotateEnabled={false}
             >
+              {ambulanceCoordsLive ? (
+                <Polyline
+                  coordinates={[ambulanceCoordsLive, mapPatientAnchor]}
+                  strokeColor="#0074D9"
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              ) : null}
               <Marker
                 coordinate={mapPatientAnchor}
                 title={translate("mapLegendPatient") || "Patient"}

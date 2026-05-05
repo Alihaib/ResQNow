@@ -1,8 +1,8 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import MapView, { Marker } from "react-native-maps";
+import { ActivityIndicator, Animated, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import MapView, { Marker, Polyline } from "react-native-maps";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
@@ -11,12 +11,15 @@ import type { PatientSnapshot } from "../../../src/emergency/patientSnapshot";
 import { snapshotFromFirestore } from "../../../src/emergency/patientSnapshot";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
 
+const AnimatedPolyline = Animated.createAnimatedComponent(Polyline);
+
 type EmergencyDoc = {
   userId: string;
   victimType?: "me" | "other";
   sessionStatus?: "active" | "resolved" | "cancelled";
   status?: string; // lifecycle
   timestamp?: string;
+  patientName?: string | null;
   location?: {
     latitude?: number;
     longitude?: number;
@@ -33,6 +36,10 @@ type EmergencyDoc = {
   ambulanceLocation?: { latitude?: number; longitude?: number } | null;
   /** Optional — only shown when present on the document */
   doctorLocation?: { latitude?: number; longitude?: number } | null;
+  /** Optional — destination during transport phase (read-only for doctor view). */
+  hospitalLocation?: { latitude?: number; longitude?: number } | null;
+  /** Optional — mission flag (read-only for doctor view). */
+  patientPicked?: boolean | null;
   updatedAt?: string;
   timeline?: Array<{ status?: string; timestamp?: string; ambulanceId?: string; doctorId?: string; text?: string }>;
   doctorNotes?: Array<{ text?: string; timestamp?: string; doctorId?: string }>;
@@ -57,6 +64,13 @@ type PatientDoc = {
 const formatMaybe = (v: unknown) => {
   if (v === null || v === undefined || String(v).trim() === "") return "Not provided";
   return String(v);
+};
+
+const formatHHmm = (iso: string | null | undefined) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "—";
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
 const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -94,6 +108,11 @@ export default function DoctorCaseDetailScreen() {
   const [patient, setPatient] = useState<PatientDoc | null>(null);
   const [noteText, setNoteText] = useState("");
   const mapRef = useRef<MapView | null>(null);
+  const lastValidRouteRef = useRef<{ start: { latitude: number; longitude: number }; end: { latitude: number; longitude: number } } | null>(null);
+  const [route, setRoute] = useState<{ start: { latitude: number; longitude: number }; end: { latitude: number; longitude: number } } | null>(null);
+  const routeOpacity = useRef(new Animated.Value(1)).current;
+  const prevEtaRef = useRef<number | null>(null);
+  const [stableEtaMinutes, setStableEtaMinutes] = useState<number | null>(null);
 
   // Access control
   useEffect(() => {
@@ -133,11 +152,22 @@ export default function DoctorCaseDetailScreen() {
           status: normalizeLifecycleStatus(data.status),
           sessionStatus: data.sessionStatus,
           timestamp: data.timestamp,
+          patientName: typeof data.patientName === "string" ? data.patientName : null,
           location: data.location,
           patientLocation: data.patientLocation,
           severity: data.severity,
           assignedAmbulanceId: data.assignedAmbulanceId ?? null,
           ambulanceLocation: data.ambulanceLocation ?? null,
+          hospitalLocation:
+            data.hospitalLocation &&
+            typeof data.hospitalLocation === "object" &&
+            typeof (data.hospitalLocation as any).latitude === "number" &&
+            typeof (data.hospitalLocation as any).longitude === "number"
+              ? {
+                  latitude: (data.hospitalLocation as any).latitude as number,
+                  longitude: (data.hospitalLocation as any).longitude as number,
+                }
+              : null,
           doctorLocation:
             data.doctorLocation &&
             typeof data.doctorLocation === "object" &&
@@ -148,6 +178,7 @@ export default function DoctorCaseDetailScreen() {
                   longitude: (data.doctorLocation as any).longitude as number,
                 }
               : null,
+          patientPicked: typeof data.patientPicked === "boolean" ? data.patientPicked : null,
           updatedAt: data.updatedAt,
           timeline: Array.isArray(data.timeline) ? data.timeline : undefined,
           doctorNotes: Array.isArray(data.doctorNotes) ? data.doctorNotes : undefined,
@@ -214,6 +245,10 @@ export default function DoctorCaseDetailScreen() {
     () => parseLatLng(emergency?.doctorLocation ?? undefined),
     [emergency?.doctorLocation, emergency?.updatedAt],
   );
+  const hospitalCoordsLive = useMemo(
+    () => parseLatLng(emergency?.hospitalLocation ?? undefined),
+    [emergency?.hospitalLocation, emergency?.updatedAt],
+  );
 
   const patientLat = patientCoordsLive?.latitude;
   const patientLng = patientCoordsLive?.longitude;
@@ -226,6 +261,60 @@ export default function DoctorCaseDetailScreen() {
   const docLat = doctorCoordsLive?.latitude;
   const docLng = doctorCoordsLive?.longitude;
   const doctorHasCoords = doctorCoordsLive != null;
+
+  const transportPhase = useMemo(() => {
+    const lc = normalizeLifecycleStatus(String(emergency?.status ?? "dispatched"));
+    return lc === "arrived" || emergency?.patientPicked === true;
+  }, [emergency?.status, emergency?.patientPicked]);
+
+  const routeTarget = useMemo(() => {
+    if (!ambulanceHasCoords) return null;
+    if (!transportPhase) {
+      return patientHasCoords ? patientCoordsLive : null;
+    }
+    return hospitalCoordsLive ?? (doctorHasCoords ? doctorCoordsLive : null);
+  }, [ambulanceHasCoords, transportPhase, patientHasCoords, patientCoordsLive, hospitalCoordsLive, doctorHasCoords, doctorCoordsLive]);
+
+  const routeLabel = useMemo(() => {
+    return transportPhase ? "🏥 Transporting to hospital" : "🚑 En route to patient";
+  }, [transportPhase]);
+
+  const routeDistanceText = useMemo(() => {
+    if (!ambulanceHasCoords || !routeTarget) return null;
+    const meters = calculateDistanceMeters(
+      ambulanceCoordsLive!.latitude,
+      ambulanceCoordsLive!.longitude,
+      routeTarget.latitude,
+      routeTarget.longitude,
+    );
+    return formatDistance(meters);
+  }, [ambulanceHasCoords, routeTarget, ambulanceCoordsLive]);
+
+  useEffect(() => {
+    // Prevent route flicker: keep last valid route if new route is temporarily missing.
+    if (!ambulanceHasCoords) return;
+
+    const start = ambulanceCoordsLive
+      ? { latitude: ambulanceCoordsLive.latitude, longitude: ambulanceCoordsLive.longitude }
+      : null;
+    const end = routeTarget ? { latitude: routeTarget.latitude, longitude: routeTarget.longitude } : null;
+
+    if (start && end) {
+      const next = { start, end };
+      lastValidRouteRef.current = next;
+      setRoute(next);
+
+      // Smooth transition when endpoints change (fade 0.5 -> 1)
+      routeOpacity.stopAnimation();
+      routeOpacity.setValue(0.5);
+      Animated.timing(routeOpacity, { toValue: 1, duration: 220, useNativeDriver: false }).start();
+      return;
+    }
+
+    if (lastValidRouteRef.current) {
+      setRoute(lastValidRouteRef.current);
+    }
+  }, [ambulanceHasCoords, ambulanceCoordsLive, routeTarget, routeOpacity]);
 
   const distanceMeters = useMemo(() => {
     if (!patientHasCoords || !ambulanceHasCoords) return null;
@@ -240,6 +329,22 @@ export default function DoctorCaseDetailScreen() {
     Number.isFinite(emergency.currentSnapshot.eta)
       ? emergency.currentSnapshot.eta
       : null;
+
+  useEffect(() => {
+    // Smooth ETA: weighted average; keep last valid ETA instead of dropping.
+    if (typeof crewEtaMinutes === "number" && Number.isFinite(crewEtaMinutes)) {
+      const prev = prevEtaRef.current;
+      const next = prev == null ? crewEtaMinutes : prev * 0.7 + crewEtaMinutes * 0.3;
+      prevEtaRef.current = next;
+      setStableEtaMinutes(next);
+      return;
+    }
+    if (prevEtaRef.current != null) {
+      setStableEtaMinutes(prevEtaRef.current);
+    } else {
+      setStableEtaMinutes(null);
+    }
+  }, [crewEtaMinutes]);
 
   const openInMaps = () => {
     if (!patientHasCoords) return;
@@ -432,10 +537,12 @@ export default function DoctorCaseDetailScreen() {
 
       {/* Compact case context */}
       <View style={styles.metaStrip}>
-        <Text style={styles.metaStripText}>
-          {emergency.victimType === "other" ? t("someoneElse") : t("caller")} ·{" "}
-          {emergency.timestamp ? new Date(emergency.timestamp).toLocaleString() : "—"} ·{" "}
-          {formatMaybe(emergency.assignedAmbulanceId || t("unassigned"))}
+        <Text style={styles.metaStripText} numberOfLines={1}>
+          👤 {t("caller")}:{` `}
+          {String(emergency.patientName ?? patient?.name ?? "").trim() || "Anonymous Patient"}
+        </Text>
+        <Text style={styles.metaStripSubText} numberOfLines={1}>
+          ⏱ {formatHHmm(emergency.timestamp)}
         </Text>
       </View>
 
@@ -451,6 +558,13 @@ export default function DoctorCaseDetailScreen() {
           {basePatientLoc?.address ||
             (patientHasCoords ? `${patientLat}, ${patientLng}` : "Not provided")}
         </Text>
+        <View style={styles.routeStrip}>
+          <Text style={styles.routeLabelText}>{routeLabel}</Text>
+          <Text style={styles.routeMetaText}>
+            {routeDistanceText ? `📏 ${routeDistanceText}` : " "}
+            {stableEtaMinutes != null ? ` · ETA ${Math.max(0, Math.round(stableEtaMinutes))} min` : ""}
+          </Text>
+        </View>
         {crewEtaMinutes != null ? (
           <Text style={styles.mapEtaCaption}>ETA (crew) · {crewEtaMinutes} min</Text>
         ) : null}
@@ -473,6 +587,20 @@ export default function DoctorCaseDetailScreen() {
               zoomEnabled
               showsUserLocation={false}
             >
+              {route ? (
+                <AnimatedPolyline
+                  coordinates={[route.start, route.end]}
+                  strokeColor={
+                    routeOpacity.interpolate({
+                      inputRange: [0.5, 1],
+                      outputRange: ["rgba(0,116,217,0.5)", "rgba(0,116,217,1)"],
+                    }) as unknown as string
+                  }
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              ) : null}
               <Marker
                 key={`pat-${emergency.updatedAt ?? ""}-${patientLat}-${patientLng}`}
                 coordinate={{ latitude: patientLat as number, longitude: patientLng as number }}
@@ -554,7 +682,7 @@ export default function DoctorCaseDetailScreen() {
               <Text style={styles.timelineDot}>•</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.timelineText}>
-                  {formatMaybe(item.status)} {item.ambulanceId ? `(${item.ambulanceId})` : ""}
+                  {formatMaybe(item.status)}
                 </Text>
                 <Text style={styles.timelineTime}>
                   {item.timestamp ? new Date(item.timestamp).toLocaleString() : "Not provided"}
@@ -751,6 +879,13 @@ const styles = StyleSheet.create({
     color: "#495057",
     lineHeight: 18,
   },
+  metaStripSubText: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6C757D",
+    lineHeight: 18,
+  },
   snapshotMuted: {
     fontSize: 13,
     color: "#6C757D",
@@ -830,6 +965,18 @@ const styles = StyleSheet.create({
     marginTop: 12,
     alignItems: "center",
   },
+  routeStrip: {
+    marginTop: 6,
+    marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  routeLabelText: { fontSize: 14, fontWeight: "900", color: "#0F172A" },
+  routeMetaText: { marginTop: 4, fontSize: 12, fontWeight: "700", color: "#64748B" },
   legendChip: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendDotMap: { width: 10, height: 10, borderRadius: 5 },
   legendChipText: { fontSize: 12, fontWeight: "700", color: "#495057" },
