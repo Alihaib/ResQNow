@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import EmergencyChat from "../../../components/EmergencyChat";
 import {
   ActivityIndicator,
   Alert,
@@ -860,6 +861,22 @@ Shared from ResQNow Emergency App
           </Text>
         </View>
 
+        {/* Chat with medical team — available while emergency is active */}
+        {currentEmergency?.id && user?.uid ? (
+          <View style={styles.chatCard}>
+            <Text style={styles.chatCardTitle}>💬 Chat with Medical Team</Text>
+            <Text style={styles.chatCardSub}>
+              Message the doctor monitoring your case
+            </Text>
+            <EmergencyChat
+              emergencyId={currentEmergency.id}
+              currentUserId={user.uid}
+              currentUserRole="user"
+              isActive={currentEmergency.sessionStatus === "active"}
+            />
+          </View>
+        ) : null}
+
         {/* Medical Info Share (only when victim is the user) */}
         {victimType === "me" && (
           <TouchableOpacity
@@ -1269,6 +1286,31 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
     lineHeight: 20,
+  },
+  chatCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  chatCardTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#003049",
+    marginBottom: 4,
+  },
+  chatCardSub: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6C757D",
+    marginBottom: 14,
   },
 });
 

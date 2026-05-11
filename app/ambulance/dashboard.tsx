@@ -11,6 +11,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
+import EmergencyChat from "../../components/EmergencyChat";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -936,6 +937,26 @@ export default function AmbulanceDashboard() {
             ))
           )}
         </View>
+
+        {/* Dispatcher chat — shown for the emergency currently assigned to this ambulance */}
+        {(() => {
+          const assignedCase = emergencies.find(
+            (e) => e.assignedAmbulanceId === user?.uid,
+          );
+          if (!assignedCase || !user?.uid) return null;
+          return (
+            <View style={[styles.section, styles.sectionCard]}>
+              <Text style={styles.sectionOverline}>Communication</Text>
+              <Text style={styles.sectionTitle}>Dispatcher Chat</Text>
+              <EmergencyChat
+                emergencyId={assignedCase.id}
+                currentUserId={user.uid}
+                currentUserRole="ambulance"
+                isActive
+              />
+            </View>
+          );
+        })()}
 
         {/* Vehicle Status */}
         <View style={[styles.section, styles.sectionCard]}>

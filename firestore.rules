@@ -113,6 +113,31 @@ service cloud.firestore {
         );
 
       allow delete: if isSignedIn() && isAdmin();
+
+      match /messages/{msgId} {
+        // Responders, admins, and the emergency owner (patient) can read messages.
+        allow read: if isSignedIn() && (
+          isApprovedResponder()
+          || isAdmin()
+          || resource.data.userId == request.auth.uid
+          || get(/databases/$(database)/documents/emergencies/$(id)).data.userId == request.auth.uid
+        );
+
+        // Approved responders send as doctor/ambulance; emergency owner sends as user.
+        allow create: if isSignedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.timestamp is string
+          && (
+            (isApprovedResponder() && request.resource.data.senderRole in ["doctor", "ambulance"])
+            || (get(/databases/$(database)/documents/emergencies/$(id)).data.userId == request.auth.uid
+                && request.resource.data.senderRole == "user")
+          );
+
+        allow update, delete: if false;
+      }
     }
   }
 }

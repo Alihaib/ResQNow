@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
+import EmergencyChat from "../../../components/EmergencyChat";
 import { ActivityIndicator, Animated, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { useAuth } from "../../../src/context/AuthContext";
@@ -726,6 +727,19 @@ export default function DoctorCaseDetailScreen() {
         ) : (
           <Text style={styles.muted}>No notes yet.</Text>
         )}
+      </View>
+
+      {/* Dispatcher chat between doctor and ambulance */}
+      <View style={styles.card}>
+        <Text style={styles.sectionHeadingSecondary}>Dispatcher Chat</Text>
+        {id && user?.uid ? (
+          <EmergencyChat
+            emergencyId={id}
+            currentUserId={user.uid}
+            currentUserRole="doctor"
+            isActive={emergency.sessionStatus === "active"}
+          />
+        ) : null}
       </View>
 
       {/* Patient medical summary */}

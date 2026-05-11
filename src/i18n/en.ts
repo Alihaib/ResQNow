@@ -575,4 +575,11 @@ export default {
   mapLegendPatient: "Patient",
   mapLegendAmbulance: "Ambulance",
   mapLegendDoctor: "Doctor",
+
+  // -------- DISPATCHER CHAT --------
+  chatTitle: "Dispatcher Chat",
+  chatPlaceholder: "Type a message...",
+  chatSend: "Send",
+  chatNoMessages: "No messages yet. Start the conversation.",
+  chatReadOnly: "Chat is read-only — case closed.",
 };

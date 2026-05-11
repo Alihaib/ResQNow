@@ -1,6 +1,7 @@
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
+import EmergencyChat from "../../components/EmergencyChat";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
@@ -903,6 +904,22 @@ export default function EmergencyDetailScreen() {
                 </View>
               ))
             )}
+          </View>
+        </View>
+
+        {/* Dispatcher chat between ambulance and doctor */}
+        <View style={styles.section}>
+          <Text style={styles.sectionOverline}>Communication</Text>
+          <Text style={styles.sectionTitle}>Dispatcher Chat</Text>
+          <View style={styles.timelineCard}>
+            {params.emergencyId && user?.uid ? (
+              <EmergencyChat
+                emergencyId={params.emergencyId}
+                currentUserId={user.uid}
+                currentUserRole="ambulance"
+                isActive={emergency.sessionStatus === "active"}
+              />
+            ) : null}
           </View>
         </View>
 
