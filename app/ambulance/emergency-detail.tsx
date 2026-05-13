@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { doc, getDoc, onSnapshot, updateDoc } from "firebase/firestore";
 import EmergencyChat from "../../components/EmergencyChat";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
@@ -18,6 +18,7 @@ import {
   snapshotFromFirestore,
 } from "../../src/emergency/patientSnapshot";
 import { stripUndefinedDeep } from "../../src/utils/firestoreSanitize";
+import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
 import {
   canTransitionLifecycle,
   normalizeLifecycleStatus,
@@ -466,27 +467,23 @@ export default function EmergencyDetailScreen() {
     }
   };
 
-  const openNavigation = () => {
+  // Delegates to the shared `openMapsNavigation` utility — see that file
+  // for the cross-platform safety contract (no `maps://` outside iOS, no
+  // `google.navigation:` anywhere, HTTPS Google Maps as universal fallback).
+  const openNavigation = async () => {
     if (!emergency) return;
-
     const baseLoc = emergency.patientLocation ?? emergency.location;
-    const { latitude, longitude } = baseLoc;
-    const url = Platform.select({
-      ios: `maps://maps.apple.com/?daddr=${latitude},${longitude}`,
-      android: `google.navigation:q=${latitude},${longitude}`,
-      default: `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
+    const result = await openMapsNavigation({
+      latitude: baseLoc?.latitude as number,
+      longitude: baseLoc?.longitude as number,
     });
-
-    Linking.canOpenURL(url || "").then((supported) => {
-      if (supported) {
-        Linking.openURL(url || "");
-      } else {
-        Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`);
-      }
-    }).catch((error) => {
-      console.error("Error opening navigation:", error);
-      Alert.alert(t("error"), t("failedToOpenNavigation"));
-    });
+    if (result.ok) return;
+    Alert.alert(
+      t("error"),
+      result.reason === "invalid_coords"
+        ? t("locationNotAvailable")
+        : t("failedToOpenNavigation"),
+    );
   };
 
   const formatTimeAgo = (timestamp: string): string => {

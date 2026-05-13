@@ -2,10 +2,11 @@ import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { Alert, Linking, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
 
 interface Emergency {
   id: string;
@@ -206,25 +207,22 @@ export default function NearbyEmergenciesScreen() {
     return () => unsubscribe();
   }, [ambulanceLocation, authLoading, user?.uid, role, approved, t]);
 
-  // Open navigation to emergency location
-  const openNavigation = (emergency: Emergency) => {
-    const { latitude, longitude } = emergency.location;
-    const url = Platform.select({
-      ios: `maps://maps.apple.com/?daddr=${latitude},${longitude}`,
-      android: `google.navigation:q=${latitude},${longitude}`,
-      default: `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
+  // Open navigation to emergency location.
+  // Delegates to the shared `openMapsNavigation` utility — see that file for
+  // the cross-platform safety contract (no `maps://` outside iOS, no
+  // `google.navigation:` anywhere, HTTPS Google Maps as universal fallback).
+  const openNavigation = async (emergency: Emergency) => {
+    const result = await openMapsNavigation({
+      latitude: emergency?.location?.latitude,
+      longitude: emergency?.location?.longitude,
     });
-
-    Linking.canOpenURL(url || "").then((supported) => {
-      if (supported) {
-        Linking.openURL(url || "");
-      } else {
-        Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`);
-      }
-    }).catch((error) => {
-      console.error("Error opening navigation:", error);
-      Alert.alert(t("error"), t("failedToOpenNavigation"));
-    });
+    if (result.ok) return;
+    Alert.alert(
+      t("error"),
+      result.reason === "invalid_coords"
+        ? t("locationNotAvailable")
+        : t("failedToOpenNavigation"),
+    );
   };
 
   return (

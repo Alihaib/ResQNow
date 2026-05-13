@@ -18,8 +18,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
-  Linking,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -35,6 +33,7 @@ import {
   autoDispatchEmergency,
   rejectAndReassignEmergency,
 } from "../../src/services/autoDispatch";
+import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
 
 interface Emergency {
   id: string;
@@ -516,60 +515,23 @@ export default function AmbulanceDashboard() {
   /**
    * Open turn-by-turn navigation to the emergency location.
    *
-   * Cross-platform strategy:
-   *  - iOS: try the native Apple Maps scheme (`maps://…`). If `canOpenURL`
-   *    rejects it (Expo Go without the URL scheme entitlement, simulator,
-   *    user has uninstalled Maps), fall back to the Google Maps HTTPS URL
-   *    which is supported on every platform that has any browser.
-   *  - Android (and any other platform — web, etc.): go straight to the
-   *    Google Maps HTTPS URL. We intentionally do NOT use the
-   *    `google.navigation:` deep link because it fails on devices without
-   *    Google Maps installed (huaweis, dev emulators, web), whereas the
-   *    HTTPS URL gracefully opens the Maps app when present and falls back
-   *    to the browser otherwise.
-   *
-   * Any other error (no network handler, blocked Linking, etc.) is caught
-   * and surfaces the standard "failed to open navigation" alert without
-   * crashing the dashboard.
+   * Delegates to the shared `openMapsNavigation` utility which enforces the
+   * codebase-wide invariants: `maps://` is gated behind both an iOS check
+   * and `canOpenURL`, `google.navigation:` is never used, and the Google
+   * Maps HTTPS URL is the universal fallback (always safe to open).
    */
   const openNavigation = async (emergency: Emergency) => {
-    const latitude = emergency?.location?.latitude;
-    const longitude = emergency?.location?.longitude;
-    if (typeof latitude !== "number" || typeof longitude !== "number") {
-      Alert.alert(t("error"), t("locationNotAvailable"));
-      return;
-    }
-
-    const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
-    const appleUrl = `maps://maps.apple.com/?daddr=${latitude},${longitude}`;
-
-    const tryOpen = async (url: string): Promise<boolean> => {
-      try {
-        const supported = await Linking.canOpenURL(url);
-        if (!supported) return false;
-        await Linking.openURL(url);
-        return true;
-      } catch (err) {
-        console.warn("[openNavigation] failed to open url:", url, err);
-        return false;
-      }
-    };
-
-    try {
-      if (Platform.OS === "ios") {
-        if (await tryOpen(appleUrl)) return;
-        if (await tryOpen(googleUrl)) return;
-      } else {
-        if (await tryOpen(googleUrl)) return;
-      }
-      // Last-ditch: try `openURL` even if `canOpenURL` returned false. Some
-      // environments (web, certain Android OEMs) report unsupported but
-      // still successfully hand off to the system browser.
-      await Linking.openURL(googleUrl);
-    } catch (error) {
-      console.error("Error opening navigation:", error);
-      Alert.alert(t("error"), t("failedToOpenNavigation"));
-    }
+    const result = await openMapsNavigation({
+      latitude: emergency?.location?.latitude,
+      longitude: emergency?.location?.longitude,
+    });
+    if (result.ok) return;
+    Alert.alert(
+      t("error"),
+      result.reason === "invalid_coords"
+        ? t("locationNotAvailable")
+        : t("failedToOpenNavigation"),
+    );
   };
 
   const handleSearchPatient = async () => {
