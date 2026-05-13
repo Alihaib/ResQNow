@@ -962,26 +962,6 @@ export default function AmbulanceDashboard() {
           )}
         </View>
 
-        {/* Vehicle Status — quieter, scannable rows */}
-        <View style={[styles.section, styles.sectionCard]}>
-          <SectionHeader
-            overline={t("vehicle_status") || "Unit"}
-            title={t("vehicle_status")}
-          />
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>{t("vehicle_status")}</Text>
-            <StatusChip label={t("ready") || "Ready"} variant="success" solid />
-          </View>
-          <View style={styles.statusRow}>
-            <Text style={styles.statusLabel}>{t("equipment")}</Text>
-            <Text style={styles.statusValue}>✓ {t("complete")}</Text>
-          </View>
-          <View style={[styles.statusRow, { borderBottomWidth: 0 }]}>
-            <Text style={styles.statusLabel}>{t("fuelLevel")}</Text>
-            <Text style={styles.statusValue}>85%</Text>
-          </View>
-        </View>
-
         {/* Shortcuts */}
         <View style={styles.section}>
           <SectionHeader overline={t("quickActions")} title={t("quickActions")} />
@@ -1287,16 +1267,6 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
   viewFullBtnText: { fontSize: 15, color: "#DC2626", fontWeight: "800" },
-  statusRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  statusLabel: { fontSize: 14, color: "#64748B", fontWeight: "700" },
-  statusValue: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
   shortcutCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
