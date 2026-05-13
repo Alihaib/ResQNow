@@ -12,7 +12,11 @@ import {
   where,
 } from "firebase/firestore";
 import EmergencyChat from "../../components/EmergencyChat";
+import Card from "../../components/ui/Card";
+import EmptyState from "../../components/ui/EmptyState";
+import ScreenHeader from "../../components/ui/ScreenHeader";
 import SectionHeader from "../../components/ui/SectionHeader";
+import ShortcutCard from "../../components/ui/ShortcutCard";
 import StatusChip from "../../components/ui/StatusChip";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -33,6 +37,7 @@ import {
   autoDispatchEmergency,
   rejectAndReassignEmergency,
 } from "../../src/services/autoDispatch";
+import { tokens } from "../../src/ui/tokens";
 import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
 
 interface Emergency {
@@ -638,11 +643,6 @@ export default function AmbulanceDashboard() {
     return (
       <TouchableOpacity
         key={emergency.id}
-        style={[
-          styles.callCard,
-          isNew && styles.callCardNew,
-          mine && styles.callCardMine,
-        ]}
         onPress={async () => {
           await markEmergencySeen(emergency.id);
           router.push({
@@ -651,89 +651,101 @@ export default function AmbulanceDashboard() {
           });
         }}
         activeOpacity={0.85}
+        accessibilityRole="button"
       >
-        <View style={styles.callTopRow}>
-          <View style={styles.chipRow}>
-            <StatusChip
-              label={mine ? t("activeEmergencyShort", "YOUR MISSION") : t("emergency", "EMERGENCY")}
-              variant="danger"
-              solid
-            />
-            {isNew ? (
-              <Animated.View
-                style={{
-                  transform: [
-                    {
-                      scale: pulse.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [1, 1.06],
-                      }),
-                    },
-                  ],
-                }}
-              >
-                <StatusChip label="NEW" variant="warning" solid />
-              </Animated.View>
-            ) : null}
-          </View>
-          <Text style={styles.callTime} numberOfLines={1}>
-            {emergency.timeAgo || t("justNow")}
-          </Text>
-        </View>
-
-        <Text style={styles.callType} numberOfLines={1}>
-          {emergency.victimType === "other"
-            ? t("someoneElse")
-            : emergency.userInfo?.name ||
-              emergency.userInfo?.email ||
-              t("unknownUser")}
-        </Text>
-
-        <View style={styles.callLocRow}>
-          <Text style={styles.callLocText} numberOfLines={1}>
-            📍{" "}
-            {emergency.location.address ||
-              `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
-          </Text>
-          {distLabel ? (
-            <StatusChip label={distLabel} variant="info" />
-          ) : null}
-        </View>
-
-        {emergency.victimType !== "other" && emergency.userInfo ? (
-          <View style={styles.quickInfo}>
-            {emergency.userInfo.bloodType ? (
+        <Card
+          elevated
+          tone={mine ? "danger" : "default"}
+          accentLeft={isNew && !mine}
+        >
+          <View style={styles.callTopRow}>
+            <View style={styles.chipRow}>
               <StatusChip
-                label={`🩸 ${emergency.userInfo.bloodType}`}
-                variant="neutral"
+                label={
+                  mine
+                    ? t("activeEmergencyShort", "YOUR MISSION")
+                    : t("emergency", "EMERGENCY")
+                }
+                variant="danger"
+                solid
               />
-            ) : null}
-            {emergency.userInfo.age ? (
-              <StatusChip
-                label={`👤 ${emergency.userInfo.age}`}
-                variant="neutral"
-              />
-            ) : null}
-          </View>
-        ) : null}
-
-        <View style={styles.callActions}>
-          <TouchableOpacity
-            onPress={(e) => {
-              e.stopPropagation();
-              openNavigation(emergency);
-            }}
-            style={styles.navBtn}
-            accessibilityRole="button"
-          >
-            <Text style={styles.navBtnText}>
-              🧭 {t("openNavigation") || "Navigate"}
+              {isNew ? (
+                <Animated.View
+                  style={{
+                    transform: [
+                      {
+                        scale: pulse.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [1, 1.06],
+                        }),
+                      },
+                    ],
+                  }}
+                >
+                  <StatusChip label="NEW" variant="warning" solid />
+                </Animated.View>
+              ) : null}
+            </View>
+            <Text style={styles.callTime} numberOfLines={1}>
+              {emergency.timeAgo || t("justNow")}
             </Text>
-          </TouchableOpacity>
-          <Text style={styles.openHint}>
-            {t("tapToOpenCaseMonitor") || "Tap to open"}
+          </View>
+
+          <Text style={styles.callType} numberOfLines={1}>
+            {emergency.victimType === "other"
+              ? t("someoneElse")
+              : emergency.userInfo?.name ||
+                emergency.userInfo?.email ||
+                t("unknownUser")}
           </Text>
-        </View>
+
+          <View style={styles.callLocRow}>
+            <Text style={styles.callLocText} numberOfLines={1}>
+              📍{" "}
+              {emergency.location.address ||
+                `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
+            </Text>
+            {distLabel ? (
+              <StatusChip label={distLabel} variant="info" />
+            ) : null}
+          </View>
+
+          {emergency.victimType !== "other" && emergency.userInfo ? (
+            <View style={styles.quickInfo}>
+              {emergency.userInfo.bloodType ? (
+                <StatusChip
+                  label={`🩸 ${emergency.userInfo.bloodType}`}
+                  variant="neutral"
+                />
+              ) : null}
+              {emergency.userInfo.age ? (
+                <StatusChip
+                  label={`👤 ${emergency.userInfo.age}`}
+                  variant="neutral"
+                />
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.callActions}>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                openNavigation(emergency);
+              }}
+              style={styles.navBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t("openNavigation")}
+            >
+              <Text style={styles.navBtnText}>
+                🧭 {t("openNavigation") || "Navigate"}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.openHint}>
+              {t("tapToOpenCaseMonitor") || "Tap to open"}
+            </Text>
+          </View>
+        </Card>
       </TouchableOpacity>
     );
   };
@@ -771,6 +783,7 @@ export default function AmbulanceDashboard() {
                 params: { emergencyId: bannerEmergencyId },
               });
             }}
+            accessibilityRole="button"
           >
             <Text style={styles.liveBannerTitle}>
               🚨 New Emergency Received
@@ -784,41 +797,28 @@ export default function AmbulanceDashboard() {
             }}
             style={styles.liveBannerDismiss}
             accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
             <Text style={styles.liveBannerDismissText}>✕</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
 
-      {/* Header */}
-      <View style={styles.headerBar}>
-        <TouchableOpacity
-          onPress={() => {
-            if (router.canGoBack()) router.back();
-            else router.replace("/(tabs)");
-          }}
-          style={styles.backBtn}
-          accessibilityRole="button"
-        >
-          <Text style={styles.backText}>‹</Text>
-        </TouchableOpacity>
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.headerEyebrow}>🚑 {t("ambulance_role")}</Text>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {t("ambulance_dashboard_title")}
-          </Text>
-        </View>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader
+        title={t("ambulance_dashboard_title")}
+        eyebrow={`🚑 ${t("ambulance_role")}`}
+      />
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
-        {/* CURRENT MISSION — only when this ambulance is assigned. */}
+        {/* CURRENT MISSION — only when this ambulance is assigned.
+            Visually dominant: red border + ACTIVE chip. */}
         {myMission ? (
           <View style={styles.section}>
             <SectionHeader
               overline={t("active") || "Mission"}
               title={t("activeEmergency") || "Your current mission"}
-              accent="#DC2626"
+              accent={tokens.color.danger}
             />
             {renderCallCard(myMission, true)}
           </View>
@@ -835,40 +835,39 @@ export default function AmbulanceDashboard() {
           <SectionHeader
             overline={t("live_calls") || "Active"}
             title={t("live_calls") || "Live Emergency Calls"}
-            accent={otherCalls.length > 0 ? "#DC2626" : undefined}
+            accent={
+              otherCalls.length > 0 ? tokens.color.danger : undefined
+            }
             trailing={
               otherCalls.length > 0 ? (
-                <StatusChip label={String(otherCalls.length)} variant="danger" solid />
+                <StatusChip
+                  label={String(otherCalls.length)}
+                  variant="danger"
+                  solid
+                />
               ) : null
             }
           />
 
           {loadingEmergencies ? (
-            <View style={styles.softCard}>
-              <Text style={styles.softMuted}>
-                {t("loading") || "Loading emergencies..."}
-              </Text>
-            </View>
+            <EmptyState
+              loading
+              title={t("loading") || "Loading emergencies..."}
+            />
           ) : emergenciesError ? (
-            <View style={styles.softCard}>
-              <Text style={styles.emptyEmoji}>⚠️</Text>
-              <Text style={styles.softMuted}>{emergenciesError}</Text>
-            </View>
+            <EmptyState icon="⚠️" title={emergenciesError} />
           ) : otherCalls.length === 0 ? (
-            <View style={styles.softCard}>
-              <Text style={styles.emptyEmoji}>🚑</Text>
-              <Text style={styles.emptyTitle}>{t("noActiveEmergencies")}</Text>
-            </View>
+            <EmptyState icon="🚑" title={t("noActiveEmergencies")} />
           ) : (
-            <View style={{ gap: 10 }}>
+            <View style={styles.cardStack}>
               {otherCalls.map((emergency) => renderCallCard(emergency, false))}
             </View>
           )}
         </View>
 
-        {/* Dispatcher chat — shown for the assigned mission. */}
+        {/* Dispatcher chat — shown only for the assigned mission. */}
         {myMission && user?.uid ? (
-          <View style={[styles.section, styles.sectionCard]}>
+          <Card style={styles.section}>
             <SectionHeader
               overline={t("chatTitle") || "Dispatcher"}
               title={t("chatTitle") || "Dispatcher Chat"}
@@ -879,11 +878,11 @@ export default function AmbulanceDashboard() {
               currentUserRole="ambulance"
               isActive
             />
-          </View>
+          </Card>
         ) : null}
 
         {/* Patient Search */}
-        <View style={[styles.section, styles.sectionCard]}>
+        <Card style={styles.section}>
           <SectionHeader
             overline={t("searchPatient") || "Directory"}
             title={`🔍 ${t("searchPatient") || "Search Patient"}`}
@@ -899,8 +898,10 @@ export default function AmbulanceDashboard() {
               placeholder={t("enterPatientId") || "Enter Israeli ID or Name"}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={tokens.color.textFaint}
               keyboardType="default"
+              returnKeyType="search"
+              onSubmitEditing={handleSearchPatient}
             />
             <TouchableOpacity
               style={[
@@ -910,6 +911,7 @@ export default function AmbulanceDashboard() {
               onPress={handleSearchPatient}
               disabled={searching || !searchQuery.trim()}
               accessibilityRole="button"
+              accessibilityLabel={t("searchPatient")}
             >
               <Text style={styles.searchBtnText}>
                 {searching ? "…" : "🔍"}
@@ -919,7 +921,7 @@ export default function AmbulanceDashboard() {
 
           {/* Patient Info Display */}
           {patientData && (
-            <View style={styles.patientInfoCard}>
+            <Card tone="danger" style={styles.patientInfoCard}>
               <View style={styles.patientHeader}>
                 <Text style={styles.patientName} numberOfLines={1}>
                   {patientData.name || patientData.email}
@@ -928,6 +930,8 @@ export default function AmbulanceDashboard() {
                   style={styles.iconBtn}
                   onPress={() => setPatientData(null)}
                   accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
                   <Text style={styles.iconBtnText}>✕</Text>
                 </TouchableOpacity>
@@ -941,7 +945,9 @@ export default function AmbulanceDashboard() {
               )}
               <View style={styles.kvRow}>
                 <Text style={styles.kvLabel}>{t("phoneNumber")}</Text>
-                <Text style={styles.kvValue}>{patientData.phoneNumber || "—"}</Text>
+                <Text style={styles.kvValue}>
+                  {patientData.phoneNumber || "—"}
+                </Text>
               </View>
               {patientData.bloodType && (
                 <View style={styles.kvRow}>
@@ -959,25 +965,35 @@ export default function AmbulanceDashboard() {
               {patientData.diseases && (
                 <View style={styles.patientSubSection}>
                   <Text style={styles.patientSubTitle}>{t("diseases")}</Text>
-                  <Text style={styles.patientSubText}>{patientData.diseases}</Text>
+                  <Text style={styles.patientSubText}>
+                    {patientData.diseases}
+                  </Text>
                 </View>
               )}
               {patientData.medications && (
                 <View style={styles.patientSubSection}>
-                  <Text style={styles.patientSubTitle}>{t("medications")}</Text>
-                  <Text style={styles.patientSubText}>{patientData.medications}</Text>
+                  <Text style={styles.patientSubTitle}>
+                    {t("medications")}
+                  </Text>
+                  <Text style={styles.patientSubText}>
+                    {patientData.medications}
+                  </Text>
                 </View>
               )}
               {patientData.allergies && (
                 <View style={styles.patientSubSection}>
                   <Text style={styles.patientSubTitle}>{t("allergies")}</Text>
-                  <Text style={styles.patientSubText}>{patientData.allergies}</Text>
+                  <Text style={styles.patientSubText}>
+                    {patientData.allergies}
+                  </Text>
                 </View>
               )}
               {patientData.emergencyContacts &&
                 patientData.emergencyContacts.length > 0 && (
                   <View style={styles.patientSubSection}>
-                    <Text style={styles.patientSubTitle}>{t("emergency_contact")}</Text>
+                    <Text style={styles.patientSubTitle}>
+                      {t("emergency_contact")}
+                    </Text>
                     {patientData.emergencyContacts.map(
                       (contact: any, index: number) => (
                         <Text key={index} style={styles.patientSubText}>
@@ -990,16 +1006,18 @@ export default function AmbulanceDashboard() {
 
               <TouchableOpacity
                 style={styles.viewFullBtn}
-                onPress={() => router.push(`/doctor/patient/${patientData.id}`)}
+                onPress={() =>
+                  router.push(`/doctor/patient/${patientData.id}`)
+                }
                 accessibilityRole="button"
               >
                 <Text style={styles.viewFullBtnText}>
                   {t("viewFullProfile") || "View Full Profile"} ›
                 </Text>
               </TouchableOpacity>
-            </View>
+            </Card>
           )}
-        </View>
+        </Card>
 
         {/*
           Quick Actions — operational shortcuts wired to existing features.
@@ -1007,76 +1025,43 @@ export default function AmbulanceDashboard() {
           active mission, scan nearby calls, then start external navigation.
         */}
         <View style={styles.section}>
-          <SectionHeader overline={t("quickActions")} title={t("quickActions")} />
+          <SectionHeader
+            overline={t("quickActions")}
+            title={t("quickActions")}
+          />
 
-          {/* 1. Open the currently assigned mission detail (or alert). */}
-          <TouchableOpacity
-            style={[
-              styles.shortcutCard,
-              myMission && styles.shortcutCardPrimary,
-            ]}
+          <ShortcutCard
+            icon="🚑"
+            title={t("quickCurrentMission", "Current Mission")}
+            subtitle={
+              myMission
+                ? t("quickCurrentMissionSub", "Open your assigned emergency")
+                : t("quickNoActiveMission", "No active mission")
+            }
             onPress={handleQuickCurrentMission}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Text style={styles.shortcutIcon}>🚑</Text>
-            <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>
-                {t("quickCurrentMission", "Current Mission")}
-              </Text>
-              <Text style={styles.shortcutSub} numberOfLines={1}>
-                {myMission
-                  ? t(
-                      "quickCurrentMissionSub",
-                      "Open your assigned emergency",
-                    )
-                  : t("quickNoActiveMission", "No active mission")}
-              </Text>
-            </View>
-            {myMission ? (
-              <StatusChip label="ACTIVE" variant="danger" solid />
-            ) : (
-              <Text style={styles.chevron}>›</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* 2. Scroll to the live emergencies list above. */}
-          <TouchableOpacity
-            style={styles.shortcutCard}
+            emphasis={myMission ? "primary" : "default"}
+            trailing={
+              myMission ? (
+                <StatusChip label="ACTIVE" variant="danger" solid />
+              ) : undefined
+            }
+          />
+          <ShortcutCard
+            icon="🗺️"
+            title={t("nearby_emergencies")}
+            subtitle={t("nearby_emergencies_desc")}
             onPress={handleQuickNearbyEmergencies}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Text style={styles.shortcutIcon}>🗺️</Text>
-            <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>{t("nearby_emergencies")}</Text>
-              <Text style={styles.shortcutSub} numberOfLines={1}>
-                {t("nearby_emergencies_desc")}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-
-          {/* 3. Hand off to the device's external navigation app. */}
-          <TouchableOpacity
-            style={styles.shortcutCard}
+          />
+          <ShortcutCard
+            icon="🧭"
+            title={t("quickStartNavigation", "Start Navigation")}
+            subtitle={
+              myMission
+                ? t("quickStartNavigationSub", "Navigate to the patient")
+                : t("quickNoDestination", "No destination available")
+            }
             onPress={handleQuickStartNavigation}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Text style={styles.shortcutIcon}>🧭</Text>
-            <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>
-                {t("quickStartNavigation", "Start Navigation")}
-              </Text>
-              <Text style={styles.shortcutSub} numberOfLines={1}>
-                {myMission
-                  ? t("quickStartNavigationSub", "Navigate to the patient")
-                  : t("quickNoDestination", "No destination available")}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          />
         </View>
       </ScrollView>
     </View>
@@ -1086,21 +1071,21 @@ export default function AmbulanceDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: tokens.color.bgPage,
   },
   liveBanner: {
     position: "absolute",
     top: 56,
-    left: 20,
-    right: 20,
+    left: tokens.space.xl,
+    right: tokens.space.xl,
     zIndex: 50,
-    backgroundColor: "#DC2626",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    backgroundColor: tokens.color.danger,
+    borderRadius: tokens.radius.lg,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.md + 2,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: tokens.space.md,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -1110,14 +1095,14 @@ const styles = StyleSheet.create({
   liveBannerTitle: {
     color: "#FFFFFF",
     fontWeight: "900",
-    fontSize: 14,
+    fontSize: tokens.font.bodyLg,
     letterSpacing: 0.5,
   },
   liveBannerSub: {
     marginTop: 2,
     color: "rgba(255,255,255,0.9)",
     fontWeight: "700",
-    fontSize: 12,
+    fontSize: tokens.font.caption,
   },
   liveBannerDismiss: {
     width: 34,
@@ -1132,246 +1117,194 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 16,
   },
-  headerBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: { fontSize: 24, color: "#0F172A", fontWeight: "800", lineHeight: 26 },
-  headerTextWrap: { flex: 1, marginLeft: 12 },
-  headerEyebrow: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#94A3B8",
-    letterSpacing: 0.8,
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#0F172A",
-    letterSpacing: -0.3,
-  },
-  headerSpacer: { width: 40, height: 40 },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 40,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.xl,
+    paddingBottom: tokens.space.xxl + tokens.space.sm,
   },
-  section: { marginBottom: 24 },
-  sectionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
+  section: { marginBottom: tokens.space.xl },
+  cardStack: { gap: tokens.space.md },
   helperText: {
-    fontSize: 13,
-    color: "#64748B",
-    marginBottom: 12,
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
+    marginBottom: tokens.space.md,
     lineHeight: 18,
-  },
-  callCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  callCardNew: {
-    borderLeftWidth: 4,
-    borderLeftColor: "#DC2626",
-    backgroundColor: "#FFFBFB",
-  },
-  callCardMine: {
-    borderWidth: 2,
-    borderColor: "#DC2626",
-    backgroundColor: "#FFFFFF",
   },
   callTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: tokens.space.sm,
   },
-  chipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  callTime: { fontSize: 12, color: "#64748B", fontWeight: "700" },
+  chipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs + 2,
+  },
+  callTime: {
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    fontWeight: "700",
+  },
   callType: {
-    fontSize: 16,
+    fontSize: tokens.font.title,
     fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 8,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.sm,
   },
   callLocRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    marginBottom: 8,
+    gap: tokens.space.sm,
+    marginBottom: tokens.space.sm,
   },
-  callLocText: { flex: 1, fontSize: 13, color: "#475569", fontWeight: "600" },
+  callLocText: {
+    flex: 1,
+    fontSize: tokens.font.body,
+    color: tokens.color.textSecondary,
+    fontWeight: "600",
+  },
   quickInfo: {
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 4,
-    marginBottom: 4,
-    gap: 6,
+    marginTop: tokens.space.xs,
+    marginBottom: tokens.space.xs,
+    gap: tokens.space.xs + 2,
   },
   callActions: {
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: tokens.space.md,
+    paddingTop: tokens.space.md,
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    borderTopColor: tokens.color.border,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: tokens.space.sm,
   },
   navBtn: {
-    backgroundColor: "#0F172A",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  navBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
-  openHint: { fontSize: 12, color: "#64748B", fontWeight: "700" },
-  softCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    backgroundColor: tokens.color.primarySolid,
+    paddingHorizontal: tokens.space.md + 2,
+    paddingVertical: tokens.space.sm + 2,
+    borderRadius: tokens.radius.sm,
+    minHeight: 36,
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
   },
-  softMuted: { color: "#64748B", fontWeight: "700", textAlign: "center" },
-  emptyEmoji: { fontSize: 28 },
-  emptyTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  navBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: tokens.font.body },
+  openHint: {
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    fontWeight: "700",
+  },
   searchContainer: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
+    gap: tokens.space.sm,
+    marginBottom: tokens.space.md,
   },
   searchInput: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    backgroundColor: tokens.color.bgSubtle,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.md + 2,
+    paddingVertical: tokens.space.md,
+    fontSize: tokens.font.label,
     borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    color: "#0F172A",
+    borderColor: tokens.color.border,
+    color: tokens.color.textPrimary,
+    minHeight: tokens.hitSlop,
   },
   searchBtn: {
-    backgroundColor: "#DC2626",
-    paddingHorizontal: 18,
-    borderRadius: 12,
+    backgroundColor: tokens.color.danger,
+    paddingHorizontal: tokens.space.lg,
+    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
     minWidth: 52,
+    minHeight: tokens.hitSlop,
   },
-  searchBtnDisabled: { backgroundColor: "#CBD5E1" },
+  searchBtnDisabled: { backgroundColor: tokens.color.borderStrong },
   searchBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
   patientInfoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 18,
-    marginTop: 12,
-    borderWidth: 1.5,
-    borderColor: "#DC2626",
+    marginTop: tokens.space.md,
   },
   patientHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
-    paddingBottom: 12,
+    marginBottom: tokens.space.md + 2,
+    paddingBottom: tokens.space.md,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: tokens.color.border,
   },
   patientName: {
-    fontSize: 18,
+    fontSize: tokens.font.h3,
     fontWeight: "900",
-    color: "#0F172A",
+    color: tokens.color.textPrimary,
     flex: 1,
-    marginRight: 8,
+    marginRight: tokens.space.sm,
   },
   iconBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#F1F5F9",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: tokens.color.bgPage,
     alignItems: "center",
     justifyContent: "center",
   },
-  iconBtnText: { fontSize: 16, color: "#64748B", fontWeight: "800" },
+  iconBtnText: {
+    fontSize: 16,
+    color: tokens.color.textMuted,
+    fontWeight: "800",
+  },
   kvRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: tokens.space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    borderBottomColor: tokens.color.bgPage,
   },
-  kvLabel: { fontSize: 13, color: "#64748B", fontWeight: "700" },
-  kvValue: { fontSize: 14, color: "#0F172A", fontWeight: "800" },
+  kvLabel: {
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
+    fontWeight: "700",
+  },
+  kvValue: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textPrimary,
+    fontWeight: "800",
+  },
   patientSubSection: {
-    marginTop: 14,
-    paddingTop: 14,
+    marginTop: tokens.space.md + 2,
+    paddingTop: tokens.space.md + 2,
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
+    borderTopColor: tokens.color.border,
   },
   patientSubTitle: {
-    fontSize: 13,
+    fontSize: tokens.font.body,
     fontWeight: "900",
-    color: "#0F172A",
-    marginBottom: 6,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs + 2,
     letterSpacing: 0.3,
   },
-  patientSubText: { fontSize: 14, color: "#212529", lineHeight: 20 },
+  patientSubText: {
+    fontSize: tokens.font.bodyLg,
+    color: "#212529",
+    lineHeight: 20,
+  },
   viewFullBtn: {
-    marginTop: 16,
-    paddingVertical: 12,
+    marginTop: tokens.space.lg,
+    paddingVertical: tokens.space.md,
     alignItems: "center",
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-    paddingTop: 14,
+    borderTopColor: tokens.color.border,
+    paddingTop: tokens.space.md + 2,
+    minHeight: tokens.hitSlop,
   },
-  viewFullBtnText: { fontSize: 15, color: "#DC2626", fontWeight: "800" },
-  shortcutCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    gap: 12,
+  viewFullBtnText: {
+    fontSize: tokens.font.label,
+    color: tokens.color.danger,
+    fontWeight: "800",
   },
-  shortcutCardPrimary: {
-    borderColor: "#DC2626",
-    borderLeftWidth: 4,
-    backgroundColor: "#FFFBFB",
-  },
-  shortcutIcon: { fontSize: 24 },
-  shortcutContent: { flex: 1 },
-  shortcutTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
-  shortcutSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  chevron: { fontSize: 22, color: "#94A3B8", fontWeight: "700" },
 });

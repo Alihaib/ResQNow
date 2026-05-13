@@ -10,8 +10,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import ShortcutCard from "../../components/ui/ShortcutCard";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { elevatedShadow, tokens } from "../../src/ui/tokens";
 
 export default function EmergencyScreen() {
   const { t } = useLanguage();
@@ -167,6 +169,8 @@ export default function EmergencyScreen() {
               style={styles.overlayPrimaryBtn}
               onPress={() => proceedToActiveEmergency("me")}
               activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel={t("sosMe")}
             >
               <Text style={styles.overlayPrimaryText}>{t("sosMe")}</Text>
             </TouchableOpacity>
@@ -175,6 +179,8 @@ export default function EmergencyScreen() {
               style={styles.overlaySecondaryBtn}
               onPress={() => proceedToActiveEmergency("other")}
               activeOpacity={0.9}
+              accessibilityRole="button"
+              accessibilityLabel={t("sosSomeoneElse")}
             >
               <Text style={styles.overlaySecondaryText}>
                 {t("sosSomeoneElse")}
@@ -185,16 +191,20 @@ export default function EmergencyScreen() {
           <TouchableOpacity
             style={styles.cancelOverlayBtn}
             onPress={cancelEmergency}
+            accessibilityRole="button"
+            accessibilityLabel={t("cancel")}
           >
             <Text style={styles.cancelOverlayText}>{t("cancel")}</Text>
           </TouchableOpacity>
         </View>
       </Modal>
 
-      {/* Hero / Title */}
+      {/* Hero / Title — calm, low visual weight so the SOS button dominates. */}
       <View style={styles.hero}>
         <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeText}>{t("tab_emergency", "EMERGENCY")}</Text>
+          <Text style={styles.heroBadgeText}>
+            {t("tab_emergency", "EMERGENCY")}
+          </Text>
         </View>
         <Text style={styles.title}>{t("emergencyTitle")}</Text>
         <Text style={styles.subtitle}>{t("emergencySubtitle")}</Text>
@@ -211,6 +221,7 @@ export default function EmergencyScreen() {
         disabled={busy}
         activeOpacity={0.9}
         accessibilityRole="button"
+        accessibilityState={{ disabled: !!busy, busy: !!busy }}
         accessibilityLabel={String(sosLabel)}
       >
         <View style={styles.sosRing}>
@@ -220,7 +231,7 @@ export default function EmergencyScreen() {
         <Text style={styles.sosSubLabel}>{sosSubLabel}</Text>
       </TouchableOpacity>
 
-      {/* Reassurance / Checklist — quieter card */}
+      {/* Reassurance / Checklist — quieter card, intentionally low contrast. */}
       <View style={styles.calmCard}>
         <Text style={styles.calmTitle}>{t("beforeEmergency")}</Text>
         <View style={styles.calmRow}>
@@ -243,35 +254,18 @@ export default function EmergencyScreen() {
 
       {/* Secondary actions — smaller, lower visual weight than SOS button. */}
       <Text style={styles.sectionLabel}>{t("quickActions")}</Text>
-      <TouchableOpacity
-        style={styles.shortcutCard}
+      <ShortcutCard
+        icon="⛑"
+        title={t("medical_guides")}
+        subtitle={t("medical_guides_desc")}
         onPress={() => router.push("/(tabs)/firstaid")}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.shortcutIcon}>⛑</Text>
-        <View style={styles.shortcutContent}>
-          <Text style={styles.shortcutTitle}>{t("medical_guides")}</Text>
-          <Text style={styles.shortcutSub} numberOfLines={1}>
-            {t("medical_guides_desc")}
-          </Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.shortcutCard}
+      />
+      <ShortcutCard
+        icon="📋"
+        title={t("medicalProfile")}
+        subtitle={t("personal_info")}
         onPress={() => router.push("/(tabs)/profile")}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.shortcutIcon}>📋</Text>
-        <View style={styles.shortcutContent}>
-          <Text style={styles.shortcutTitle}>{t("medicalProfile")}</Text>
-          <Text style={styles.shortcutSub} numberOfLines={1}>
-            {t("personal_info")}
-          </Text>
-        </View>
-        <Text style={styles.chevron}>›</Text>
-      </TouchableOpacity>
+      />
     </ScrollView>
   );
 }
@@ -279,59 +273,57 @@ export default function EmergencyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: tokens.color.bgPage,
   },
   content: {
     paddingTop: 64,
-    paddingBottom: 40,
-    paddingHorizontal: 20,
+    paddingBottom: tokens.space.xxl + tokens.space.sm,
+    paddingHorizontal: tokens.space.xl,
   },
   hero: {
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: tokens.space.xl,
   },
   heroBadge: {
-    backgroundColor: "#FEE2E2",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    marginBottom: 12,
+    backgroundColor: tokens.color.dangerBg,
+    paddingHorizontal: tokens.space.md + 2,
+    paddingVertical: tokens.space.xs + 2,
+    borderRadius: tokens.radius.pill,
+    marginBottom: tokens.space.md,
   },
   heroBadgeText: {
-    color: "#B91C1C",
+    color: tokens.color.dangerDark,
     fontWeight: "900",
-    fontSize: 12,
+    fontSize: tokens.font.caption,
     letterSpacing: 1.2,
   },
   title: {
-    fontSize: 32,
+    fontSize: tokens.font.display,
     fontWeight: "900",
-    color: "#0F172A",
+    color: tokens.color.textPrimary,
     letterSpacing: -0.5,
-    marginBottom: 6,
+    marginBottom: tokens.space.xs + 2,
     textAlign: "center",
   },
   subtitle: {
-    fontSize: 14,
-    color: "#64748B",
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
     textAlign: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: tokens.space.lg,
     lineHeight: 20,
   },
   sosBtn: {
-    backgroundColor: "#DC2626",
-    borderRadius: 24,
+    backgroundColor: tokens.color.danger,
+    borderRadius: tokens.radius.xl + 4,
     paddingVertical: 36,
-    paddingHorizontal: 24,
+    paddingHorizontal: tokens.space.xl,
     alignItems: "center",
-    marginBottom: 24,
-    shadowColor: "#DC2626",
-    shadowOffset: { width: 0, height: 10 },
+    marginBottom: tokens.space.xl,
+    ...elevatedShadow,
+    shadowColor: tokens.color.danger,
     shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 10,
   },
-  sosBtnActive: { backgroundColor: "#991B1B" },
+  sosBtnActive: { backgroundColor: tokens.color.dangerDark },
   sosBtnDisabled: { opacity: 0.75 },
   sosRing: {
     width: 120,
@@ -342,7 +334,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.32)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: tokens.space.lg,
   },
   sosIcon: { fontSize: 56 },
   sosLabel: {
@@ -350,135 +342,123 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: "900",
     letterSpacing: 1,
-    marginBottom: 6,
+    marginBottom: tokens.space.xs + 2,
   },
   sosSubLabel: {
     color: "rgba(255,255,255,0.92)",
-    fontSize: 14,
+    fontSize: tokens.font.bodyLg,
     fontWeight: "700",
     textAlign: "center",
   },
   calmCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.lg,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 24,
+    borderColor: tokens.color.border,
+    marginBottom: tokens.space.xl,
   },
   calmTitle: {
-    fontSize: 13,
+    fontSize: tokens.font.body,
     fontWeight: "900",
-    color: "#0F172A",
+    color: tokens.color.textPrimary,
     letterSpacing: 0.4,
-    marginBottom: 12,
+    marginBottom: tokens.space.md,
     textTransform: "uppercase",
   },
   calmRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: tokens.space.sm,
+    gap: tokens.space.sm,
   },
   calmIcon: {
-    color: "#16A34A",
-    fontSize: 16,
+    color: tokens.color.success,
+    fontSize: tokens.font.title,
     fontWeight: "900",
     width: 18,
   },
   calmText: {
-    fontSize: 14,
+    fontSize: tokens.font.bodyLg,
     color: "#334155",
     fontWeight: "600",
     flex: 1,
   },
   sectionLabel: {
-    fontSize: 11,
+    fontSize: tokens.font.overline,
     fontWeight: "900",
-    color: "#94A3B8",
+    color: tokens.color.textFaint,
     letterSpacing: 0.8,
-    marginBottom: 10,
-    marginLeft: 4,
+    marginBottom: tokens.space.sm + 2,
+    marginLeft: tokens.space.xs,
     textTransform: "uppercase",
   },
-  shortcutCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    gap: 12,
-  },
-  shortcutIcon: { fontSize: 24 },
-  shortcutContent: { flex: 1 },
-  shortcutTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
-  shortcutSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  chevron: { fontSize: 22, color: "#94A3B8", fontWeight: "700" },
   overlayContainer: {
     flex: 1,
-    backgroundColor: "#DC2626",
+    backgroundColor: tokens.color.danger,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 28,
+    paddingHorizontal: tokens.space.xxl - 4,
   },
   overlayBadge: {
     backgroundColor: "rgba(255,255,255,0.18)",
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 999,
-    marginBottom: 18,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.xs + 2,
+    borderRadius: tokens.radius.pill,
+    marginBottom: tokens.space.lg + 2,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.35)",
   },
   overlayBadgeText: {
     color: "#FFFFFF",
     fontWeight: "900",
-    fontSize: 14,
+    fontSize: tokens.font.bodyLg,
     letterSpacing: 2,
   },
   overlayQuestion: {
-    fontSize: 28,
+    fontSize: tokens.font.h1,
     fontWeight: "900",
     color: "#FFFFFF",
-    marginBottom: 10,
+    marginBottom: tokens.space.sm + 2,
     textAlign: "center",
     letterSpacing: -0.3,
   },
   overlayHint: {
-    fontSize: 14,
+    fontSize: tokens.font.bodyLg,
     color: "rgba(255,255,255,0.85)",
-    marginBottom: 32,
+    marginBottom: tokens.space.xxl,
     textAlign: "center",
   },
   buttonsContainer: {
     width: "100%",
     marginBottom: 40,
-    gap: 14,
+    gap: tokens.space.md + 2,
   },
   overlayPrimaryBtn: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    paddingVertical: 22,
-    paddingHorizontal: 20,
+    borderRadius: tokens.radius.lg + 2,
+    paddingVertical: tokens.space.xl - 2,
+    paddingHorizontal: tokens.space.xl - 4,
     alignItems: "center",
+    minHeight: 56,
+    justifyContent: "center",
   },
   overlayPrimaryText: {
-    color: "#DC2626",
-    fontSize: 22,
+    color: tokens.color.danger,
+    fontSize: tokens.font.h2,
     fontWeight: "900",
     letterSpacing: 0.3,
   },
   overlaySecondaryBtn: {
     backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 18,
-    paddingVertical: 22,
-    paddingHorizontal: 20,
+    borderRadius: tokens.radius.lg + 2,
+    paddingVertical: tokens.space.xl - 2,
+    paddingHorizontal: tokens.space.xl - 4,
     alignItems: "center",
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.4)",
+    minHeight: 56,
+    justifyContent: "center",
   },
   overlaySecondaryText: {
     color: "#FFFFFF",
@@ -488,13 +468,15 @@ const styles = StyleSheet.create({
   },
   cancelOverlayBtn: {
     backgroundColor: "rgba(0,0,0,0.25)",
-    paddingVertical: 14,
-    paddingHorizontal: 48,
-    borderRadius: 12,
+    paddingVertical: tokens.space.md + 2,
+    paddingHorizontal: tokens.space.xxl + tokens.space.lg,
+    borderRadius: tokens.radius.md,
+    minHeight: tokens.hitSlop,
+    justifyContent: "center",
   },
   cancelOverlayText: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: tokens.font.title,
     fontWeight: "800",
   },
 });

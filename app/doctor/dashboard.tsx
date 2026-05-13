@@ -1,12 +1,17 @@
 import { useRouter } from "expo-router";
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import Card from "../../components/ui/Card";
+import EmptyState from "../../components/ui/EmptyState";
+import ScreenHeader from "../../components/ui/ScreenHeader";
 import SectionHeader from "../../components/ui/SectionHeader";
+import ShortcutCard from "../../components/ui/ShortcutCard";
 import StatusChip from "../../components/ui/StatusChip";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { tokens } from "../../src/ui/tokens";
 
 const truncateOneLine = (s: string, max: number) => {
   const t = s.trim();
@@ -245,26 +250,10 @@ export default function DoctorDashboard() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.headerBar}>
-        <TouchableOpacity
-          onPress={() => {
-            if (router.canGoBack()) router.back();
-            else router.replace("/(tabs)");
-          }}
-          style={styles.backBtn}
-          accessibilityRole="button"
-        >
-          <Text style={styles.backText}>‹</Text>
-        </TouchableOpacity>
-        <View style={styles.headerTextWrap}>
-          <Text style={styles.headerEyebrow}>🩺 {t("doctor_role")}</Text>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {t("doctor_dashboard_title")}
-          </Text>
-        </View>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader
+        title={t("doctor_dashboard_title")}
+        eyebrow={`🩺 ${t("doctor_role")}`}
+      />
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
         {/* PRIMARY: Active Emergencies — most important first. */}
@@ -277,7 +266,7 @@ export default function DoctorDashboard() {
           <SectionHeader
             overline={t("active") || "Active"}
             title={t("activeEmergencyCases") || "Active Emergencies"}
-            accent={liveEmergencies.length > 0 ? "#DC2626" : undefined}
+            accent={liveEmergencies.length > 0 ? tokens.color.danger : undefined}
             trailing={
               !loadingEmergencies && liveEmergencies.length > 0 ? (
                 <StatusChip
@@ -289,59 +278,74 @@ export default function DoctorDashboard() {
             }
           />
           {loadingEmergencies ? (
-            <View style={styles.softCard}>
-              <ActivityIndicator size="small" color="#DC2626" />
-              <Text style={styles.softMuted}>{t("loading")}</Text>
-            </View>
+            <EmptyState loading tone="danger" title={t("loading")} />
           ) : liveEmergencies.length === 0 ? (
-            <View style={styles.softCard}>
-              <Text style={styles.emptyTitle}>{t("noActiveEmergencies")}</Text>
-              <Text style={styles.emptySub}>{t("checkBackLater")}</Text>
-            </View>
+            <EmptyState
+              icon="🩺"
+              title={t("noActiveEmergencies")}
+              subtitle={t("checkBackLater")}
+            />
           ) : (
-            <View style={{ gap: 10 }}>
+            <View style={styles.cardStack}>
               {liveEmergencies.slice(0, 10).map((e) => (
                 <TouchableOpacity
                   key={e.id}
-                  style={styles.caseCard}
                   onPress={() => router.push(`/doctor/case/${e.id}`)}
                   activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    e.victimType === "other"
+                      ? t("someoneElseNeedsHelp")
+                      : t("userNeedsHelp")
+                  }
                 >
-                  <View style={styles.caseTopRow}>
-                    <StatusChip label="ACTIVE" variant="danger" solid />
-                    <Text style={styles.caseTime}>
-                      {e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.caseType} numberOfLines={1}>
-                    {e.victimType === "other" ? t("someoneElseNeedsHelp") : t("userNeedsHelp")}
-                  </Text>
-
-                  <Text style={styles.caseLocation} numberOfLines={1}>
-                    📍{" "}
-                    {e.location?.address ||
-                      (e.location?.latitude && e.location?.longitude
-                        ? `${e.location.latitude.toFixed(4)}, ${e.location.longitude.toFixed(4)}`
-                        : t("locationNotAvailable"))}
-                  </Text>
-
-                  {(e.snapshotEtaMin != null || e.snapshotAmbulanceLine) && (
-                    <View style={styles.caseMetaRow}>
-                      {e.snapshotEtaMin != null ? (
-                        <StatusChip
-                          label={`ETA ~${e.snapshotEtaMin} min`}
-                          variant="info"
-                          icon="⏱"
-                        />
-                      ) : null}
-                      {e.snapshotAmbulanceLine ? (
-                        <Text style={styles.caseAmbulanceLine} numberOfLines={1}>
-                          {truncateOneLine(e.snapshotAmbulanceLine, 60)}
-                        </Text>
-                      ) : null}
+                  <Card elevated accentLeft>
+                    <View style={styles.caseTopRow}>
+                      <StatusChip label="ACTIVE" variant="danger" solid />
+                      <Text style={styles.caseTime}>
+                        {e.timestamp
+                          ? new Date(e.timestamp).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "—"}
+                      </Text>
                     </View>
-                  )}
+
+                    <Text style={styles.caseType} numberOfLines={1}>
+                      {e.victimType === "other"
+                        ? t("someoneElseNeedsHelp")
+                        : t("userNeedsHelp")}
+                    </Text>
+
+                    <Text style={styles.caseLocation} numberOfLines={1}>
+                      📍{" "}
+                      {e.location?.address ||
+                        (e.location?.latitude && e.location?.longitude
+                          ? `${e.location.latitude.toFixed(4)}, ${e.location.longitude.toFixed(4)}`
+                          : t("locationNotAvailable"))}
+                    </Text>
+
+                    {(e.snapshotEtaMin != null || e.snapshotAmbulanceLine) && (
+                      <View style={styles.caseMetaRow}>
+                        {e.snapshotEtaMin != null ? (
+                          <StatusChip
+                            label={`ETA ~${e.snapshotEtaMin} min`}
+                            variant="info"
+                            icon="⏱"
+                          />
+                        ) : null}
+                        {e.snapshotAmbulanceLine ? (
+                          <Text
+                            style={styles.caseAmbulanceLine}
+                            numberOfLines={1}
+                          >
+                            {truncateOneLine(e.snapshotAmbulanceLine, 60)}
+                          </Text>
+                        ) : null}
+                      </View>
+                    )}
+                  </Card>
                 </TouchableOpacity>
               ))}
             </View>
@@ -349,8 +353,8 @@ export default function DoctorDashboard() {
         </View>
 
         {/* Patient Search */}
-        <View
-          style={[styles.section, styles.sectionCard]}
+        <Card
+          style={styles.section}
           onLayout={(e) => {
             searchSectionYRef.current = e.nativeEvent.layout.y;
           }}
@@ -360,7 +364,8 @@ export default function DoctorDashboard() {
             title={`🔍 ${t("searchPatient") || "Search Patient"}`}
           />
           <Text style={styles.helperText}>
-            {t("searchPatientNote") || "Enter Israeli ID or name to access medical information"}
+            {t("searchPatientNote") ||
+              "Enter Israeli ID or name to access medical information"}
           </Text>
 
           <View style={styles.searchContainer}>
@@ -370,7 +375,7 @@ export default function DoctorDashboard() {
               placeholder={t("enterPatientId") || "Enter Israeli ID or Name"}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={tokens.color.textFaint}
               keyboardType="default"
               returnKeyType="search"
               onSubmitEditing={handleSearchPatient}
@@ -383,6 +388,7 @@ export default function DoctorDashboard() {
               onPress={handleSearchPatient}
               disabled={searching || !searchQuery.trim()}
               accessibilityRole="button"
+              accessibilityLabel={t("searchPatient")}
             >
               <Text style={styles.searchBtnText}>
                 {searching ? "…" : "🔍"}
@@ -392,10 +398,7 @@ export default function DoctorDashboard() {
 
           {/* Results list */}
           {searching ? (
-            <View style={styles.softCard}>
-              <ActivityIndicator size="small" color="#DC2626" />
-              <Text style={styles.softMuted}>{t("loading")}</Text>
-            </View>
+            <EmptyState loading tone="danger" title={t("loading")} />
           ) : results.length > 0 ? (
             <View style={styles.resultsBox}>
               {results.map((p) => (
@@ -407,6 +410,7 @@ export default function DoctorDashboard() {
                   ]}
                   onPress={() => setSelectedPatient(p)}
                   activeOpacity={0.85}
+                  accessibilityRole="button"
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.resultName} numberOfLines={1}>
@@ -426,7 +430,7 @@ export default function DoctorDashboard() {
 
           {/* Selected Patient Info Display */}
           {selectedPatient && (
-            <View style={styles.patientInfoCard}>
+            <Card tone="danger" style={styles.patientInfoCard}>
               <View style={styles.patientHeader}>
                 <Text style={styles.patientName} numberOfLines={1}>
                   {selectedPatient.name || selectedPatient.email}
@@ -435,6 +439,8 @@ export default function DoctorDashboard() {
                   style={styles.iconBtn}
                   onPress={() => setSelectedPatient(null)}
                   accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
                   <Text style={styles.iconBtnText}>✕</Text>
                 </TouchableOpacity>
@@ -501,9 +507,9 @@ export default function DoctorDashboard() {
                   {t("viewFullProfile") || "View Full Profile"} ›
                 </Text>
               </TouchableOpacity>
-            </View>
+            </Card>
           )}
-        </View>
+        </Card>
 
         {/*
           Quick Actions — operational shortcuts. Each one is wired to existing
@@ -512,70 +518,33 @@ export default function DoctorDashboard() {
         <View style={styles.section}>
           <SectionHeader overline={t("quickActions")} title={t("quickActions")} />
 
-          {/* 1. Jump back to the live cases section higher up. */}
-          <TouchableOpacity
-            style={styles.shortcutCard}
+          <ShortcutCard
+            icon="🚨"
+            title={t("quickViewActiveEmergencies", "View Active Emergencies")}
+            subtitle={t("quickViewActiveEmergenciesSub", "Jump to live cases")}
             onPress={handleQuickViewActive}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Text style={styles.shortcutIcon}>🚨</Text>
-            <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>
-                {t("quickViewActiveEmergencies", "View Active Emergencies")}
-              </Text>
-              <Text style={styles.shortcutSub} numberOfLines={1}>
-                {t("quickViewActiveEmergenciesSub", "Jump to live cases")}
-              </Text>
-            </View>
-            {!loadingEmergencies && liveEmergencies.length > 0 ? (
-              <StatusChip
-                label={String(liveEmergencies.length)}
-                variant="danger"
-                solid
-              />
-            ) : (
-              <Text style={styles.chevron}>›</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* 2. Scroll to the patient search section and focus its input. */}
-          <TouchableOpacity
-            style={styles.shortcutCard}
+            trailing={
+              !loadingEmergencies && liveEmergencies.length > 0 ? (
+                <StatusChip
+                  label={String(liveEmergencies.length)}
+                  variant="danger"
+                  solid
+                />
+              ) : undefined
+            }
+          />
+          <ShortcutCard
+            icon="🔍"
+            title={t("quickSearchPatient", "Search Patient")}
+            subtitle={t("quickSearchPatientSub", "Find by ID, email or name")}
             onPress={handleQuickSearchPatient}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Text style={styles.shortcutIcon}>🔍</Text>
-            <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>
-                {t("quickSearchPatient", "Search Patient")}
-              </Text>
-              <Text style={styles.shortcutSub} numberOfLines={1}>
-                {t("quickSearchPatientSub", "Find by ID, email or name")}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-
-          {/* 3. Open the newest active case (or alert if none). */}
-          <TouchableOpacity
-            style={styles.shortcutCard}
+          />
+          <ShortcutCard
+            icon="📋"
+            title={t("quickOpenRecentCase", "Open Recent Case")}
+            subtitle={t("quickOpenRecentCaseSub", "Latest active emergency")}
             onPress={handleQuickOpenRecentCase}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-          >
-            <Text style={styles.shortcutIcon}>📋</Text>
-            <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>
-                {t("quickOpenRecentCase", "Open Recent Case")}
-              </Text>
-              <Text style={styles.shortcutSub} numberOfLines={1}>
-                {t("quickOpenRecentCaseSub", "Latest active emergency")}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          />
         </View>
       </ScrollView>
     </View>
@@ -585,238 +554,202 @@ export default function DoctorDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F1F5F9",
+    backgroundColor: tokens.color.bgPage,
   },
-  headerBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: { fontSize: 24, color: "#0F172A", fontWeight: "800", lineHeight: 26 },
-  headerTextWrap: { flex: 1, marginLeft: 12 },
-  headerEyebrow: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#94A3B8",
-    letterSpacing: 0.8,
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#0F172A",
-    letterSpacing: -0.3,
-  },
-  headerSpacer: { width: 40, height: 40 },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 40,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.xl,
+    paddingBottom: tokens.space.xxl + tokens.space.sm,
   },
-  section: { marginBottom: 26 },
-  sectionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
+  section: { marginBottom: tokens.space.xl },
+  cardStack: { gap: tokens.space.md },
   helperText: {
-    fontSize: 13,
-    color: "#64748B",
-    marginBottom: 12,
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
+    marginBottom: tokens.space.md,
     lineHeight: 18,
-  },
-  caseCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
   },
   caseTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: tokens.space.sm,
   },
-  caseTime: { fontSize: 13, color: "#64748B", fontWeight: "700" },
+  caseTime: {
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
+    fontWeight: "700",
+  },
   caseType: {
-    fontSize: 16,
+    fontSize: tokens.font.title,
     fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 4,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs,
   },
-  caseLocation: { fontSize: 13, color: "#475569", fontWeight: "600" },
+  caseLocation: {
+    fontSize: tokens.font.body,
+    color: tokens.color.textSecondary,
+    fontWeight: "600",
+  },
   caseMetaRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 8,
-    marginTop: 10,
+    gap: tokens.space.sm,
+    marginTop: tokens.space.md,
   },
   caseAmbulanceLine: {
-    fontSize: 12,
-    color: "#475569",
+    fontSize: tokens.font.caption,
+    color: tokens.color.textSecondary,
     fontStyle: "italic",
     flex: 1,
     minWidth: 100,
   },
-  softCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
-  },
-  softMuted: { color: "#64748B", fontWeight: "700" },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#0F172A",
-    textAlign: "center",
-  },
-  emptySub: {
-    fontSize: 13,
-    color: "#64748B",
-    marginTop: 4,
-    textAlign: "center",
-  },
   searchContainer: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
+    gap: tokens.space.sm,
+    marginBottom: tokens.space.md,
   },
   searchInput: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    backgroundColor: tokens.color.bgSubtle,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.md + 2,
+    paddingVertical: tokens.space.md,
+    fontSize: tokens.font.label,
     borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    color: "#0F172A",
+    borderColor: tokens.color.border,
+    color: tokens.color.textPrimary,
+    minHeight: tokens.hitSlop,
   },
   searchBtn: {
-    backgroundColor: "#DC2626",
-    paddingHorizontal: 18,
-    borderRadius: 12,
+    backgroundColor: tokens.color.danger,
+    paddingHorizontal: tokens.space.lg,
+    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
     minWidth: 52,
+    minHeight: tokens.hitSlop,
   },
-  searchBtnDisabled: { backgroundColor: "#CBD5E1" },
+  searchBtnDisabled: { backgroundColor: tokens.color.borderStrong },
   searchBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
   resultsBox: {
-    backgroundColor: "#F8FAFC",
-    borderRadius: 12,
-    padding: 6,
+    backgroundColor: tokens.color.bgSubtle,
+    borderRadius: tokens.radius.md,
+    padding: tokens.space.xs + 2,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 12,
-    gap: 4,
+    borderColor: tokens.color.border,
+    marginBottom: tokens.space.md,
+    gap: tokens.space.xs,
   },
   resultRow: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    paddingVertical: tokens.space.md - 2,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.sm,
     flexDirection: "row",
     alignItems: "center",
+    minHeight: tokens.hitSlop,
   },
   resultRowActive: {
     backgroundColor: "#FEF2F2",
     borderWidth: 1,
     borderColor: "#FCA5A5",
   },
-  resultName: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
-  resultMeta: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  resultCheck: { fontSize: 16, fontWeight: "900", color: "#DC2626" },
+  resultName: {
+    fontSize: tokens.font.label,
+    fontWeight: "800",
+    color: tokens.color.textPrimary,
+  },
+  resultMeta: {
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    marginTop: 2,
+  },
+  resultCheck: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: tokens.color.danger,
+  },
   patientInfoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 18,
-    marginTop: 12,
-    borderWidth: 1.5,
-    borderColor: "#DC2626",
+    marginTop: tokens.space.md,
   },
   patientHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
-    paddingBottom: 12,
+    marginBottom: tokens.space.md + 2,
+    paddingBottom: tokens.space.md,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: tokens.color.border,
   },
-  patientName: { fontSize: 18, fontWeight: "900", color: "#0F172A", flex: 1, marginRight: 8 },
+  patientName: {
+    fontSize: tokens.font.h3,
+    fontWeight: "900",
+    color: tokens.color.textPrimary,
+    flex: 1,
+    marginRight: tokens.space.sm,
+  },
   iconBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#F1F5F9",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: tokens.color.bgPage,
     alignItems: "center",
     justifyContent: "center",
   },
-  iconBtnText: { fontSize: 16, color: "#64748B", fontWeight: "800" },
+  iconBtnText: {
+    fontSize: 16,
+    color: tokens.color.textMuted,
+    fontWeight: "800",
+  },
   kvRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: tokens.space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    borderBottomColor: tokens.color.bgPage,
   },
-  kvLabel: { fontSize: 13, color: "#64748B", fontWeight: "700" },
-  kvValue: { fontSize: 14, color: "#0F172A", fontWeight: "800" },
-  patientSubSection: { marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "#E2E8F0" },
-  patientSubTitle: { fontSize: 13, fontWeight: "900", color: "#0F172A", marginBottom: 6, letterSpacing: 0.3 },
-  patientSubText: { fontSize: 14, color: "#212529", lineHeight: 20 },
+  kvLabel: {
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
+    fontWeight: "700",
+  },
+  kvValue: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textPrimary,
+    fontWeight: "800",
+  },
+  patientSubSection: {
+    marginTop: tokens.space.md + 2,
+    paddingTop: tokens.space.md + 2,
+    borderTopWidth: 1,
+    borderTopColor: tokens.color.border,
+  },
+  patientSubTitle: {
+    fontSize: tokens.font.body,
+    fontWeight: "900",
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs + 2,
+    letterSpacing: 0.3,
+  },
+  patientSubText: {
+    fontSize: tokens.font.bodyLg,
+    color: "#212529",
+    lineHeight: 20,
+  },
   viewFullBtn: {
-    marginTop: 16,
-    paddingVertical: 12,
+    marginTop: tokens.space.lg,
+    paddingVertical: tokens.space.md,
     alignItems: "center",
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-    paddingTop: 14,
+    borderTopColor: tokens.color.border,
+    paddingTop: tokens.space.md + 2,
+    minHeight: tokens.hitSlop,
   },
-  viewFullBtnText: { fontSize: 15, color: "#DC2626", fontWeight: "800" },
-  shortcutCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    gap: 12,
+  viewFullBtnText: {
+    fontSize: tokens.font.label,
+    color: tokens.color.danger,
+    fontWeight: "800",
   },
-  shortcutIcon: { fontSize: 24 },
-  shortcutContent: { flex: 1 },
-  shortcutTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
-  shortcutSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  chevron: { fontSize: 22, color: "#94A3B8", fontWeight: "700" },
 });

@@ -2,7 +2,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EmergencyChat from "../../../components/EmergencyChat";
+import Button from "../../../components/ui/Button";
 import SectionHeader from "../../../components/ui/SectionHeader";
+import ShortcutCard from "../../../components/ui/ShortcutCard";
 import StatusChip from "../../../components/ui/StatusChip";
 import {
   ActivityIndicator,
@@ -21,6 +23,7 @@ import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
 import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 import { SosSmartFirstAid } from "../../../src/firstAid/SosSmartFirstAid";
+import { tokens } from "../../../src/ui/tokens";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
 import AiEmergencyCompanion from "../../../components/AiEmergencyCompanion";
 import { isOpenAiConfigured } from "../../../src/services/openaiEmergency";
@@ -980,48 +983,31 @@ Shared from ResQNow Emergency App
           falls back to opening the built-in first-aid library, so the button
           is always offered (no silent dead-end).
         */}
-        <TouchableOpacity
-          style={styles.actionCard}
+        <ShortcutCard
+          icon="🩺"
+          title={translate("aiTriageButtonTitle", "AI Triage Assistant")}
+          subtitle={
+            aiAvailable
+              ? translate(
+                  "aiTriageButtonSub",
+                  "Find the right guide and one next action",
+                )
+              : translate(
+                  "aiTriageButtonSubOffline",
+                  "Browse first-aid guides (AI unavailable)",
+                )
+          }
           onPress={() => setAiCompanionVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel={translate("aiTriageButtonTitle", "AI Triage Assistant")}
-        >
-          <Text style={styles.actionIcon}>🩺</Text>
-          <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>
-              {translate("aiTriageButtonTitle", "AI Triage Assistant")}
-            </Text>
-            <Text style={styles.actionSubtitle} numberOfLines={2}>
-              {aiAvailable
-                ? translate(
-                    "aiTriageButtonSub",
-                    "Find the right guide and one next action",
-                  )
-                : translate(
-                    "aiTriageButtonSubOffline",
-                    "Browse first-aid guides (AI unavailable)",
-                  )}
-            </Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
+        />
 
         {/* 6. MEDICAL INFO SHARE — only when victim is the user. */}
         {victimType === "me" && (
-          <TouchableOpacity
-            style={styles.actionCard}
+          <ShortcutCard
+            icon="📋"
+            title={translate("shareMedicalProfile")}
+            subtitle={translate("sendMedicalInfo")}
             onPress={shareMedicalInfo}
-            accessibilityRole="button"
-          >
-            <Text style={styles.actionIcon}>📋</Text>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>{translate("shareMedicalProfile")}</Text>
-              <Text style={styles.actionSubtitle} numberOfLines={2}>
-                {translate("sendMedicalInfo")}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          />
         )}
       </ScrollView>
 
@@ -1064,15 +1050,20 @@ Shared from ResQNow Emergency App
             </Text>
           </View>
         ) : (
-          <TouchableOpacity
-            style={[styles.endBtn, ending && styles.endBtnDisabled]}
-            onPress={endEmergency}
+          <Button
+            variant="neutralDark"
+            size="lg"
+            fullWidth
+            label={
+              ending
+                ? translate("loading") || "Ending…"
+                : translate("endEmergency")
+            }
+            loading={ending}
             disabled={ending || !canCallerCancelEmergency}
-          >
-            <Text style={styles.endBtnText}>
-              {ending ? (translate("loading") || "Ending…") : translate("endEmergency")}
-            </Text>
-          </TouchableOpacity>
+            onPress={endEmergency}
+            accessibilityLabel={translate("endEmergency")}
+          />
         )}
       </View>
     </View>
@@ -1082,20 +1073,20 @@ Shared from ResQNow Emergency App
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#DC2626",
+    backgroundColor: tokens.color.danger,
   },
   /* Hero status block — calm but unmistakable. */
   statusBar: {
-    backgroundColor: "#DC2626",
+    backgroundColor: tokens.color.danger,
     paddingTop: 56,
-    paddingBottom: 18,
-    paddingHorizontal: 20,
+    paddingBottom: tokens.space.lg + 2,
+    paddingHorizontal: tokens.space.xl,
   },
   statusTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: tokens.space.md,
   },
   statusLeft: {
     flexDirection: "row",
@@ -1106,11 +1097,11 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: "#FFFFFF",
-    marginRight: 8,
+    marginRight: tokens.space.sm,
   },
   statusText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: tokens.font.bodyLg,
     fontWeight: "900",
     letterSpacing: 1.5,
   },
@@ -1126,7 +1117,7 @@ const styles = StyleSheet.create({
   },
   statusTimerValue: {
     color: "#FFFFFF",
-    fontSize: 28,
+    fontSize: tokens.font.h1,
     fontWeight: "900",
     letterSpacing: -0.5,
     fontVariant: ["tabular-nums"],
@@ -1134,196 +1125,177 @@ const styles = StyleSheet.create({
   statusBottomRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: tokens.space.sm,
     flexWrap: "wrap",
   },
   content: {
-    backgroundColor: "#F1F5F9",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 22,
+    backgroundColor: tokens.color.bgPage,
+    borderTopLeftRadius: tokens.radius.xl + 4,
+    borderTopRightRadius: tokens.radius.xl + 4,
+    paddingTop: tokens.space.xl - 2,
+    /* Footer overlays the bottom; reserve enough space so the last card
+       (Share Medical) is never trapped under it. */
     paddingBottom: 120,
-    paddingHorizontal: 20,
+    paddingHorizontal: tokens.space.xl,
   },
   /* Re-usable section card wrapper for any sub-block needing a header. */
   sectionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.lg,
+    marginBottom: tokens.space.lg,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: tokens.color.border,
   },
   sectionHint: {
-    fontSize: 12,
-    color: "#64748B",
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
     fontWeight: "600",
-    marginBottom: 10,
-    marginTop: -4,
+    marginBottom: tokens.space.sm + 2,
+    marginTop: -tokens.space.xs,
   },
-  /* Location / share card. */
+  /* Location / share card — red left bar marks it as the primary share affordance. */
   infoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.lg,
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 16,
+    marginBottom: tokens.space.lg,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: tokens.color.border,
     borderLeftWidth: 4,
-    borderLeftColor: "#DC2626",
+    borderLeftColor: tokens.color.danger,
   },
   infoIcon: {
     fontSize: 26,
-    marginRight: 12,
+    marginRight: tokens.space.md,
     marginTop: 2,
   },
   infoContent: {
     flex: 1,
   },
   infoLabel: {
-    fontSize: 11,
+    fontSize: tokens.font.overline,
     fontWeight: "900",
-    color: "#94A3B8",
+    color: tokens.color.textFaint,
     letterSpacing: 0.8,
     textTransform: "uppercase",
-    marginBottom: 4,
+    marginBottom: tokens.space.xs,
   },
   infoValue: {
-    fontSize: 15,
+    fontSize: tokens.font.label,
     fontWeight: "800",
-    color: "#0F172A",
+    color: tokens.color.textPrimary,
     lineHeight: 20,
   },
   locationCoords: {
-    fontSize: 11,
-    color: "#64748B",
+    fontSize: tokens.font.overline,
+    color: tokens.color.textMuted,
     fontFamily: "monospace",
-    marginTop: 4,
+    marginTop: tokens.space.xs,
   },
   shareHintRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 10,
-    gap: 6,
+    marginTop: tokens.space.sm + 2,
+    gap: tokens.space.xs + 2,
   },
   shareIcon: { fontSize: 14 },
   tapToShare: {
-    fontSize: 12,
-    color: "#DC2626",
+    fontSize: tokens.font.caption,
+    color: tokens.color.danger,
     fontWeight: "800",
     letterSpacing: 0.3,
   },
   /* Compact calm reassurance banner. */
   calmBanner: {
-    backgroundColor: "#ECFDF5",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 16,
+    backgroundColor: tokens.color.successBg,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.sm + 2,
+    paddingHorizontal: tokens.space.md + 2,
+    marginBottom: tokens.space.lg,
     borderWidth: 1,
     borderColor: "#A7F3D0",
   },
   calmBannerText: {
-    fontSize: 13,
+    fontSize: tokens.font.body,
     fontWeight: "800",
-    color: "#065F46",
+    color: tokens.color.successText,
     textAlign: "center",
   },
-  /* Generic action card (chat row, AI triage, share). */
-  actionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  actionIcon: { fontSize: 26, marginRight: 14 },
-  actionContent: { flex: 1 },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: "#0F172A",
-    marginBottom: 2,
-  },
-  actionSubtitle: { fontSize: 13, color: "#64748B", fontWeight: "600" },
-  chevron: { fontSize: 22, color: "#94A3B8", fontWeight: "700" },
   mapCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    marginBottom: 16,
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.lg,
+    marginBottom: tokens.space.lg,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: tokens.color.border,
   },
   mapHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: tokens.space.md + 2,
+    paddingVertical: tokens.space.md,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    borderBottomColor: tokens.color.bgPage,
   },
   mapTitle: {
-    fontSize: 15,
+    fontSize: tokens.font.label,
     fontWeight: "900",
-    color: "#0F172A",
+    color: tokens.color.textPrimary,
   },
   distanceBadge: {
-    backgroundColor: "#EFF6FF",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    backgroundColor: tokens.color.infoBg,
+    borderRadius: tokens.radius.pill,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.xs,
     borderWidth: 1,
     borderColor: "#BFDBFE",
   },
   distanceText: {
-    fontSize: 14,
+    fontSize: tokens.font.bodyLg,
     fontWeight: "700",
-    color: "#1D4ED8",
+    color: tokens.color.info,
   },
   etaBanner: {
-    marginHorizontal: 16,
-    marginBottom: 10,
-    backgroundColor: "#ECFDF5",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    marginHorizontal: tokens.space.lg,
+    marginBottom: tokens.space.sm + 2,
+    backgroundColor: tokens.color.successBg,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.md + 2,
     borderWidth: 1,
     borderColor: "#A7F3D0",
   },
   etaBannerText: {
-    fontSize: 15,
+    fontSize: tokens.font.label,
     fontWeight: "900",
-    color: "#065F46",
+    color: tokens.color.successText,
     textAlign: "center",
     lineHeight: 22,
   },
   etaPending: {
-    marginHorizontal: 16,
-    marginBottom: 10,
-    fontSize: 13,
+    marginHorizontal: tokens.space.lg,
+    marginBottom: tokens.space.sm + 2,
+    fontSize: tokens.font.body,
     fontWeight: "700",
-    color: "#6C757D",
+    color: tokens.color.textMuted,
     textAlign: "center",
   },
   etaBannerArrived: {
-    marginHorizontal: 16,
-    marginBottom: 10,
+    marginHorizontal: tokens.space.lg,
+    marginBottom: tokens.space.sm + 2,
     backgroundColor: "#DCFCE7",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.md + 2,
     borderWidth: 1,
     borderColor: "#86EFAC",
   },
   etaBannerArrivedText: {
-    fontSize: 15,
+    fontSize: tokens.font.label,
     fontWeight: "900",
     color: "#166534",
     textAlign: "center",
@@ -1340,22 +1312,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8F9FA",
   },
   mapWaitingText: {
-    fontSize: 14,
-    color: "#6C757D",
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
     fontStyle: "italic",
   },
   mapLegend: {
     flexDirection: "row",
-    gap: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    gap: tokens.space.lg,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.sm + 2,
     borderTopWidth: 1,
     borderTopColor: "#E9ECEF",
   },
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: tokens.space.xs + 2,
   },
   legendDot: {
     width: 10,
@@ -1363,8 +1335,8 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   legendLabel: {
-    fontSize: 13,
-    color: "#6C757D",
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
     fontWeight: "600",
   },
   /* Sticky bottom action bar — calm but accessible. */
@@ -1373,54 +1345,39 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 24,
+    backgroundColor: tokens.color.bgSurface,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md + 2,
+    paddingBottom: tokens.space.xl,
     borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-  },
-  endBtn: {
-    backgroundColor: "#475569",
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  endBtnDisabled: {
-    opacity: 0.6,
-  },
-  endBtnText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 0.3,
+    borderTopColor: tokens.color.border,
   },
   footerSyncRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
+    paddingVertical: tokens.space.md,
   },
   footerSyncText: {
-    marginLeft: 12,
-    color: "#475569",
-    fontSize: 14,
+    marginLeft: tokens.space.md,
+    color: tokens.color.textSecondary,
+    fontSize: tokens.font.bodyLg,
     fontWeight: "700",
   },
   footerLocked: {
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    paddingVertical: tokens.space.xs + 2,
+    paddingHorizontal: tokens.space.xs,
   },
   footerLockedTitle: {
-    color: "#0F172A",
-    fontSize: 14,
+    color: tokens.color.textPrimary,
+    fontSize: tokens.font.bodyLg,
     fontWeight: "900",
-    marginBottom: 4,
+    marginBottom: tokens.space.xs,
     textAlign: "center",
   },
   footerLockedBody: {
-    color: "#64748B",
-    fontSize: 12,
+    color: tokens.color.textMuted,
+    fontSize: tokens.font.caption,
     fontWeight: "600",
     textAlign: "center",
     lineHeight: 18,
