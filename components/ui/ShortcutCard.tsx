@@ -9,6 +9,9 @@
  *
  * Centralising it means every shortcut everywhere has identical touch
  * target size, padding, typography, chevron and emphasis styling.
+ *
+ * Visual weight is deliberately restrained — shortcuts are secondary
+ * affordances, never the primary action on a screen.
  */
 
 import React from "react";
@@ -23,7 +26,8 @@ type Props = {
   onPress: () => void;
   /** Element shown at the right (chip, badge…). When absent, a chevron is rendered. */
   trailing?: React.ReactNode;
-  /** Emphasis variant: "primary" adds a red left bar to highlight the row. */
+  /** Emphasis variant: "primary" promotes the row when it represents the
+   *  user's active mission / case. Use sparingly — at most one per screen. */
   emphasis?: "default" | "primary";
   /** Optional override style — keep usage rare; layout is opinionated for a reason. */
   style?: ViewStyle | ViewStyle[];
@@ -76,18 +80,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.lg,
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: tokens.space.md,
-    borderWidth: 1,
+    marginBottom: tokens.space.sm,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
     gap: tokens.space.md,
-    minHeight: tokens.hitSlop + 16,
+    minHeight: 60,
   },
   cardPrimary: {
-    borderColor: tokens.color.danger,
-    borderLeftWidth: 4,
-    backgroundColor: "#FFFBFB",
+    backgroundColor: tokens.color.dangerSurface,
+    borderColor: tokens.color.dangerBorder,
+    borderLeftWidth: 3,
+    borderLeftColor: tokens.color.danger,
   },
-  icon: { fontSize: 24 },
+  icon: { fontSize: 22 },
   content: { flex: 1 },
   title: {
     fontSize: tokens.font.label,

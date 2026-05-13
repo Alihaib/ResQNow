@@ -4,16 +4,26 @@
  * Used everywhere a section needs a contained surface (search section,
  * patient info, chat block, emergency case, AI triage row…). Centralising
  * its visual style here guarantees corner radii, border colours, padding
- * and shadows stay in lock-step across every screen.
+ * and elevation stay in lock-step across every screen.
  *
  * Tone variants:
- *  - "default" : standard white card with subtle border.
- *  - "danger"  : red-bordered surface for active/critical cases.
+ *  - "default" : standard white card with a near-invisible hairline border.
+ *  - "danger"  : faint red-tinted surface with a soft red border. Used for
+ *                "your active mission" / "selected critical patient". The
+ *                accent is intentionally restrained — emphasis comes from
+ *                a status chip and a left bar, not from a thick red box.
  *  - "subtle"  : muted background used for nested/secondary blocks.
  *
- * `accentLeft` adds a 4px coloured left bar — for "this is your mission"
- * style emphasis. `compact` removes the inner padding when the consumer
- * needs to render its own layout (lists, custom rows).
+ * `accentLeft` / `accentTop` add a 3px coloured edge bar — for "this is
+ * your mission" style emphasis. Pick a single side; both is intentionally
+ * not supported.
+ *
+ * `compact` removes the inner padding when the consumer needs to render
+ * its own layout (lists, custom rows, full-bleed media).
+ *
+ * `elevated` adds the very-subtle drop shadow defined by the token system.
+ * Use sparingly — only the most-prominent cards on a screen should be
+ * elevated.
  */
 
 import React from "react";
@@ -26,25 +36,33 @@ type Props = ViewProps & {
   tone?: Tone;
   /** Drop inner padding (useful when the card contains custom rows). */
   compact?: boolean;
-  /** Show a coloured 4px left stripe — defaults to the danger colour. */
+  /** Coloured 3px left stripe (defaults to the danger colour). */
   accentLeft?: boolean | string;
-  /** Add a soft elevation (used for the most prominent cards). */
+  /** Coloured 3px top stripe (defaults to the danger colour). */
+  accentTop?: boolean | string;
+  /** Add a soft elevation (only on the most prominent cards). */
   elevated?: boolean;
   style?: ViewStyle | ViewStyle[];
   children: React.ReactNode;
 };
 
+const ACCENT_THICKNESS = 3;
+
 export default function Card({
   tone = "default",
   compact,
   accentLeft,
+  accentTop,
   elevated,
   style,
   children,
   ...rest
 }: Props) {
-  const accentColor =
+  const leftColor =
     typeof accentLeft === "string" ? accentLeft : tokens.color.danger;
+  const topColor =
+    typeof accentTop === "string" ? accentTop : tokens.color.danger;
+
   return (
     <View
       style={[
@@ -52,7 +70,12 @@ export default function Card({
         !compact && styles.padded,
         tone === "danger" && styles.danger,
         tone === "subtle" && styles.subtle,
-        accentLeft ? { borderLeftWidth: 4, borderLeftColor: accentColor } : null,
+        accentLeft
+          ? { borderLeftWidth: ACCENT_THICKNESS, borderLeftColor: leftColor }
+          : null,
+        accentTop
+          ? { borderTopWidth: ACCENT_THICKNESS, borderTopColor: topColor }
+          : null,
         elevated && cardShadow,
         style as ViewStyle,
       ]}
@@ -67,10 +90,14 @@ const styles = StyleSheet.create({
   base: {
     backgroundColor: tokens.color.bgSurface,
     borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
   },
   padded: { padding: tokens.space.lg },
-  danger: { borderColor: tokens.color.danger, borderWidth: 1.5 },
+  danger: {
+    backgroundColor: tokens.color.dangerSurface,
+    borderColor: tokens.color.dangerBorder,
+    borderWidth: tokens.hairline,
+  },
   subtle: { backgroundColor: tokens.color.bgSubtle },
 });

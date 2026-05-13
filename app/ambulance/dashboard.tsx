@@ -32,11 +32,7 @@ import {
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
-import { normalizeLifecycleStatus } from "../../src/emergency/stateMachine";
-import {
-  autoDispatchEmergency,
-  rejectAndReassignEmergency,
-} from "../../src/services/autoDispatch";
+import { claimEmergencyTransaction } from "../../src/services/emergencyAssignment";
 import { tokens } from "../../src/ui/tokens";
 import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
 
@@ -78,9 +74,8 @@ export default function AmbulanceDashboard() {
     latitude: number;
     longitude: number;
   } | null>(null);
-  const attemptedAutoDispatchRef = useRef<Record<string, true>>({});
-  const attemptedTimeoutReassignRef = useRef<Record<string, true>>({});
-  const DISPATCH_TIMEOUT_MS = 45000;
+  /** Per-card "Accepting…" spinner. Keyed by emergency id; entry removed on response. */
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
   // "Live alert" UI state (local only)
   const [lastSeenEmergencyTs, setLastSeenEmergencyTs] = useState<string | null>(
@@ -367,47 +362,10 @@ export default function AmbulanceDashboard() {
 
           setEmergencies(emergenciesList);
 
-          // AUTO DISPATCH
-          for (const e of emergenciesList) {
-            if (e.assignedAmbulanceId) continue;
-            if (attemptedAutoDispatchRef.current[e.id]) continue;
-
-            const baseLoc: any = e.patientLocation ?? e.location;
-            const lat = baseLoc?.latitude;
-            const lng = baseLoc?.longitude;
-            if (typeof lat !== "number" || typeof lng !== "number") continue;
-
-            attemptedAutoDispatchRef.current[e.id] = true;
-            autoDispatchEmergency({
-              emergencyId: e.id,
-              patientLocation: { latitude: lat, longitude: lng },
-            })
-              .then((res) => {
-                if (res.ok && res.assigned) {
-                  console.log(
-                    "[AutoDispatch] assigned",
-                    e.id,
-                    "->",
-                    res.assignedAmbulanceId,
-                  );
-                } else if (res.ok) {
-                  console.log(
-                    "[AutoDispatch] skipped",
-                    e.id,
-                    "reason=",
-                    (res as any).reason,
-                  );
-                } else {
-                  console.warn(
-                    "[AutoDispatch] failed",
-                    e.id,
-                    "reason=",
-                    (res as any).reason,
-                  );
-                }
-              })
-              .catch((err) => console.warn("[AutoDispatch] error", e.id, err));
-          }
+          // NOTE: There is no auto-dispatch / auto-assignment of the closest
+          // ambulance. The emergency is broadcast to every approved ambulance
+          // listening to this query and stays unassigned until a human
+          // responder taps Accept (see `handleAcceptEmergency`).
 
           if (Object.keys(incomingNewIds).length > 0) {
             setNewEmergencyIds((prev) => ({ ...prev, ...incomingNewIds }));
@@ -465,57 +423,10 @@ export default function AmbulanceDashboard() {
     liveCallsScrollY,
   ]);
 
-  // SMART REASSIGNMENT: timeout-based reassignment loop
-  useEffect(() => {
-    if (authLoading) return;
-    if (!user?.uid) return;
-    if (role !== "ambulance" || approved !== true) return;
-
-    const timer = setInterval(() => {
-      const now = Date.now();
-      for (const e of emergencies) {
-        if (normalizeLifecycleStatus(e.status) !== "dispatched") continue;
-        if (!e.assignedAmbulanceId) continue;
-        if (!e.assignedAt) continue;
-        if (attemptedTimeoutReassignRef.current[e.id]) continue;
-
-        const assignedAtMs = new Date(e.assignedAt).getTime();
-        if (!Number.isFinite(assignedAtMs)) continue;
-        if (now - assignedAtMs < DISPATCH_TIMEOUT_MS) continue;
-
-        const baseLoc: any = e.patientLocation ?? e.location;
-        const lat = baseLoc?.latitude;
-        const lng = baseLoc?.longitude;
-        if (typeof lat !== "number" || typeof lng !== "number") continue;
-
-        attemptedTimeoutReassignRef.current[e.id] = true;
-        console.log(
-          "[AutoDispatch][timeout] reassigning emergency:",
-          e.id,
-          "assigned=",
-          e.assignedAmbulanceId,
-        );
-        rejectAndReassignEmergency({
-          emergencyId: e.id,
-          rejectingAmbulanceId: e.assignedAmbulanceId,
-          patientLocation: { latitude: lat, longitude: lng },
-        })
-          .then((res) =>
-            console.log("[AutoDispatch][timeout] result:", e.id, res),
-          )
-          .catch((err) =>
-            console.warn("[AutoDispatch][timeout] error:", e.id, err),
-          )
-          .finally(() => {
-            setTimeout(() => {
-              delete attemptedTimeoutReassignRef.current[e.id];
-            }, 15000);
-          });
-      }
-    }, 5000);
-
-    return () => clearInterval(timer);
-  }, [authLoading, user?.uid, role, approved, emergencies]);
+  // NOTE: There is intentionally no timeout-based reassignment loop. Once an
+  // ambulance accepts a case the assignment is permanent until they release
+  // it (only allowed before they enter the `enRoute` phase) or until the
+  // caller cancels the SOS. No system code re-shuffles the assignment.
 
   /**
    * Open turn-by-turn navigation to the emergency location.
@@ -581,12 +492,68 @@ export default function AmbulanceDashboard() {
 
   // ----- Derived data for rendering -----
 
+  // My current mission is the (at most one) case this ambulance has accepted.
   const myMission = emergencies.find(
     (e) => e.assignedAmbulanceId === user?.uid,
   );
-  const otherCalls = emergencies.filter(
-    (e) => e.assignedAmbulanceId !== user?.uid,
-  );
+  // "Available" calls are emergencies broadcast to the dispatch pool that are
+  // still unassigned. We deliberately exclude cases already accepted by
+  // another ambulance — those are out of this ambulance's decision space.
+  const otherCalls = emergencies.filter((e) => !e.assignedAmbulanceId);
+
+  /**
+   * Manual case acceptance.
+   *
+   * Wraps `claimEmergencyTransaction` (a Firestore transaction) so that only
+   * one ambulance can ever set `assignedAmbulanceId` on a given emergency.
+   * On success the case is removed from the available list and shows up as
+   * "Your current mission". On a race (another ambulance accepted first)
+   * the helper returns `reason: "already_claimed"` and we show a friendly
+   * "Already assigned" alert.
+   */
+  const handleAcceptEmergency = async (emergency: Emergency) => {
+    const uid = user?.uid;
+    if (!uid || !emergency?.id) return;
+    if (acceptingId) return; // single-flight per dashboard render
+    setAcceptingId(emergency.id);
+    try {
+      const res = await claimEmergencyTransaction(emergency.id, uid);
+      if (res.ok) {
+        await markEmergencySeen(emergency.id);
+        router.push({
+          pathname: "/ambulance/emergency-detail",
+          params: { emergencyId: emergency.id },
+        });
+        return;
+      }
+      if (res.reason === "already_claimed") {
+        Alert.alert(
+          t("acceptCase", "Accept case"),
+          t("caseAlreadyAssigned", "This case has already been assigned to another ambulance."),
+        );
+        return;
+      }
+      if (res.reason === "session_not_active") {
+        Alert.alert(
+          t("acceptCase", "Accept case"),
+          t("caseNoLongerActive", "This emergency is no longer active."),
+        );
+        return;
+      }
+      Alert.alert(
+        t("error"),
+        t("acceptCaseFailed", "Could not accept this case. Please try again."),
+      );
+    } catch (err) {
+      console.error("[AmbulanceDashboard] accept failed:", err);
+      Alert.alert(
+        t("error"),
+        t("acceptCaseFailed", "Could not accept this case. Please try again."),
+      );
+    } finally {
+      setAcceptingId(null);
+    }
+  };
 
   // ----- Quick Actions handlers (UI only) ---------------------------------
   // Each handler reuses an already-wired feature (router push, scrollTo, or
@@ -636,10 +603,14 @@ export default function AmbulanceDashboard() {
     return km < 1 ? `${(km * 1000).toFixed(0)} m` : `${km.toFixed(1)} km`;
   };
 
-  // Compact card used both for "your mission" and "other calls".
+  // Compact card used both for "your mission" and "available calls". The
+  // primary call-to-action differs by role:
+  //   - mine === true  → "Navigate" (open turn-by-turn for the assigned case)
+  //   - mine === false → "Accept case" (transactional claim; only one wins)
   const renderCallCard = (emergency: Emergency, mine: boolean) => {
     const isNew = !!newEmergencyIds[emergency.id];
     const distLabel = formatDistance(emergency.distance);
+    const isAccepting = acceptingId === emergency.id;
     return (
       <TouchableOpacity
         key={emergency.id}
@@ -663,10 +634,10 @@ export default function AmbulanceDashboard() {
               <StatusChip
                 label={
                   mine
-                    ? t("activeEmergencyShort", "YOUR MISSION")
-                    : t("emergency", "EMERGENCY")
+                    ? t("assignedToYouShort", "ASSIGNED TO YOU")
+                    : t("availableEmergencyShort", "AVAILABLE")
                 }
-                variant="danger"
+                variant={mine ? "danger" : "warning"}
                 solid
               />
               {isNew ? (
@@ -706,7 +677,7 @@ export default function AmbulanceDashboard() {
                 `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
             </Text>
             {distLabel ? (
-              <StatusChip label={distLabel} variant="info" />
+              <StatusChip label={distLabel} variant="info" size="sm" />
             ) : null}
           </View>
 
@@ -716,34 +687,72 @@ export default function AmbulanceDashboard() {
                 <StatusChip
                   label={`🩸 ${emergency.userInfo.bloodType}`}
                   variant="neutral"
+                  size="sm"
                 />
               ) : null}
               {emergency.userInfo.age ? (
                 <StatusChip
                   label={`👤 ${emergency.userInfo.age}`}
                   variant="neutral"
+                  size="sm"
                 />
               ) : null}
             </View>
           ) : null}
 
           <View style={styles.callActions}>
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-                openNavigation(emergency);
-              }}
-              style={styles.navBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t("openNavigation")}
-            >
-              <Text style={styles.navBtnText}>
-                🧭 {t("openNavigation") || "Navigate"}
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.openHint}>
-              {t("tapToOpenCaseMonitor") || "Tap to open"}
-            </Text>
+            {/* Inline TouchableOpacity (not the shared Button) so we can
+                stopPropagation and avoid the outer card's onPress firing in
+                addition to the action handler. */}
+            {mine ? (
+              <>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    openNavigation(emergency);
+                  }}
+                  style={styles.navBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("openNavigation")}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.navBtnText}>
+                    🧭  {t("openNavigation") || "Navigate"}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.openHint}>
+                  {t("tapToOpenCaseMonitor") || "Tap to open"}
+                </Text>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    void handleAcceptEmergency(emergency);
+                  }}
+                  style={[
+                    styles.acceptBtn,
+                    isAccepting && styles.acceptBtnBusy,
+                    acceptingId && !isAccepting && styles.acceptBtnDisabled,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t("acceptCase", "Accept case")}
+                  accessibilityState={{ busy: isAccepting, disabled: !!acceptingId }}
+                  disabled={!!acceptingId}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.acceptBtnText}>
+                    {isAccepting
+                      ? t("acceptingCase", "Accepting…")
+                      : `✓  ${t("acceptCase", "Accept case")}`}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.openHint}>
+                  {t("tapToOpenCaseMonitor") || "Tap to open"}
+                </Text>
+              </>
+            )}
           </View>
         </Card>
       </TouchableOpacity>
@@ -812,7 +821,8 @@ export default function AmbulanceDashboard() {
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
         {/* CURRENT MISSION — only when this ambulance is assigned.
-            Visually dominant: red border + ACTIVE chip. */}
+            Visually dominant: pulses with a red dot in its header and uses
+            the danger-tinted card surface. */}
         {myMission ? (
           <View style={styles.section}>
             <SectionHeader
@@ -1076,20 +1086,20 @@ const styles = StyleSheet.create({
   liveBanner: {
     position: "absolute",
     top: 56,
-    left: tokens.space.xl,
-    right: tokens.space.xl,
+    left: tokens.space.lg,
+    right: tokens.space.lg,
     zIndex: 50,
     backgroundColor: tokens.color.danger,
     borderRadius: tokens.radius.lg,
     paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md + 2,
+    paddingHorizontal: tokens.space.md,
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
     elevation: 6,
   },
   liveBannerTitle: {
@@ -1118,9 +1128,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   scrollContent: {
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.xxl + tokens.space.sm,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.xxl,
   },
   section: { marginBottom: tokens.space.xl },
   cardStack: { gap: tokens.space.md },
@@ -1139,7 +1149,7 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs + 2,
+    gap: tokens.space.sm,
   },
   callTime: {
     fontSize: tokens.font.caption,
@@ -1170,12 +1180,12 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     marginTop: tokens.space.xs,
     marginBottom: tokens.space.xs,
-    gap: tokens.space.xs + 2,
+    gap: tokens.space.sm,
   },
   callActions: {
     marginTop: tokens.space.md,
     paddingTop: tokens.space.md,
-    borderTopWidth: 1,
+    borderTopWidth: tokens.hairline,
     borderTopColor: tokens.color.border,
     flexDirection: "row",
     alignItems: "center",
@@ -1184,14 +1194,41 @@ const styles = StyleSheet.create({
   },
   navBtn: {
     backgroundColor: tokens.color.primarySolid,
-    paddingHorizontal: tokens.space.md + 2,
-    paddingVertical: tokens.space.sm + 2,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
     borderRadius: tokens.radius.sm,
     minHeight: 36,
     alignItems: "center",
     justifyContent: "center",
   },
-  navBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: tokens.font.body },
+  navBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: tokens.font.body,
+    letterSpacing: 0.3,
+  },
+  /* Accept button — the only path that ever assigns an ambulance to a case. */
+  acceptBtn: {
+    backgroundColor: tokens.color.danger,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.sm,
+    borderRadius: tokens.radius.sm,
+    minHeight: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  acceptBtnBusy: {
+    opacity: 0.75,
+  },
+  acceptBtnDisabled: {
+    opacity: 0.4,
+  },
+  acceptBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: tokens.font.body,
+    letterSpacing: 0.4,
+  },
   openHint: {
     fontSize: tokens.font.caption,
     color: tokens.color.textMuted,
@@ -1206,10 +1243,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.color.bgSubtle,
     borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md + 2,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     fontSize: tokens.font.label,
-    borderWidth: 1.5,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
     color: tokens.color.textPrimary,
     minHeight: tokens.hitSlop,
@@ -1232,10 +1269,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: tokens.space.md + 2,
+    marginBottom: tokens.space.md,
     paddingBottom: tokens.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.color.border,
+    borderBottomWidth: tokens.hairline,
+    borderBottomColor: tokens.color.dangerBorder,
   },
   patientName: {
     fontSize: tokens.font.h3,
@@ -1262,8 +1299,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: tokens.space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.color.bgPage,
+    borderBottomWidth: tokens.hairline,
+    borderBottomColor: tokens.color.border,
   },
   kvLabel: {
     fontSize: tokens.font.body,
@@ -1276,30 +1313,30 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   patientSubSection: {
-    marginTop: tokens.space.md + 2,
-    paddingTop: tokens.space.md + 2,
-    borderTopWidth: 1,
+    marginTop: tokens.space.md,
+    paddingTop: tokens.space.md,
+    borderTopWidth: tokens.hairline,
     borderTopColor: tokens.color.border,
   },
   patientSubTitle: {
     fontSize: tokens.font.body,
     fontWeight: "900",
     color: tokens.color.textPrimary,
-    marginBottom: tokens.space.xs + 2,
+    marginBottom: tokens.space.xs,
     letterSpacing: 0.3,
   },
   patientSubText: {
     fontSize: tokens.font.bodyLg,
-    color: "#212529",
+    color: tokens.color.textPrimary,
     lineHeight: 20,
   },
   viewFullBtn: {
-    marginTop: tokens.space.lg,
+    marginTop: tokens.space.md,
     paddingVertical: tokens.space.md,
     alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: tokens.color.border,
-    paddingTop: tokens.space.md + 2,
+    borderTopWidth: tokens.hairline,
+    borderTopColor: tokens.color.dangerBorder,
+    paddingTop: tokens.space.md,
     minHeight: tokens.hitSlop,
   },
   viewFullBtnText: {

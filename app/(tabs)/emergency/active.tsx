@@ -1075,12 +1075,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.color.danger,
   },
-  /* Hero status block — calm but unmistakable. */
+  /* Hero status block — red bar at the very top with the elapsed timer.
+     Kept compact so the content card below it dominates the screen. */
   statusBar: {
     backgroundColor: tokens.color.danger,
     paddingTop: 56,
-    paddingBottom: tokens.space.lg + 2,
-    paddingHorizontal: tokens.space.xl,
+    paddingBottom: tokens.space.lg,
+    paddingHorizontal: tokens.space.lg,
   },
   statusTopRow: {
     flexDirection: "row",
@@ -1109,10 +1110,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   statusTimerLabel: {
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.85)",
     fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
     textTransform: "uppercase",
   },
   statusTimerValue: {
@@ -1130,28 +1131,28 @@ const styles = StyleSheet.create({
   },
   content: {
     backgroundColor: tokens.color.bgPage,
-    borderTopLeftRadius: tokens.radius.xl + 4,
-    borderTopRightRadius: tokens.radius.xl + 4,
-    paddingTop: tokens.space.xl - 2,
+    borderTopLeftRadius: tokens.radius.xl,
+    borderTopRightRadius: tokens.radius.xl,
+    paddingTop: tokens.space.lg,
     /* Footer overlays the bottom; reserve enough space so the last card
        (Share Medical) is never trapped under it. */
     paddingBottom: 120,
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
   },
   /* Re-usable section card wrapper for any sub-block needing a header. */
   sectionCard: {
     backgroundColor: tokens.color.bgSurface,
     borderRadius: tokens.radius.lg,
     padding: tokens.space.lg,
-    marginBottom: tokens.space.lg,
-    borderWidth: 1,
+    marginBottom: tokens.space.md,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
   },
   sectionHint: {
     fontSize: tokens.font.caption,
     color: tokens.color.textMuted,
     fontWeight: "600",
-    marginBottom: tokens.space.sm + 2,
+    marginBottom: tokens.space.sm,
     marginTop: -tokens.space.xs,
   },
   /* Location / share card — red left bar marks it as the primary share affordance. */
@@ -1161,14 +1162,14 @@ const styles = StyleSheet.create({
     padding: tokens.space.lg,
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: tokens.space.lg,
-    borderWidth: 1,
+    marginBottom: tokens.space.md,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
-    borderLeftWidth: 4,
+    borderLeftWidth: 3,
     borderLeftColor: tokens.color.danger,
   },
   infoIcon: {
-    fontSize: 26,
+    fontSize: 24,
     marginRight: tokens.space.md,
     marginTop: 2,
   },
@@ -1179,7 +1180,7 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.overline,
     fontWeight: "900",
     color: tokens.color.textFaint,
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
     textTransform: "uppercase",
     marginBottom: tokens.space.xs,
   },
@@ -1198,8 +1199,8 @@ const styles = StyleSheet.create({
   shareHintRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: tokens.space.sm + 2,
-    gap: tokens.space.xs + 2,
+    marginTop: tokens.space.sm,
+    gap: tokens.space.xs,
   },
   shareIcon: { fontSize: 14 },
   tapToShare: {
@@ -1212,11 +1213,11 @@ const styles = StyleSheet.create({
   calmBanner: {
     backgroundColor: tokens.color.successBg,
     borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.sm + 2,
-    paddingHorizontal: tokens.space.md + 2,
-    marginBottom: tokens.space.lg,
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    marginBottom: tokens.space.md,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.successBorder,
   },
   calmBannerText: {
     fontSize: tokens.font.body,
@@ -1227,19 +1228,19 @@ const styles = StyleSheet.create({
   mapCard: {
     backgroundColor: tokens.color.bgSurface,
     borderRadius: tokens.radius.lg,
-    marginBottom: tokens.space.lg,
+    marginBottom: tokens.space.md,
     overflow: "hidden",
-    borderWidth: 1,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
   },
   mapHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.md + 2,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.color.bgPage,
+    borderBottomWidth: tokens.hairline,
+    borderBottomColor: tokens.color.border,
   },
   mapTitle: {
     fontSize: tokens.font.label,
@@ -1251,8 +1252,8 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.pill,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.xs,
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.infoBorder,
   },
   distanceText: {
     fontSize: tokens.font.bodyLg,
@@ -1260,14 +1261,14 @@ const styles = StyleSheet.create({
     color: tokens.color.info,
   },
   etaBanner: {
-    marginHorizontal: tokens.space.lg,
-    marginBottom: tokens.space.sm + 2,
+    marginHorizontal: tokens.space.md,
+    marginBottom: tokens.space.sm,
     backgroundColor: tokens.color.successBg,
     borderRadius: tokens.radius.md,
     paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md + 2,
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
+    paddingHorizontal: tokens.space.md,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.successBorder,
   },
   etaBannerText: {
     fontSize: tokens.font.label,
@@ -1277,21 +1278,21 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   etaPending: {
-    marginHorizontal: tokens.space.lg,
-    marginBottom: tokens.space.sm + 2,
+    marginHorizontal: tokens.space.md,
+    marginBottom: tokens.space.sm,
     fontSize: tokens.font.body,
     fontWeight: "700",
     color: tokens.color.textMuted,
     textAlign: "center",
   },
   etaBannerArrived: {
-    marginHorizontal: tokens.space.lg,
-    marginBottom: tokens.space.sm + 2,
+    marginHorizontal: tokens.space.md,
+    marginBottom: tokens.space.sm,
     backgroundColor: "#DCFCE7",
     borderRadius: tokens.radius.md,
     paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md + 2,
-    borderWidth: 1,
+    paddingHorizontal: tokens.space.md,
+    borderWidth: tokens.hairline,
     borderColor: "#86EFAC",
   },
   etaBannerArrivedText: {
@@ -1301,15 +1302,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
   },
+  /* Reduced map height — important context, but the chat / triage actions
+     below it deserve equal weight on the screen. */
   map: {
     width: "100%",
-    height: 200,
+    height: 180,
   },
   mapWaiting: {
-    height: 80,
+    height: 72,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F8F9FA",
+    backgroundColor: tokens.color.bgSubtle,
   },
   mapWaitingText: {
     fontSize: tokens.font.bodyLg,
@@ -1319,15 +1322,15 @@ const styles = StyleSheet.create({
   mapLegend: {
     flexDirection: "row",
     gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.sm + 2,
-    borderTopWidth: 1,
-    borderTopColor: "#E9ECEF",
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    borderTopWidth: tokens.hairline,
+    borderTopColor: tokens.color.border,
   },
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs + 2,
+    gap: tokens.space.xs,
   },
   legendDot: {
     width: 10,
@@ -1346,10 +1349,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: tokens.color.bgSurface,
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.md + 2,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xl,
-    borderTopWidth: 1,
+    borderTopWidth: tokens.hairline,
     borderTopColor: tokens.color.border,
   },
   footerSyncRow: {
@@ -1365,7 +1368,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   footerLocked: {
-    paddingVertical: tokens.space.xs + 2,
+    paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.xs,
   },
   footerLockedTitle: {

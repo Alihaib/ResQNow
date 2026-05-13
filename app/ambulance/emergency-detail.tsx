@@ -29,8 +29,11 @@ import {
   startAmbulanceGpsTracking,
   stopAmbulanceGpsTracking,
 } from "../../src/services/ambulanceGpsService";
-import { claimEmergencyTransaction, updateLifecycleTransaction } from "../../src/services/emergencyAssignment";
-import { rejectAndReassignEmergency } from "../../src/services/autoDispatch";
+import {
+  claimEmergencyTransaction,
+  releaseEmergencyTransaction,
+  updateLifecycleTransaction,
+} from "../../src/services/emergencyAssignment";
 
 interface Emergency {
   id: string;
@@ -348,6 +351,9 @@ export default function EmergencyDetailScreen() {
     const uid = userUidRef.current;
     const e = emergencyRef.current;
     if (!uid || !e?.id) return;
+    // Defensive: the Next button is only rendered when this ambulance is
+    // already the assignee, so this path is normally a no-op. We still
+    // attempt a single-winner claim in case the listener hasn't caught up.
     await claimIfUnassigned();
     const snap = await getDoc(doc(db, "emergencies", e.id));
     const assigned = snap.exists() ? (snap.data() as any).assignedAmbulanceId : null;
@@ -356,7 +362,13 @@ export default function EmergencyDetailScreen() {
       return;
     }
     if (!assigned) {
-      Alert.alert(t("error"), "Claim this emergency before advancing status.");
+      Alert.alert(
+        t("error"),
+        t(
+          "acceptBeforeAdvancing",
+          "Accept this case before advancing its status.",
+        ),
+      );
       return;
     }
     const cur = normalizeLifecycleStatus(snap.data()?.status);
@@ -371,16 +383,34 @@ export default function EmergencyDetailScreen() {
     }
   };
 
-  const onClaimPress = async () => {
+  /**
+   * Manual case acceptance.
+   *
+   * Runs the transactional claim; only one ambulance can ever win. On a race
+   * with another ambulance the helper returns `reason: "already_claimed"` —
+   * we show a friendly toast and stay on the screen so the responder can see
+   * the case go to the other ambulance live via the snapshot listener.
+   */
+  const onAcceptPress = async () => {
     const uid = userUidRef.current;
     const e = emergencyRef.current;
     if (!uid || !e?.id) return;
     const res = await claimEmergencyTransaction(e.id, uid);
     if (!res.ok && (res as any).reason === "already_claimed") {
-      Alert.alert(t("error"), t("caseAssignedToAnotherAmbulance"));
+      Alert.alert(
+        t("acceptCase", "Accept case"),
+        t("caseAlreadyAssigned", "This case has already been assigned to another ambulance."),
+      );
     }
   };
 
+  /**
+   * Release a previously-accepted case back to the dispatch pool.
+   *
+   * The case becomes available again for other ambulances to accept — the
+   * system does NOT auto-pick a replacement. Only allowed before the
+   * ambulance has marked itself as enRoute.
+   */
   const releaseAssignment = async () => {
     const uid = userUidRef.current;
     const e = emergencyRef.current;
@@ -395,23 +425,21 @@ export default function EmergencyDetailScreen() {
       return;
     }
 
-    const baseLoc = e.patientLocation ?? e.location;
-    const lat = baseLoc?.latitude;
-    const lng = baseLoc?.longitude;
-    if (typeof lat !== "number" || typeof lng !== "number") {
-      Alert.alert(t("error"), t("locationNotAvailable") || "Patient location not available.");
+    await stopAmbulanceGpsTracking("release_assignment");
+
+    const res = await releaseEmergencyTransaction(e.id, uid);
+    if (!res.ok) {
+      Alert.alert(t("error"), t("releaseFailed", "Could not release this case."));
       return;
     }
 
-    await stopAmbulanceGpsTracking("release_assignment");
-
-    await rejectAndReassignEmergency({
-      emergencyId: e.id,
-      rejectingAmbulanceId: uid,
-      patientLocation: { latitude: lat, longitude: lng },
-    });
-
-    Alert.alert("Reassigned", "This emergency was reassigned to another ambulance.");
+    Alert.alert(
+      t("caseReleased", "Case released"),
+      t(
+        "caseReleasedMessage",
+        "Returned to the dispatch pool — other ambulances can now accept it.",
+      ),
+    );
     if (router.canGoBack()) router.back();
     else router.replace("/ambulance/dashboard");
   };
@@ -591,8 +619,10 @@ export default function EmergencyDetailScreen() {
           {emergency.sessionStatus === "active" ? (
             <>
               {!emergency.assignedAmbulanceId ? (
-                <TouchableOpacity style={styles.missionPrimaryBtn} onPress={onClaimPress}>
-                  <Text style={styles.missionPrimaryBtnText}>Claim emergency</Text>
+                <TouchableOpacity style={styles.missionPrimaryBtn} onPress={onAcceptPress}>
+                  <Text style={styles.missionPrimaryBtnText}>
+                    {`✓  ${t("acceptCase", "Accept case")}`}
+                  </Text>
                 </TouchableOpacity>
               ) : null}
 
@@ -624,9 +654,9 @@ export default function EmergencyDetailScreen() {
             <Text style={styles.missionMeta} numberOfLines={1}>
               {emergency.assignedAmbulanceId
                 ? isAssignedToMe
-                  ? `✓ ${t("you")}`
+                  ? `✓ ${t("assignedToYou", "Assigned to you")}`
                   : t("assignedLabel")
-                : t("unassigned")}
+                : t("pendingAcceptance", "Pending — awaiting acceptance")}
             </Text>
           </View>
         </View>
@@ -735,7 +765,9 @@ export default function EmergencyDetailScreen() {
                 </Text>
                 {transportOnly && lifecycle === "dispatched" ? (
                   <TouchableOpacity style={styles.actionMutedBtn} onPress={releaseAssignment}>
-                    <Text style={styles.actionMutedBtnText}>Release assignment</Text>
+                    <Text style={styles.actionMutedBtnText}>
+                      {t("releaseAssignment", "Release assignment")}
+                    </Text>
                   </TouchableOpacity>
                 ) : null}
               </>

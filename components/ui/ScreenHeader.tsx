@@ -4,6 +4,10 @@
  * Used by every responder dashboard so the back affordance, status-bar
  * inset, eyebrow chip and title line up byte-for-byte across screens.
  *
+ * Visual approach: a clean white surface with a hairline divider at the
+ * bottom — no heavy shadow, no large title block. Title size is moderate
+ * (h2) so it does not dwarf the dashboard content immediately below it.
+ *
  * If `onBack` is provided we call it directly; otherwise the header falls
  * back to `router.back()` and, if that's not available, replaces with
  * `fallbackRoute` (defaults to the tab root). This mirrors the existing
@@ -85,40 +89,41 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingTop: 60,
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.lg,
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.md,
     backgroundColor: tokens.color.bgSurface,
-    borderBottomWidth: 1,
+    borderBottomWidth: tokens.hairline,
     borderBottomColor: tokens.color.border,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: tokens.color.bgPage,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: tokens.color.bgSubtle,
     alignItems: "center",
     justifyContent: "center",
   },
   backText: {
-    fontSize: 24,
+    fontSize: 22,
     color: tokens.color.textPrimary,
     fontWeight: "800",
-    lineHeight: 26,
+    lineHeight: 24,
   },
-  spacer: { width: 40, height: 40 },
+  spacer: { width: 38, height: 38 },
   textCol: { flex: 1, marginLeft: tokens.space.md },
   eyebrow: {
     fontSize: tokens.font.overline,
     fontWeight: "800",
     color: tokens.color.textFaint,
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
     marginBottom: 2,
+    textTransform: "uppercase",
   },
   title: {
-    fontSize: tokens.font.h2,
+    fontSize: tokens.font.h3,
     fontWeight: "900",
     color: tokens.color.textPrimary,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
-  trailing: { marginLeft: tokens.space.md, minWidth: 40, alignItems: "flex-end" },
+  trailing: { marginLeft: tokens.space.md, minWidth: 38, alignItems: "flex-end" },
 });

@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import Card from "../../components/ui/Card";
@@ -216,21 +216,50 @@ export default function DoctorDashboard() {
   // section higher up the page, or focus the patient search input. None of
   // this touches Firestore queries, listeners, or routing semantics — it is a
   // pure UI affordance.
-  const scrollRef = useRef<ScrollView | null>(null);
+  //
+  // The `Ref<number | undefined>` typing is intentional: `undefined` means
+  // the wrapper hasn't been laid out yet (onLayout has not fired). The Quick
+  // Action handlers fall back to `0` (top of the ScrollView) when the value
+  // isn't known yet — for the Active Emergencies section that's actually the
+  // correct target anyway since it's the first section in the scroll.
+  const scrollRef = useRef<ScrollView>(null);
   const searchInputRef = useRef<TextInput | null>(null);
-  const activeSectionYRef = useRef(0);
-  const searchSectionYRef = useRef(0);
+  const activeSectionYRef = useRef<number | undefined>(undefined);
+  const searchSectionYRef = useRef<number | undefined>(undefined);
 
   const scrollToY = (y: number) => {
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+    const target = Math.max(0, y - 12);
+    if (!scrollRef.current) {
+      if (__DEV__) {
+        console.warn(
+          "[doctor/dashboard] scrollToY called before ScrollView ref attached",
+        );
+      }
+      return;
+    }
+    scrollRef.current.scrollTo({ y: target, animated: true });
   };
 
   const handleQuickViewActive = () => {
-    scrollToY(activeSectionYRef.current);
+    const y = activeSectionYRef.current;
+    if (y === undefined && __DEV__) {
+      // Not fatal — the Active Emergencies section is the first child of the
+      // ScrollView, so falling back to y=0 takes the user to the right place.
+      console.warn(
+        "[doctor/dashboard] activeSectionYRef not measured yet; falling back to top",
+      );
+    }
+    scrollToY(y ?? 0);
   };
 
   const handleQuickSearchPatient = () => {
-    scrollToY(searchSectionYRef.current);
+    const y = searchSectionYRef.current;
+    if (y === undefined && __DEV__) {
+      console.warn(
+        "[doctor/dashboard] searchSectionYRef not measured yet; falling back to top",
+      );
+    }
+    scrollToY(y ?? 0);
     // Give the scroll animation a moment, then focus the input so the
     // keyboard pops up on tap. Best-effort — silent if input is unmounted.
     setTimeout(() => searchInputRef.current?.focus(), 320);
@@ -333,6 +362,7 @@ export default function DoctorDashboard() {
                             label={`ETA ~${e.snapshotEtaMin} min`}
                             variant="info"
                             icon="⏱"
+                            size="sm"
                           />
                         ) : null}
                         {e.snapshotAmbulanceLine ? (
@@ -557,9 +587,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.bgPage,
   },
   scrollContent: {
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.xxl + tokens.space.sm,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.xxl,
   },
   section: { marginBottom: tokens.space.xl },
   cardStack: { gap: tokens.space.md },
@@ -614,10 +644,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.color.bgSubtle,
     borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md + 2,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     fontSize: tokens.font.label,
-    borderWidth: 1.5,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
     color: tokens.color.textPrimary,
     minHeight: tokens.hitSlop,
@@ -636,14 +666,14 @@ const styles = StyleSheet.create({
   resultsBox: {
     backgroundColor: tokens.color.bgSubtle,
     borderRadius: tokens.radius.md,
-    padding: tokens.space.xs + 2,
-    borderWidth: 1,
+    padding: tokens.space.xs,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
     marginBottom: tokens.space.md,
     gap: tokens.space.xs,
   },
   resultRow: {
-    paddingVertical: tokens.space.md - 2,
+    paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
     borderRadius: tokens.radius.sm,
     flexDirection: "row",
@@ -651,9 +681,9 @@ const styles = StyleSheet.create({
     minHeight: tokens.hitSlop,
   },
   resultRowActive: {
-    backgroundColor: "#FEF2F2",
-    borderWidth: 1,
-    borderColor: "#FCA5A5",
+    backgroundColor: tokens.color.dangerSurface,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.dangerBorder,
   },
   resultName: {
     fontSize: tokens.font.label,
@@ -677,10 +707,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: tokens.space.md + 2,
+    marginBottom: tokens.space.md,
     paddingBottom: tokens.space.md,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.color.border,
+    borderBottomWidth: tokens.hairline,
+    borderBottomColor: tokens.color.dangerBorder,
   },
   patientName: {
     fontSize: tokens.font.h3,
@@ -707,8 +737,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: tokens.space.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: tokens.color.bgPage,
+    borderBottomWidth: tokens.hairline,
+    borderBottomColor: tokens.color.border,
   },
   kvLabel: {
     fontSize: tokens.font.body,
@@ -721,30 +751,30 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   patientSubSection: {
-    marginTop: tokens.space.md + 2,
-    paddingTop: tokens.space.md + 2,
-    borderTopWidth: 1,
+    marginTop: tokens.space.md,
+    paddingTop: tokens.space.md,
+    borderTopWidth: tokens.hairline,
     borderTopColor: tokens.color.border,
   },
   patientSubTitle: {
     fontSize: tokens.font.body,
     fontWeight: "900",
     color: tokens.color.textPrimary,
-    marginBottom: tokens.space.xs + 2,
+    marginBottom: tokens.space.xs,
     letterSpacing: 0.3,
   },
   patientSubText: {
     fontSize: tokens.font.bodyLg,
-    color: "#212529",
+    color: tokens.color.textPrimary,
     lineHeight: 20,
   },
   viewFullBtn: {
-    marginTop: tokens.space.lg,
+    marginTop: tokens.space.md,
     paddingVertical: tokens.space.md,
     alignItems: "center",
-    borderTopWidth: 1,
-    borderTopColor: tokens.color.border,
-    paddingTop: tokens.space.md + 2,
+    borderTopWidth: tokens.hairline,
+    borderTopColor: tokens.color.dangerBorder,
+    paddingTop: tokens.space.md,
     minHeight: tokens.hitSlop,
   },
   viewFullBtnText: {

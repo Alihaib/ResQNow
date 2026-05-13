@@ -2,16 +2,19 @@
  * Unified action button with a consistent visual hierarchy.
  *
  * Variants (highest → lowest visual weight):
- *  - "danger"     : red, used for the most urgent action (SOS, "Call ambulance").
- *  - "primary"    : dark, used for "navigate", "open", confirmations.
- *  - "secondary"  : white with border, used for non-destructive actions.
- *  - "ghost"      : transparent, used inside cards / overlays.
- *  - "neutralDark": slate grey, used for non-destructive actions that
- *                   are still "I'm sure" — e.g. End emergency.
+ *  - "danger"      : red, used for the most urgent action (SOS, emergency).
+ *  - "primary"     : near-black slate, used for "navigate", "open", confirms.
+ *  - "secondary"   : white with a hairline border, used for non-destructive.
+ *  - "ghost"       : transparent, used inside cards / overlays.
+ *  - "neutralDark" : muted slate, for "I'm sure" non-destructive actions
+ *                    such as End emergency.
  *
  * Sizes:
- *  - "md" (default) — 44px tall, comfortable tap target on every device.
- *  - "lg"           — 56px tall, used as the primary screen action.
+ *  - "compact" — 36pt min height, used inline (inside cards) for tertiary
+ *                actions like "Navigate" on an emergency card. NOT a tap
+ *                target for primary screen actions.
+ *  - "md"      — 44pt min height, the default for most actions.
+ *  - "lg"      — 56pt min height, used as the primary screen action.
  *
  * Loading and disabled states are mutually exclusive: when `loading` is
  * true the button is automatically disabled and shows a spinner.
@@ -28,7 +31,7 @@ import {
 import { tokens } from "../../src/ui/tokens";
 
 type Variant = "danger" | "primary" | "secondary" | "ghost" | "neutralDark";
-type Size = "md" | "lg";
+type Size = "compact" | "md" | "lg";
 
 type Props = {
   label: string;
@@ -56,6 +59,8 @@ export default function Button({
   accessibilityLabel,
 }: Props) {
   const isDisabled = disabled || loading;
+  const sizeStyle = SIZE_STYLES[size];
+  const variantStyles = VARIANT_STYLES[variant];
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -66,25 +71,18 @@ export default function Button({
       accessibilityLabel={accessibilityLabel ?? label}
       style={[
         styles.base,
-        size === "lg" ? styles.sizeLg : styles.sizeMd,
-        VARIANT_STYLES[variant].container,
+        sizeStyle.container,
+        variantStyles.container,
         fullWidth && styles.fullWidth,
         isDisabled && styles.disabled,
         style as ViewStyle,
       ]}
     >
       {loading ? (
-        <ActivityIndicator
-          color={VARIANT_STYLES[variant].label.color}
-          size="small"
-        />
+        <ActivityIndicator color={variantStyles.label.color} size="small" />
       ) : (
         <Text
-          style={[
-            styles.label,
-            size === "lg" ? styles.labelLg : styles.labelMd,
-            VARIANT_STYLES[variant].label,
-          ]}
+          style={[styles.label, sizeStyle.label, variantStyles.label]}
           numberOfLines={1}
         >
           {icon ? `${icon}  ` : ""}
@@ -110,7 +108,7 @@ const VARIANT_STYLES: Record<
   secondary: {
     container: {
       backgroundColor: tokens.color.bgSurface,
-      borderWidth: 1.5,
+      borderWidth: tokens.hairline,
       borderColor: tokens.color.border,
     },
     label: { color: tokens.color.textPrimary },
@@ -120,27 +118,48 @@ const VARIANT_STYLES: Record<
     label: { color: tokens.color.textSecondary },
   },
   neutralDark: {
-    container: { backgroundColor: "#475569" },
+    container: { backgroundColor: tokens.color.slate },
     label: { color: "#FFFFFF" },
+  },
+};
+
+const SIZE_STYLES: Record<
+  Size,
+  { container: ViewStyle; label: { fontSize: number } }
+> = {
+  compact: {
+    container: {
+      paddingVertical: tokens.space.sm,
+      paddingHorizontal: tokens.space.md,
+      minHeight: 36,
+      borderRadius: tokens.radius.sm,
+    },
+    label: { fontSize: tokens.font.body },
+  },
+  md: {
+    container: {
+      paddingVertical: tokens.space.md,
+      paddingHorizontal: tokens.space.lg,
+      minHeight: tokens.hitSlop,
+      borderRadius: tokens.radius.md,
+    },
+    label: { fontSize: tokens.font.label },
+  },
+  lg: {
+    container: {
+      paddingVertical: tokens.space.lg,
+      paddingHorizontal: tokens.space.lg,
+      minHeight: 56,
+      borderRadius: tokens.radius.lg,
+    },
+    label: { fontSize: tokens.font.title },
   },
 };
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: tokens.space.lg,
-    minHeight: tokens.hitSlop,
-  },
-  sizeMd: {
-    paddingVertical: tokens.space.md,
-    minHeight: tokens.hitSlop,
-  },
-  sizeLg: {
-    paddingVertical: tokens.space.lg,
-    minHeight: 56,
-    borderRadius: tokens.radius.lg,
   },
   fullWidth: { alignSelf: "stretch", width: "100%" },
   disabled: { opacity: 0.55 },
@@ -149,6 +168,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     textAlign: "center",
   },
-  labelMd: { fontSize: tokens.font.label },
-  labelLg: { fontSize: tokens.font.title },
 });

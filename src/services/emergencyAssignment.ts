@@ -13,7 +13,18 @@ import {
 } from "../emergency/stateMachine";
 
 /**
- * Single-winner claim: only one ambulance can set assignedAmbulanceId.
+ * Single-winner accept: only one ambulance can set assignedAmbulanceId.
+ *
+ * This is the only way an emergency is ever assigned to an ambulance — the
+ * app does NOT auto-dispatch the closest unit. After SOS is created the
+ * emergency is broadcast (visible to every approved ambulance) and remains
+ * unassigned until one human responder taps Accept, which runs this
+ * transaction.
+ *
+ * Idempotency / race safety: the transaction re-reads `assignedAmbulanceId`
+ * inside the tx, so if a different ambulance accepted first, this call
+ * returns `{ ok: false, reason: "already_claimed", assignedAmbulanceId }`
+ * and the caller can show a "case already assigned" message.
  */
 export async function claimEmergencyTransaction(emergencyId: string, ambulanceUid: string) {
   const emergencyRef = doc(db, "emergencies", emergencyId);
@@ -41,7 +52,7 @@ export async function claimEmergencyTransaction(emergencyId: string, ambulanceUi
     const snapshot = mergePatientSnapshot(
       data.currentSnapshot as Record<string, unknown> | undefined,
       {
-        ambulanceStatus: "Ambulance assigned — en route pending",
+        ambulanceStatus: "Ambulance accepted — en route pending",
       },
       lc,
     );
@@ -52,13 +63,78 @@ export async function claimEmergencyTransaction(emergencyId: string, ambulanceUi
       updatedAt: nowIso,
       currentSnapshot: snapshotPayloadForLifecycle(lc, snapshot),
       timeline: arrayUnion({
-        status: "claim_ambulance",
+        status: "ambulance_accepted",
         ambulanceId: ambulanceUid,
         timestamp: nowIso,
       }),
     });
 
     return { ok: true as const, assignedAmbulanceId: ambulanceUid };
+  });
+}
+
+/**
+ * Release a previously-accepted emergency back to the dispatch pool.
+ *
+ * Only the ambulance currently holding the case can release it, and only
+ * while still in the `dispatched` phase (before the ambulance has marked
+ * itself as enRoute). After release the case is back to "available" — it
+ * is NOT auto-reassigned to anyone; any approved ambulance can pick it up
+ * by tapping Accept.
+ *
+ * Refuses with:
+ *  - "missing_emergency"   — the doc no longer exists
+ *  - "session_not_active"  — the caller resolved/cancelled the SOS
+ *  - "not_assigned_to_me"  — the caller isn't the current assignee
+ *  - "already_in_progress" — case is past `dispatched` (en route / arrived / completed)
+ */
+export async function releaseEmergencyTransaction(
+  emergencyId: string,
+  ambulanceUid: string,
+) {
+  const emergencyRef = doc(db, "emergencies", emergencyId);
+  const nowIso = new Date().toISOString();
+
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(emergencyRef);
+    if (!snap.exists()) {
+      return { ok: false as const, reason: "missing_emergency" as const };
+    }
+    const data = snap.data() as Record<string, unknown>;
+    if (data.sessionStatus !== "active") {
+      return { ok: false as const, reason: "session_not_active" as const };
+    }
+    if ((data.assignedAmbulanceId as string | null | undefined) !== ambulanceUid) {
+      return { ok: false as const, reason: "not_assigned_to_me" as const };
+    }
+    const lc = normalizeLifecycleStatus(data.status);
+    if (lc !== "dispatched") {
+      return {
+        ok: false as const,
+        reason: "already_in_progress" as const,
+        current: lc,
+      };
+    }
+
+    const snapshot = mergePatientSnapshot(
+      data.currentSnapshot as Record<string, unknown> | undefined,
+      { ambulanceStatus: "Awaiting ambulance" },
+      lc,
+    );
+
+    tx.update(emergencyRef, {
+      assignedAmbulanceId: null,
+      assignedAt: null,
+      updatedAt: nowIso,
+      currentSnapshot: snapshotPayloadForLifecycle(lc, snapshot),
+      timeline: arrayUnion({
+        status: "ambulance_released",
+        ambulanceId: ambulanceUid,
+        timestamp: nowIso,
+      }),
+    });
+
+    return { ok: true as const };
   });
 }
 
