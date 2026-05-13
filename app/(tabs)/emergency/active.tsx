@@ -20,6 +20,8 @@ import { db } from "../../../src/firebase/config";
 import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 import { SosSmartFirstAid } from "../../../src/firstAid/SosSmartFirstAid";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
+import AiEmergencyCompanion from "../../../components/AiEmergencyCompanion";
+import { isOpenAiConfigured } from "../../../src/services/openaiEmergency";
 
 interface LocationData {
   latitude: number;
@@ -50,6 +52,8 @@ export default function ActiveEmergencyScreen() {
   const [autoShareEnabled, setAutoShareEnabled] = useState<boolean | null>(null);
   const [emergencyContacts, setEmergencyContacts] = useState<Contact[]>([]);
   const [ending, setEnding] = useState(false);
+  const [aiCompanionVisible, setAiCompanionVisible] = useState(false);
+  const aiAvailable = isOpenAiConfigured();
   const ambulanceAssigned = !!liveEmergency?.assignedAmbulanceId;
   /** Crew position — parsed from `liveEmergency.ambulanceLocation` (Firestore via EmergencyContext onSnapshot). */
   const ambulanceCoordsLive = useMemo(
@@ -695,6 +699,59 @@ Shared from ResQNow Emergency App
     ]);
   };
 
+  /**
+   * Build a short, structured context string for the AI companion.
+   *
+   * IMPORTANT: only public-ish facts from the active session are included.
+   * No medical-profile fields, no chat content, no auth identifiers. The
+   * service-level system prompt does the actual safety enforcement.
+   */
+  const aiEmergencyContext = useMemo(() => {
+    const lines: string[] = [
+      "An emergency is in progress in the ResQNow app.",
+      `Language: ${lang === "he" ? "Hebrew" : "English"}.`,
+      `Victim: ${victimType === "me" ? "the caller themselves" : "another person nearby"}.`,
+    ];
+    if (lifecycleStatus) {
+      lines.push(`Ambulance lifecycle: ${lifecycleStatus}.`);
+    }
+    if (crewEtaMinutes != null) {
+      lines.push(`Estimated ambulance ETA: ~${crewEtaMinutes} minutes.`);
+    } else if (ambulanceAssigned) {
+      lines.push("An ambulance has been assigned and is locating the patient.");
+    } else {
+      lines.push("Ambulance is being dispatched.");
+    }
+    if (ambulanceStatusLine) {
+      lines.push(`Crew status note: ${ambulanceStatusLine}.`);
+    }
+    if (locationDisplay) {
+      lines.push(`Approximate location: ${locationDisplay}.`);
+    }
+    const snap = liveEmergency?.currentSnapshot;
+    if (snap?.symptoms && Array.isArray(snap.symptoms) && snap.symptoms.length) {
+      lines.push(`Reported symptoms: ${snap.symptoms.join(", ")}.`);
+    }
+    if (snap?.conditionLevel) {
+      lines.push(`Condition level: ${snap.conditionLevel}.`);
+    }
+
+    lines.push("");
+    lines.push(
+      "Give ONE short first-aid step the bystander can do right now while waiting for the ambulance. Follow your safety rules strictly.",
+    );
+    return lines.join("\n");
+  }, [
+    lang,
+    victimType,
+    lifecycleStatus,
+    crewEtaMinutes,
+    ambulanceAssigned,
+    ambulanceStatusLine,
+    locationDisplay,
+    liveEmergency?.currentSnapshot,
+  ]);
+
   return (
     <View style={styles.container}>
       {/* Status Bar */}
@@ -877,6 +934,38 @@ Shared from ResQNow Emergency App
           </View>
         ) : null}
 
+        {/*
+          AI Triage Assistant — opens a structured triage modal.
+          When the OpenAI key is missing or the call fails, the modal itself
+          falls back to opening the built-in first-aid library, so the button
+          is always offered (no silent dead-end).
+        */}
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => setAiCompanionVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel={translate("aiTriageButtonTitle", "AI Triage Assistant")}
+        >
+          <Text style={styles.actionIcon}>🩺</Text>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>
+              {translate("aiTriageButtonTitle", "AI Triage Assistant")}
+            </Text>
+            <Text style={styles.actionSubtitle}>
+              {aiAvailable
+                ? translate(
+                    "aiTriageButtonSub",
+                    "Find the right guide and one next action",
+                  )
+                : translate(
+                    "aiTriageButtonSubOffline",
+                    "Browse first-aid guides (AI unavailable)",
+                  )}
+            </Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+
         {/* Medical Info Share (only when victim is the user) */}
         {victimType === "me" && (
           <TouchableOpacity
@@ -893,6 +982,23 @@ Shared from ResQNow Emergency App
         )}
 
       </ScrollView>
+
+      {/*
+        AI Triage Assistant modal — fully isolated from SOS dispatch, Firestore
+        lifecycle, GPS, chat and role management. It only reads `context` and
+        suggests a first-aid guide / next action.
+      */}
+      <AiEmergencyCompanion
+        visible={aiCompanionVisible}
+        onClose={() => setAiCompanionVisible(false)}
+        context={aiEmergencyContext}
+        lang={lang}
+        translate={translate}
+        onOpenGuide={(guideId) =>
+          router.push(`/(tabs)/firstaid/guide/${guideId}`)
+        }
+        onOpenLibrary={() => router.push("/(tabs)/firstaid")}
+      />
 
       {/* End emergency — only before crew arrival; sync loading vs lifecycle lock */}
       <View style={styles.footer}>

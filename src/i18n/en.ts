@@ -582,4 +582,65 @@ export default {
   chatSend: "Send",
   chatNoMessages: "No messages yet. Start the conversation.",
   chatReadOnly: "Chat is read-only — case closed.",
+
+  // -------- AI EMERGENCY COMPANION --------
+  aiEmergencyHelp: "AI Emergency Help",
+  aiEmergencyHelpSub: "Get one short first-aid step at a time",
+  aiCompanionTitle: "AI First Aid Companion",
+  aiCompanionIntro:
+    "Tap Start to receive one short step at a time until the ambulance arrives.",
+  aiDisclaimer:
+    "Guidance only — not a substitute for the ambulance crew.",
+  aiStart: "Start",
+  aiNextStep: "Next Step",
+  aiNextStepPrompt: "Next step please.",
+  aiStepKicker: "Do this now",
+  aiThinking: "Thinking…",
+  aiClose: "Close",
+  aiDone: "Done",
+  aiError: "AI could not respond. Please try again.",
+  aiTimeout: "AI took too long. Please try again.",
+  aiBusy: "AI is busy. Please try again shortly.",
+  aiNetworkError: "Could not reach AI service. Check your connection.",
+  aiMissingKey:
+    "AI is not configured. Please add OPENAI_API_KEY to your .env file.",
+  aiInvalidKey:
+    "Invalid OpenAI API key. Check OPENAI_API_KEY in .env and restart Expo.",
+  aiBilling:
+    "OpenAI billing or access issue. Check credits, billing, and project limits.",
+  aiBadRequest:
+    "OpenAI rejected the request (bad parameters or model).",
+  aiEmptyResponse: "AI returned an empty answer. Try again.",
+  aiServerError: "OpenAI server error. Try again later.",
+
+  // -------- AI EMERGENCY TRIAGE ASSISTANT --------
+  aiTriageButtonTitle: "AI Triage Assistant",
+  aiTriageButtonSub: "Find the right guide and one next action",
+  aiTriageButtonSubOffline: "Browse first-aid guides (AI unavailable)",
+  aiTriageTitle: "AI Triage Assistant",
+  aiTriageDisclaimer:
+    "Helps route you to the right first-aid guide. Not a diagnosis.",
+  aiTriageIntro:
+    "Tap Start. The assistant will ask short questions to choose the right guide and one next action.",
+  aiTriageStart: "Start triage",
+  aiTriageRetry: "Try again",
+  aiTriageRefine: "Refine answer",
+  aiTriageRefinePrompt:
+    "Re-evaluate based on what we know so far and produce an updated decision.",
+  aiTriageNextActionLabel: "Do this now",
+  aiTriageQuestionLabel: "Quick check",
+  aiTriageYes: "Yes",
+  aiTriageNo: "No",
+  aiTriageNotSure: "Not sure",
+  aiTriageCallNow: "Call emergency now",
+  aiTriageOpenGuide: "Open the recommended guide",
+  aiTriageOpenLibrary: "Browse the first-aid library",
+  aiTriageConfidenceLow: "Low confidence",
+  aiTriageConfidenceMedium: "Medium confidence",
+  aiTriageConfidenceHigh: "High confidence",
+  aiTriageSummaryLabel: "Summary for medical team",
+  aiTriageShareSummary: "Share summary",
+  aiTriageSummaryShareTitle: "Emergency summary",
+  aiTriageFallback:
+    "AI is unavailable. Open the first-aid library instead.",
 };

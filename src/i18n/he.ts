@@ -558,4 +558,65 @@ hello_user: "שלום",
   mapLegendPatient: "חולה",
   mapLegendAmbulance: "אמבולנס",
   mapLegendDoctor: "רופא",
+
+  // -------- AI EMERGENCY COMPANION --------
+  aiEmergencyHelp: "עזרת חירום עם AI",
+  aiEmergencyHelpSub: "קבל שלב קצר אחד בכל פעם של עזרה ראשונה",
+  aiCompanionTitle: "מלווה AI לעזרה ראשונה",
+  aiCompanionIntro:
+    "לחץ התחל כדי לקבל שלב קצר אחד בכל פעם עד שהאמבולנס יגיע.",
+  aiDisclaimer:
+    "הנחיה בלבד — לא תחליף לצוות האמבולנס.",
+  aiStart: "התחל",
+  aiNextStep: "שלב הבא",
+  aiNextStepPrompt: "השלב הבא בבקשה.",
+  aiStepKicker: "בצע עכשיו",
+  aiThinking: "חושב…",
+  aiClose: "סגור",
+  aiDone: "סיום",
+  aiError: "ה-AI לא הצליח להגיב. נסה שוב.",
+  aiTimeout: "ה-AI לקח יותר מדי זמן. נסה שוב.",
+  aiBusy: "ה-AI עמוס. נסה שוב בעוד רגע.",
+  aiNetworkError: "לא ניתן ליצור קשר עם שירות ה-AI. בדוק את החיבור שלך.",
+  aiMissingKey:
+    "ה-AI לא מוגדר. הוסף את OPENAI_API_KEY לקובץ .env שלך.",
+  aiInvalidKey:
+    "מפתח OpenAI לא תקין. בדוק את OPENAI_API_KEY ב-.env והפעל מחדש את Expo.",
+  aiBilling:
+    "בעיית חיוב או גישה ב-OpenAI. בדוק יתרה, חיוב ומגבלות פרויקט.",
+  aiBadRequest:
+    "OpenAI דחה את הבקשה (פרמטרים או מודל לא תקינים).",
+  aiEmptyResponse: "ה-AI החזיר תשובה ריקה. נסה שוב.",
+  aiServerError: "שגיאת שרת OpenAI. נסה שוב מאוחר יותר.",
+
+  // -------- AI EMERGENCY TRIAGE ASSISTANT --------
+  aiTriageButtonTitle: "עוזר טריאז' חכם",
+  aiTriageButtonSub: "מצא את המדריך המתאים ופעולה אחת לבצע",
+  aiTriageButtonSubOffline: "עיין במדריכי עזרה ראשונה (AI לא זמין)",
+  aiTriageTitle: "עוזר טריאז' חכם",
+  aiTriageDisclaimer:
+    "עוזר לבחור את מדריך העזרה הראשונה המתאים. לא אבחנה רפואית.",
+  aiTriageIntro:
+    "לחץ התחל. העוזר ישאל שאלות קצרות ויבחר את המדריך הנכון ופעולה אחת.",
+  aiTriageStart: "התחל טריאז'",
+  aiTriageRetry: "נסה שוב",
+  aiTriageRefine: "חדד תשובה",
+  aiTriageRefinePrompt:
+    "הערך מחדש לפי המידע שיש לנו והפק החלטה מעודכנת.",
+  aiTriageNextActionLabel: "בצע עכשיו",
+  aiTriageQuestionLabel: "בדיקה מהירה",
+  aiTriageYes: "כן",
+  aiTriageNo: "לא",
+  aiTriageNotSure: "לא בטוח",
+  aiTriageCallNow: "התקשר לחירום עכשיו",
+  aiTriageOpenGuide: "פתח את המדריך המומלץ",
+  aiTriageOpenLibrary: "עיין בספריית עזרה ראשונה",
+  aiTriageConfidenceLow: "ביטחון נמוך",
+  aiTriageConfidenceMedium: "ביטחון בינוני",
+  aiTriageConfidenceHigh: "ביטחון גבוה",
+  aiTriageSummaryLabel: "סיכום לצוות הרפואי",
+  aiTriageShareSummary: "שתף סיכום",
+  aiTriageSummaryShareTitle: "סיכום חירום",
+  aiTriageFallback:
+    "ה-AI לא זמין. פתח במקום את ספריית העזרה הראשונה.",
 };
