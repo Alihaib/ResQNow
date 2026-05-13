@@ -34,6 +34,7 @@ import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 import { claimEmergencyTransaction } from "../../src/services/emergencyAssignment";
 import { tokens } from "../../src/ui/tokens";
+import { caseIdSuffix } from "../../src/utils/formatCaseId";
 import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
 
 interface Emergency {
@@ -662,6 +663,13 @@ export default function AmbulanceDashboard() {
             </Text>
           </View>
 
+          <Text style={styles.callCaseId} numberOfLines={1}>
+            {t("activityEmergencyRef", "Case {id}").replace(
+              "{id}",
+              caseIdSuffix(emergency.id),
+            )}
+          </Text>
+
           <Text style={styles.callType} numberOfLines={1}>
             {emergency.victimType === "other"
               ? t("someoneElse")
@@ -1155,6 +1163,14 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.caption,
     color: tokens.color.textMuted,
     fontWeight: "700",
+  },
+  callCaseId: {
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    marginTop: tokens.space.xs,
+    marginBottom: tokens.space.xs,
   },
   callType: {
     fontSize: tokens.font.title,

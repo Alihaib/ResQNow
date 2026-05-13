@@ -11,6 +11,7 @@ import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 import type { PatientSnapshot } from "../../../src/emergency/patientSnapshot";
 import { snapshotFromFirestore } from "../../../src/emergency/patientSnapshot";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
+import { caseIdSuffix } from "../../../src/utils/formatCaseId";
 
 const AnimatedPolyline = Animated.createAnimatedComponent(Polyline);
 
@@ -543,7 +544,11 @@ export default function DoctorCaseDetailScreen() {
           {String(emergency.patientName ?? patient?.name ?? "").trim() || "Anonymous Patient"}
         </Text>
         <Text style={styles.metaStripSubText} numberOfLines={1}>
-          ⏱ {formatHHmm(emergency.timestamp)}
+          {t("activityEmergencyRef", "Case {id}").replace(
+            "{id}",
+            caseIdSuffix(String(id ?? "")),
+          )}
+          {"  ·  "}⏱ {formatHHmm(emergency.timestamp)}
         </Text>
       </View>
 

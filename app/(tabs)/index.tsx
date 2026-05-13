@@ -1,15 +1,170 @@
 import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Card from "../../components/ui/Card";
+import EmptyState from "../../components/ui/EmptyState";
+import SectionHeader from "../../components/ui/SectionHeader";
+import StatusChip from "../../components/ui/StatusChip";
 import { useAuth } from "../../src/context/AuthContext";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
+import type {
+  ActivityFeedGroup,
+  ActivityFeedItem,
+} from "../../src/hooks/useEmergencyActivityFeed";
+import { useEmergencyActivityFeed } from "../../src/hooks/useEmergencyActivityFeed";
+import { tokens } from "../../src/ui/tokens";
 import { theme } from "../../src/ui/theme";
+import { caseIdSuffix } from "../../src/utils/formatCaseId";
+
+type ChipVariant = "danger" | "warning" | "success" | "info" | "neutral";
+
+function chipVariantForEvent(eventType: string): ChipVariant {
+  switch (eventType) {
+    case "cancelled":
+    case "dispatch_exhausted":
+      return "danger";
+    case "arrived":
+    case "completed":
+      return "success";
+    case "enRoute":
+    case "dispatched":
+      return "info";
+    case "rejected":
+    case "ambulance_released":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
 
 export default function HomeTab() {
   const { user, role, approved } = useAuth();
   const { isEmergencyActive, navigateToActiveEmergency } = useEmergency();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const router = useRouter();
+  const { groups, loading, error } = useEmergencyActivityFeed(
+    user?.uid,
+    role,
+    approved,
+    20,
+  );
+
+  /**
+   * Local expand/collapse state keyed by `emergencyId`. We deliberately don't
+   * derive this from the feed itself — collapsing is a UI concern only and
+   * must survive realtime snapshot updates (the listener can fire many times
+   * a second when a case is moving through its lifecycle).
+   */
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const toggleExpanded = useCallback((emergencyId: string) => {
+    setExpanded((prev) => ({ ...prev, [emergencyId]: !prev[emergencyId] }));
+  }, []);
+
+  const formatActivityTime = (iso: string) => {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return iso;
+    return d.toLocaleString(lang === "he" ? "he-IL" : "en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const activityLabel = (eventType: string) => {
+    const key = `activityEvent_${eventType}`;
+    const translated = t(key);
+    if (translated !== key) return translated;
+    const human = eventType.replace(/_/g, " ");
+    return t("activityEvent_unknown", human);
+  };
+
+  const renderTimelineEvent = (item: ActivityFeedItem, index: number) => (
+    <View
+      key={item.id}
+      style={[
+        styles.eventRow,
+        index !== 0 && styles.eventRowDivider,
+      ]}
+    >
+      <View style={styles.eventTopRow}>
+        <StatusChip
+          label={activityLabel(item.eventType)}
+          variant={chipVariantForEvent(item.eventType)}
+          size="sm"
+        />
+        <Text style={styles.eventTime}>{formatActivityTime(item.timestampIso)}</Text>
+      </View>
+      {item.noteText ? (
+        <Text style={styles.eventNote} numberOfLines={3}>
+          {item.noteText}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const renderGroup = (group: ActivityFeedGroup) => {
+    const isExpanded = !!expanded[group.emergencyId];
+    const latest = group.events[0];
+    const eventCount = group.events.length;
+    return (
+      <Card key={group.emergencyId} style={styles.groupCard}>
+        <TouchableOpacity
+          onPress={() => toggleExpanded(group.emergencyId)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: isExpanded }}
+          accessibilityLabel={t("activityEmergencyRef", "Case {id}").replace(
+            "{id}",
+            caseIdSuffix(group.emergencyId),
+          )}
+          style={styles.groupHeader}
+        >
+          <View style={styles.groupHeaderTop}>
+            <StatusChip
+              label={activityLabel(latest.eventType)}
+              variant={chipVariantForEvent(latest.eventType)}
+              size="sm"
+            />
+            <Text style={styles.groupTime}>
+              {formatActivityTime(latest.timestampIso)}
+            </Text>
+          </View>
+          <View style={styles.groupHeaderBottom}>
+            <Text style={styles.groupCaseId} selectable numberOfLines={1}>
+              {t("activityEmergencyRef", "Case {id}").replace(
+                "{id}",
+                caseIdSuffix(group.emergencyId),
+              )}
+            </Text>
+            <View style={styles.groupHeaderRight}>
+              <Text style={styles.groupEventCount}>
+                {t("activityEventCount", "{n} events").replace(
+                  "{n}",
+                  String(eventCount),
+                )}
+              </Text>
+              <Text
+                style={styles.groupChevron}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
+                {isExpanded ? "▾" : "▸"}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {isExpanded && eventCount > 0 ? (
+          <View style={styles.groupBody}>
+            {group.events.map(renderTimelineEvent)}
+          </View>
+        ) : null}
+      </Card>
+    );
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -33,7 +188,7 @@ export default function HomeTab() {
       {/* Quick Actions */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
-        
+
         {/* Emergency Button */}
         <TouchableOpacity
           style={[styles.emergencyBtn, isEmergencyActive && styles.emergencyBtnActive]}
@@ -121,13 +276,30 @@ export default function HomeTab() {
         </View>
       )}
 
-      {/* Recent Activity Placeholder */}
+      {/* Recent Activity — grouped per emergency, expandable. Live via onSnapshot. */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("recentActivity")}</Text>
-        <View style={styles.activityCard}>
-          <Text style={styles.activityText}>{t("noRecentActivity")}</Text>
-          <Text style={styles.activitySubtext}>{t("activitySubtext")}</Text>
-        </View>
+        <SectionHeader
+          overline={t("activityFeedOverline", "Live")}
+          title={t("recentActivity")}
+          accent={tokens.color.info}
+        />
+        {loading ? (
+          <EmptyState loading title={t("activityLoading", "Loading activity…")} />
+        ) : error ? (
+          <EmptyState
+            icon="⚠️"
+            title={t("activityLoadError", "Could not load activity.")}
+            subtitle={t("activitySubtext")}
+          />
+        ) : groups.length === 0 ? (
+          <EmptyState
+            icon="📋"
+            title={t("noRecentActivity")}
+            subtitle={t("activitySubtext")}
+          />
+        ) : (
+          <View style={styles.activityList}>{groups.map(renderGroup)}</View>
+        )}
       </View>
     </ScrollView>
   );
@@ -266,22 +438,88 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: theme.colors.textMuted,
   },
-  activityCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
+  // ---- Recent Activity (per-emergency group) ---------------------------
+  activityList: {
+    gap: tokens.space.sm,
+  },
+  groupCard: {
+    marginBottom: 0,
+  },
+  groupHeader: {
+    gap: tokens.space.sm,
+  },
+  groupHeaderTop: {
+    flexDirection: "row",
     alignItems: "center",
-    ...theme.shadow.card,
+    justifyContent: "space-between",
+    gap: tokens.space.sm,
   },
-  activityText: {
-    fontSize: 16,
-    color: theme.colors.textMuted,
-    marginBottom: 4,
+  groupHeaderBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: tokens.space.sm,
   },
-  activitySubtext: {
-    fontSize: 14,
-    color: theme.colors.textFaint,
+  groupHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    flexShrink: 0,
+  },
+  groupTime: {
+    fontSize: tokens.font.caption,
+    fontWeight: "700",
+    color: tokens.color.textMuted,
+    flexShrink: 0,
+  },
+  groupCaseId: {
+    flexShrink: 1,
+    fontSize: tokens.font.body,
+    fontWeight: "800",
+    color: tokens.color.textPrimary,
+    fontFamily: "monospace",
+  },
+  groupEventCount: {
+    fontSize: tokens.font.caption,
+    fontWeight: "700",
+    color: tokens.color.textMuted,
+  },
+  groupChevron: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textFaint,
+    fontWeight: "800",
+    minWidth: 14,
+    textAlign: "center",
+  },
+  groupBody: {
+    marginTop: tokens.space.md,
+    paddingTop: tokens.space.md,
+    borderTopWidth: tokens.hairline,
+    borderTopColor: tokens.color.border,
+  },
+  eventRow: {
+    paddingVertical: tokens.space.sm,
+  },
+  eventRowDivider: {
+    borderTopWidth: tokens.hairline,
+    borderTopColor: tokens.color.border,
+  },
+  eventTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: tokens.space.sm,
+  },
+  eventTime: {
+    fontSize: tokens.font.caption,
+    fontWeight: "700",
+    color: tokens.color.textMuted,
+    flexShrink: 0,
+  },
+  eventNote: {
+    marginTop: tokens.space.xs,
+    fontSize: tokens.font.body,
+    color: tokens.color.textSecondary,
+    fontWeight: "600",
   },
 });
-
-

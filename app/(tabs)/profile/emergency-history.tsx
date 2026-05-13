@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../../../src/firebase/config";
+import { caseIdSuffix } from "../../../src/utils/formatCaseId";
 
 type EmergencyHistoryItem = {
   id: string;
@@ -148,6 +149,12 @@ export default function EmergencyHistoryScreen() {
 
           return (
             <TouchableOpacity key={item.id} style={styles.historyCard} activeOpacity={0.85}>
+              <Text style={styles.historyCaseId} numberOfLines={1}>
+                {t("activityEmergencyRef", "Case {id}").replace(
+                  "{id}",
+                  caseIdSuffix(item.id),
+                )}
+              </Text>
               <View style={styles.historyHeader}>
                 <Text style={styles.historyType}>{item.type}</Text>
                 <View style={[styles.statusBadge, badgeStyle]}>
@@ -256,6 +263,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#003049",
+  },
+  historyCaseId: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    letterSpacing: 0.4,
+    marginBottom: 6,
   },
   statusBadge: {
     backgroundColor: "#D1FAE5",

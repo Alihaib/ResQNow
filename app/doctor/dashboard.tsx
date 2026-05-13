@@ -12,6 +12,7 @@ import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 import { tokens } from "../../src/ui/tokens";
+import { caseIdSuffix } from "../../src/utils/formatCaseId";
 
 const truncateOneLine = (s: string, max: number) => {
   const t = s.trim();
@@ -341,6 +342,13 @@ export default function DoctorDashboard() {
                       </Text>
                     </View>
 
+                    <Text style={styles.caseId} numberOfLines={1}>
+                      {t("activityEmergencyRef", "Case {id}").replace(
+                        "{id}",
+                        caseIdSuffix(e.id),
+                      )}
+                    </Text>
+
                     <Text style={styles.caseType} numberOfLines={1}>
                       {e.victimType === "other"
                         ? t("someoneElseNeedsHelp")
@@ -609,6 +617,14 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.body,
     color: tokens.color.textMuted,
     fontWeight: "700",
+  },
+  caseId: {
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    marginTop: tokens.space.xs,
+    marginBottom: tokens.space.xs,
   },
   caseType: {
     fontSize: tokens.font.title,

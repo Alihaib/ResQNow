@@ -19,6 +19,7 @@ import {
 } from "../../src/emergency/patientSnapshot";
 import { stripUndefinedDeep } from "../../src/utils/firestoreSanitize";
 import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
+import { caseIdSuffix } from "../../src/utils/formatCaseId";
 import {
   canTransitionLifecycle,
   normalizeLifecycleStatus,
@@ -587,7 +588,15 @@ export default function EmergencyDetailScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* 1 — Mission header: phase, ETA, primary action */}
         <View style={[styles.missionCard, phaseAccentBar(lifecycle)]}>
-          <Text style={styles.missionKicker}>Mission</Text>
+          <View style={styles.missionKickerRow}>
+            <Text style={styles.missionKicker}>Mission</Text>
+            <Text style={styles.missionCaseId} numberOfLines={1}>
+              {t("activityEmergencyRef", "Case {id}").replace(
+                "{id}",
+                caseIdSuffix(emergency.id),
+              )}
+            </Text>
+          </View>
           <Text style={styles.missionPhaseTitle}>{LIFECYCLE_LABELS[lifecycle]}</Text>
           <Text style={styles.missionSessionTag}>
             {emergency.sessionStatus === "active"
@@ -1136,12 +1145,24 @@ const styles = StyleSheet.create({
     borderLeftWidth: 6,
     borderLeftColor: "#9CA3AF",
   },
+  missionKickerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    gap: 8,
+  },
   missionKicker: {
     fontSize: 11,
     fontWeight: "900",
     color: "#868E96",
     letterSpacing: 1.2,
-    marginBottom: 6,
+  },
+  missionCaseId: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#868E96",
+    letterSpacing: 0.6,
   },
   missionPhaseTitle: {
     fontSize: 26,

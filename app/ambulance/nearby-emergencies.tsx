@@ -7,6 +7,7 @@ import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
+import { caseIdSuffix } from "../../src/utils/formatCaseId";
 
 interface Emergency {
   id: string;
@@ -293,6 +294,13 @@ export default function NearbyEmergenciesScreen() {
                   <Text style={styles.timeText}>{emergency.timeAgo || t("justNow")}</Text>
                 </View>
 
+                <Text style={styles.caseIdText} numberOfLines={1}>
+                  {t("activityEmergencyRef", "Case {id}").replace(
+                    "{id}",
+                    caseIdSuffix(emergency.id),
+                  )}
+                </Text>
+
                 <Text style={styles.userName}>
                   {emergency.victimType === "other"
                     ? t("someoneElse")
@@ -460,6 +468,14 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 14,
     color: "#6C757D",
+  },
+  caseIdText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748B",
+    letterSpacing: 0.4,
+    marginTop: 8,
+    marginBottom: 2,
   },
   userName: {
     fontSize: 20,
