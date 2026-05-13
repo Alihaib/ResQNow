@@ -632,7 +632,9 @@ export default {
   aiTriageYes: "Yes",
   aiTriageNo: "No",
   aiTriageNotSure: "Not sure",
-  aiTriageCallNow: "Call emergency now",
+  aiTriageCallNow: "Call emergency services now",
+  aiTriageAssistanceOnWay:
+    "Emergency services have already been notified and are on the way.",
   aiTriageOpenGuide: "Open the recommended guide",
   aiTriageOpenLibrary: "Browse the first-aid library",
   aiTriageConfidenceLow: "Low confidence",

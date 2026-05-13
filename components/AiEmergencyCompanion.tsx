@@ -4,8 +4,10 @@
  * Behaviour:
  *  - Calls `analyzeEmergencyTriage()` with the current emergency context.
  *  - Renders a structured triage card: category, next action, optional yes/no
- *    question, optional "open guide" button, and a prominent "Call emergency"
- *    button when the AI marks urgency = "call_now".
+ *    question and an optional "open guide" button.
+ *  - When the AI marks urgency = "call_now" the UI shows a reassurance card
+ *    only — the SOS flow has already dispatched the ambulance, so this
+ *    component never offers phone-dial actions or external calls.
  *  - If OpenAI is unavailable or fails, falls back to the built-in first-aid
  *    library (router push to `/(tabs)/firstaid`).
  *
@@ -17,7 +19,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Modal,
   ScrollView,
   Share,
@@ -37,9 +38,6 @@ import {
   TriageResult,
   analyzeEmergencyTriage,
 } from "../src/services/openaiEmergency";
-
-/** Default emergency phone number opened by the "Call emergency" button. */
-const EMERGENCY_PHONE_NUMBER = "101"; // Israel — Magen David Adom.
 
 type Props = {
   visible: boolean;
@@ -261,13 +259,6 @@ export default function AiEmergencyCompanion({
     setTimeout(() => onOpenLibrary(), 220);
   }, [onClose, onOpenLibrary]);
 
-  const handleCallEmergency = useCallback(() => {
-    void Linking.openURL(`tel:${EMERGENCY_PHONE_NUMBER}`).catch(() => {
-      // No-op: device may not support tel: (tablets/emulators). UI already
-      // surfaces the number visually.
-    });
-  }, []);
-
   const handleShareSummary = useCallback(async () => {
     if (!result?.summary) return;
     try {
@@ -424,18 +415,25 @@ export default function AiEmergencyCompanion({
                   </View>
                 ) : null}
 
-                {/* Call emergency — prominent only when urgency = call_now */}
+                {/*
+                  Reassurance card — shown when the AI flags urgency = call_now.
+                  The SOS flow has already dispatched the ambulance, so the
+                  triage modal never exposes any phone-call action. We only
+                  reassure the user that help is already on its way.
+                */}
                 {result.urgency === "call_now" ? (
-                  <TouchableOpacity
-                    style={styles.callBtn}
-                    onPress={handleCallEmergency}
+                  <View
+                    style={styles.assistanceOnWayCard}
+                    accessibilityRole="alert"
                   >
-                    <Text style={styles.callBtnText}>
-                      📞{" "}
-                      {translate("aiTriageCallNow", "Call emergency now")}{" "}
-                      ({EMERGENCY_PHONE_NUMBER})
+                    <Text style={styles.assistanceOnWayIcon}>🚑</Text>
+                    <Text style={styles.assistanceOnWayText}>
+                      {translate(
+                        "aiTriageAssistanceOnWay",
+                        "Emergency services have already been notified and are on the way.",
+                      )}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 ) : null}
 
                 {/* Suggested guide */}
@@ -704,13 +702,25 @@ const styles = StyleSheet.create({
   answerBtnText: { color: "#FFFFFF", fontWeight: "900", fontSize: 14 },
   answerBtnTextSecondary: { color: "#0F172A", fontWeight: "900", fontSize: 14 },
 
-  callBtn: {
-    backgroundColor: "#B91C1C",
-    borderRadius: 14,
-    paddingVertical: 16,
+  assistanceOnWayCard: {
+    flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#FEF2F2",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: "#FCA5A5",
+    gap: 12,
   },
-  callBtnText: { color: "#FFFFFF", fontWeight: "900", fontSize: 16 },
+  assistanceOnWayIcon: { fontSize: 24 },
+  assistanceOnWayText: {
+    flex: 1,
+    color: "#7F1D1D",
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
 
   guideBtn: { borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16 },
   guideBtnKicker: {
