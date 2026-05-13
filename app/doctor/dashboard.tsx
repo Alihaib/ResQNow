@@ -206,6 +206,43 @@ export default function DoctorDashboard() {
   const selectedId = selectedPatient?.id;
   const selectedContacts = useMemo(() => selectedPatient?.emergencyContacts || [], [selectedId, selectedPatient?.emergencyContacts]);
 
+  // ----- Quick Actions infrastructure (UI only) ----------------------------
+  // Refs that let the bottom Quick Actions section scroll back to the relevant
+  // section higher up the page, or focus the patient search input. None of
+  // this touches Firestore queries, listeners, or routing semantics — it is a
+  // pure UI affordance.
+  const scrollRef = useRef<ScrollView | null>(null);
+  const searchInputRef = useRef<TextInput | null>(null);
+  const activeSectionYRef = useRef(0);
+  const searchSectionYRef = useRef(0);
+
+  const scrollToY = (y: number) => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+  };
+
+  const handleQuickViewActive = () => {
+    scrollToY(activeSectionYRef.current);
+  };
+
+  const handleQuickSearchPatient = () => {
+    scrollToY(searchSectionYRef.current);
+    // Give the scroll animation a moment, then focus the input so the
+    // keyboard pops up on tap. Best-effort — silent if input is unmounted.
+    setTimeout(() => searchInputRef.current?.focus(), 320);
+  };
+
+  const handleQuickOpenRecentCase = () => {
+    const latest = liveEmergencies[0];
+    if (!latest?.id) {
+      Alert.alert(
+        t("quickActions"),
+        t("quickNoRecentCases", "No recent cases"),
+      );
+      return;
+    }
+    router.push(`/doctor/case/${latest.id}`);
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -229,9 +266,14 @@ export default function DoctorDashboard() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
         {/* PRIMARY: Active Emergencies — most important first. */}
-        <View style={styles.section}>
+        <View
+          style={styles.section}
+          onLayout={(e) => {
+            activeSectionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
           <SectionHeader
             overline={t("active") || "Active"}
             title={t("activeEmergencyCases") || "Active Emergencies"}
@@ -307,7 +349,12 @@ export default function DoctorDashboard() {
         </View>
 
         {/* Patient Search */}
-        <View style={[styles.section, styles.sectionCard]}>
+        <View
+          style={[styles.section, styles.sectionCard]}
+          onLayout={(e) => {
+            searchSectionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
           <SectionHeader
             overline={t("searchPatient") || "Directory"}
             title={`🔍 ${t("searchPatient") || "Search Patient"}`}
@@ -318,12 +365,15 @@ export default function DoctorDashboard() {
 
           <View style={styles.searchContainer}>
             <TextInput
+              ref={searchInputRef}
               style={styles.searchInput}
               placeholder={t("enterPatientId") || "Enter Israeli ID or Name"}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholderTextColor="#94A3B8"
               keyboardType="default"
+              returnKeyType="search"
+              onSubmitEditing={handleSearchPatient}
             />
             <TouchableOpacity
               style={[
@@ -455,33 +505,76 @@ export default function DoctorDashboard() {
           )}
         </View>
 
-        {/* Shortcuts — visually quieter, smaller secondary actions */}
+        {/*
+          Quick Actions — operational shortcuts. Each one is wired to existing
+          navigation / state; no new backend, no new routes.
+        */}
         <View style={styles.section}>
           <SectionHeader overline={t("quickActions")} title={t("quickActions")} />
+
+          {/* 1. Jump back to the live cases section higher up. */}
           <TouchableOpacity
             style={styles.shortcutCard}
-            onPress={() => router.push("/(tabs)/firstaid")}
+            onPress={handleQuickViewActive}
             activeOpacity={0.85}
+            accessibilityRole="button"
           >
-            <Text style={styles.shortcutIcon}>⛑</Text>
+            <Text style={styles.shortcutIcon}>🚨</Text>
             <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>{t("medical_guides")}</Text>
+              <Text style={styles.shortcutTitle}>
+                {t("quickViewActiveEmergencies", "View Active Emergencies")}
+              </Text>
               <Text style={styles.shortcutSub} numberOfLines={1}>
-                {t("medical_guides_desc")}
+                {t("quickViewActiveEmergenciesSub", "Jump to live cases")}
+              </Text>
+            </View>
+            {!loadingEmergencies && liveEmergencies.length > 0 ? (
+              <StatusChip
+                label={String(liveEmergencies.length)}
+                variant="danger"
+                solid
+              />
+            ) : (
+              <Text style={styles.chevron}>›</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* 2. Scroll to the patient search section and focus its input. */}
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={handleQuickSearchPatient}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            <Text style={styles.shortcutIcon}>🔍</Text>
+            <View style={styles.shortcutContent}>
+              <Text style={styles.shortcutTitle}>
+                {t("quickSearchPatient", "Search Patient")}
+              </Text>
+              <Text style={styles.shortcutSub} numberOfLines={1}>
+                {t("quickSearchPatientSub", "Find by ID, email or name")}
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.shortcutCard} activeOpacity={0.85}>
-            <Text style={styles.shortcutIcon}>🔔</Text>
+          {/* 3. Open the newest active case (or alert if none). */}
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={handleQuickOpenRecentCase}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            <Text style={styles.shortcutIcon}>📋</Text>
             <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>{t("notifications")}</Text>
+              <Text style={styles.shortcutTitle}>
+                {t("quickOpenRecentCase", "Open Recent Case")}
+              </Text>
               <Text style={styles.shortcutSub} numberOfLines={1}>
-                {t("notifications_desc")}
+                {t("quickOpenRecentCaseSub", "Latest active emergency")}
               </Text>
             </View>
-            <StatusChip label="3" variant="danger" solid />
+            <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

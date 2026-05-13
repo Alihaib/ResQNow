@@ -620,4 +620,19 @@ hello_user: "שלום",
   aiTriageSummaryShareTitle: "סיכום חירום",
   aiTriageFallback:
     "ה-AI לא זמין. פתח במקום את ספריית העזרה הראשונה.",
+
+  // -------- QUICK ACTIONS (Doctor + Ambulance dashboards) --------
+  quickViewActiveEmergencies: "צפה בקריאות פעילות",
+  quickViewActiveEmergenciesSub: "קפוץ לקריאות חיות",
+  quickSearchPatient: "חיפוש מטופל",
+  quickSearchPatientSub: "מצא לפי תעודת זהות, אימייל או שם",
+  quickOpenRecentCase: "פתח קריאה אחרונה",
+  quickOpenRecentCaseSub: "החירום הפעיל האחרון",
+  quickNoRecentCases: "אין קריאות פעילות כרגע",
+  quickCurrentMission: "המשימה הנוכחית",
+  quickCurrentMissionSub: "פתח את הקריאה המוקצית לך",
+  quickNoActiveMission: "אין משימה פעילה",
+  quickStartNavigation: "התחל ניווט",
+  quickStartNavigationSub: "נווט אל המטופל",
+  quickNoDestination: "אין יעד זמין לניווט",
 };

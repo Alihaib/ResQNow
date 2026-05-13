@@ -645,4 +645,19 @@ export default {
   aiTriageSummaryShareTitle: "Emergency summary",
   aiTriageFallback:
     "AI is unavailable. Open the first-aid library instead.",
+
+  // -------- QUICK ACTIONS (Doctor + Ambulance dashboards) --------
+  quickViewActiveEmergencies: "View Active Emergencies",
+  quickViewActiveEmergenciesSub: "Jump to live cases",
+  quickSearchPatient: "Search Patient",
+  quickSearchPatientSub: "Find by ID, email or name",
+  quickOpenRecentCase: "Open Recent Case",
+  quickOpenRecentCaseSub: "Latest active emergency",
+  quickNoRecentCases: "No recent cases",
+  quickCurrentMission: "Current Mission",
+  quickCurrentMissionSub: "Open your assigned emergency",
+  quickNoActiveMission: "No active mission",
+  quickStartNavigation: "Start Navigation",
+  quickStartNavigationSub: "Navigate to the patient",
+  quickNoDestination: "No destination available",
 };

@@ -513,29 +513,63 @@ export default function AmbulanceDashboard() {
     return () => clearInterval(timer);
   }, [authLoading, user?.uid, role, approved, emergencies]);
 
-  // Open navigation to emergency location
-  const openNavigation = (emergency: Emergency) => {
-    const { latitude, longitude } = emergency.location;
-    const url = Platform.select({
-      ios: `maps://maps.apple.com/?daddr=${latitude},${longitude}`,
-      android: `google.navigation:q=${latitude},${longitude}`,
-      default: `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
-    });
+  /**
+   * Open turn-by-turn navigation to the emergency location.
+   *
+   * Cross-platform strategy:
+   *  - iOS: try the native Apple Maps scheme (`maps://…`). If `canOpenURL`
+   *    rejects it (Expo Go without the URL scheme entitlement, simulator,
+   *    user has uninstalled Maps), fall back to the Google Maps HTTPS URL
+   *    which is supported on every platform that has any browser.
+   *  - Android (and any other platform — web, etc.): go straight to the
+   *    Google Maps HTTPS URL. We intentionally do NOT use the
+   *    `google.navigation:` deep link because it fails on devices without
+   *    Google Maps installed (huaweis, dev emulators, web), whereas the
+   *    HTTPS URL gracefully opens the Maps app when present and falls back
+   *    to the browser otherwise.
+   *
+   * Any other error (no network handler, blocked Linking, etc.) is caught
+   * and surfaces the standard "failed to open navigation" alert without
+   * crashing the dashboard.
+   */
+  const openNavigation = async (emergency: Emergency) => {
+    const latitude = emergency?.location?.latitude;
+    const longitude = emergency?.location?.longitude;
+    if (typeof latitude !== "number" || typeof longitude !== "number") {
+      Alert.alert(t("error"), t("locationNotAvailable"));
+      return;
+    }
 
-    Linking.canOpenURL(url || "")
-      .then((supported) => {
-        if (supported) {
-          Linking.openURL(url || "");
-        } else {
-          Linking.openURL(
-            `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
-          );
-        }
-      })
-      .catch((error) => {
-        console.error("Error opening navigation:", error);
-        Alert.alert(t("error"), t("failedToOpenNavigation"));
-      });
+    const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+    const appleUrl = `maps://maps.apple.com/?daddr=${latitude},${longitude}`;
+
+    const tryOpen = async (url: string): Promise<boolean> => {
+      try {
+        const supported = await Linking.canOpenURL(url);
+        if (!supported) return false;
+        await Linking.openURL(url);
+        return true;
+      } catch (err) {
+        console.warn("[openNavigation] failed to open url:", url, err);
+        return false;
+      }
+    };
+
+    try {
+      if (Platform.OS === "ios") {
+        if (await tryOpen(appleUrl)) return;
+        if (await tryOpen(googleUrl)) return;
+      } else {
+        if (await tryOpen(googleUrl)) return;
+      }
+      // Last-ditch: try `openURL` even if `canOpenURL` returned false. Some
+      // environments (web, certain Android OEMs) report unsupported but
+      // still successfully hand off to the system browser.
+      await Linking.openURL(googleUrl);
+    } catch (error) {
+      console.error("Error opening navigation:", error);
+      Alert.alert(t("error"), t("failedToOpenNavigation"));
+    }
   };
 
   const handleSearchPatient = async () => {
@@ -586,6 +620,49 @@ export default function AmbulanceDashboard() {
   const otherCalls = emergencies.filter(
     (e) => e.assignedAmbulanceId !== user?.uid,
   );
+
+  // ----- Quick Actions handlers (UI only) ---------------------------------
+  // Each handler reuses an already-wired feature (router push, scrollTo, or
+  // the existing openNavigation helper). No new backend logic.
+  const handleQuickCurrentMission = () => {
+    if (!myMission) {
+      Alert.alert(
+        t("quickActions"),
+        t("quickNoActiveMission", "No active mission"),
+      );
+      return;
+    }
+    router.push({
+      pathname: "/ambulance/emergency-detail",
+      params: { emergencyId: myMission.id },
+    });
+  };
+
+  const handleQuickNearbyEmergencies = () => {
+    // Prefer scrolling to the in-screen "Live calls" section because that
+    // list is already live-updating via the Firestore listener. The
+    // dedicated nearby-emergencies route stays available as the secondary
+    // entry point (still reachable from anywhere else in the app).
+    if (liveCallsScrollY !== null && scrollRef.current?.scrollTo) {
+      scrollRef.current.scrollTo({
+        y: Math.max(0, liveCallsScrollY - 12),
+        animated: true,
+      });
+      return;
+    }
+    router.push("/ambulance/nearby-emergencies");
+  };
+
+  const handleQuickStartNavigation = () => {
+    if (!myMission) {
+      Alert.alert(
+        t("quickActions"),
+        t("quickNoDestination", "No destination available"),
+      );
+      return;
+    }
+    openNavigation(myMission);
+  };
 
   const formatDistance = (km?: number) => {
     if (km == null || !Number.isFinite(km)) return null;
@@ -962,14 +1039,51 @@ export default function AmbulanceDashboard() {
           )}
         </View>
 
-        {/* Shortcuts */}
+        {/*
+          Quick Actions — operational shortcuts wired to existing features.
+          Order matches what a responder needs in the field: jump to the
+          active mission, scan nearby calls, then start external navigation.
+        */}
         <View style={styles.section}>
           <SectionHeader overline={t("quickActions")} title={t("quickActions")} />
 
+          {/* 1. Open the currently assigned mission detail (or alert). */}
+          <TouchableOpacity
+            style={[
+              styles.shortcutCard,
+              myMission && styles.shortcutCardPrimary,
+            ]}
+            onPress={handleQuickCurrentMission}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            <Text style={styles.shortcutIcon}>🚑</Text>
+            <View style={styles.shortcutContent}>
+              <Text style={styles.shortcutTitle}>
+                {t("quickCurrentMission", "Current Mission")}
+              </Text>
+              <Text style={styles.shortcutSub} numberOfLines={1}>
+                {myMission
+                  ? t(
+                      "quickCurrentMissionSub",
+                      "Open your assigned emergency",
+                    )
+                  : t("quickNoActiveMission", "No active mission")}
+              </Text>
+            </View>
+            {myMission ? (
+              <StatusChip label="ACTIVE" variant="danger" solid />
+            ) : (
+              <Text style={styles.chevron}>›</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* 2. Scroll to the live emergencies list above. */}
           <TouchableOpacity
             style={styles.shortcutCard}
-            onPress={() => router.push("/ambulance/nearby-emergencies")}
+            onPress={handleQuickNearbyEmergencies}
             activeOpacity={0.85}
+            accessibilityRole="button"
           >
             <Text style={styles.shortcutIcon}>🗺️</Text>
             <View style={styles.shortcutContent}>
@@ -981,12 +1095,22 @@ export default function AmbulanceDashboard() {
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.shortcutCard} activeOpacity={0.85}>
-            <Text style={styles.shortcutIcon}>📋</Text>
+          {/* 3. Hand off to the device's external navigation app. */}
+          <TouchableOpacity
+            style={styles.shortcutCard}
+            onPress={handleQuickStartNavigation}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            <Text style={styles.shortcutIcon}>🧭</Text>
             <View style={styles.shortcutContent}>
-              <Text style={styles.shortcutTitle}>{t("routePlanning")}</Text>
+              <Text style={styles.shortcutTitle}>
+                {t("quickStartNavigation", "Start Navigation")}
+              </Text>
               <Text style={styles.shortcutSub} numberOfLines={1}>
-                {t("planRoutes")}
+                {myMission
+                  ? t("quickStartNavigationSub", "Navigate to the patient")
+                  : t("quickNoDestination", "No destination available")}
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
@@ -1277,6 +1401,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     gap: 12,
+  },
+  shortcutCardPrimary: {
+    borderColor: "#DC2626",
+    borderLeftWidth: 4,
+    backgroundColor: "#FFFBFB",
   },
   shortcutIcon: { fontSize: 24 },
   shortcutContent: { flex: 1 },
