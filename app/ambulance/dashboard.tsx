@@ -12,6 +12,8 @@ import {
   where,
 } from "firebase/firestore";
 import EmergencyChat from "../../components/EmergencyChat";
+import SectionHeader from "../../components/ui/SectionHeader";
+import StatusChip from "../../components/ui/StatusChip";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -112,7 +114,6 @@ export default function AmbulanceDashboard() {
   };
 
   const markEmergencySeen = async (emergencyId: string) => {
-    // Remove NEW badge and hide banner if it was referencing this emergency
     setNewEmergencyIds((prev) => {
       const next = { ...prev };
       delete next[emergencyId];
@@ -122,7 +123,6 @@ export default function AmbulanceDashboard() {
       setBannerVisible(false);
       setBannerEmergencyId(null);
     }
-    // Update last seen timestamp to the newest emergency currently known (best effort)
     const found = emergencies.find((e) => e.id === emergencyId);
     if (found?.timestamp) await saveLastSeenTs(found.timestamp);
   };
@@ -184,7 +184,6 @@ export default function AmbulanceDashboard() {
           };
           setAmbulanceLocation(coords);
 
-          // Publish last known ambulance location for auto-dispatch selection.
           if (user?.uid) {
             updateDoc(doc(db, "users", user.uid), {
               lastKnownLocation: coords,
@@ -267,7 +266,6 @@ export default function AmbulanceDashboard() {
 
   // Listen to active emergencies
   useEffect(() => {
-    // Only mount listener when access is valid (avoids PERMISSION_DENIED during auth bootstrap)
     if (authLoading) return;
     if (!user?.uid) return;
     if (role !== "ambulance" || approved !== true) return;
@@ -302,14 +300,12 @@ export default function AmbulanceDashboard() {
 
           for (const docSnap of snapshot.docs) {
             const data = docSnap.data();
-            // Defensive validation for legacy/malformed docs (don't crash UI)
             const sessionStatus =
               typeof data.sessionStatus === "string"
                 ? data.sessionStatus
                 : "active";
             if (sessionStatus !== "active") continue;
 
-            // Determine if this emergency is "new" relative to the last seen timestamp.
             const ts =
               typeof data.timestamp === "string" ? data.timestamp : null;
             const isNew =
@@ -335,7 +331,6 @@ export default function AmbulanceDashboard() {
               victimType: data.victimType === "other" ? "other" : "me",
             };
 
-            // Privacy: if victimType is "other", do NOT fetch or display medical profile data.
             if (emergency.victimType !== "other") {
               const userInfo = await fetchUserInfo(data.userId);
               if (userInfo) {
@@ -343,7 +338,6 @@ export default function AmbulanceDashboard() {
               }
             }
 
-            // Calculate distance if ambulance location is available
             if (ambulanceLocation && emergency.location) {
               emergency.distance = calculateDistance(
                 ambulanceLocation.latitude,
@@ -353,13 +347,11 @@ export default function AmbulanceDashboard() {
               );
             }
 
-            // Calculate time ago
             emergency.timeAgo = formatTimeAgo(emergency.timestamp);
 
             emergenciesList.push(emergency);
           }
 
-          // Sort by distance (closest first) or by time (newest first)
           emergenciesList.sort((a, b) => {
             if (a.distance && b.distance) {
               return a.distance - b.distance;
@@ -371,8 +363,7 @@ export default function AmbulanceDashboard() {
 
           setEmergencies(emergenciesList);
 
-          // AUTO DISPATCH: attempt closest-ambulance assignment for unassigned emergencies.
-          // Triggered by Firestore realtime only (no push, no backend). Transaction prevents races.
+          // AUTO DISPATCH
           for (const e of emergenciesList) {
             if (e.assignedAmbulanceId) continue;
             if (attemptedAutoDispatchRef.current[e.id]) continue;
@@ -414,12 +405,10 @@ export default function AmbulanceDashboard() {
               .catch((err) => console.warn("[AutoDispatch] error", e.id, err));
           }
 
-          // Merge NEW ids into local state (so badge persists until seen)
           if (Object.keys(incomingNewIds).length > 0) {
             setNewEmergencyIds((prev) => ({ ...prev, ...incomingNewIds }));
           }
 
-          // Show live banner for the newest unseen emergency (and auto-scroll to calls section)
           if (newestIncoming) {
             setBannerEmergencyId(newestIncoming.id);
             setBannerVisible(true);
@@ -450,7 +439,6 @@ export default function AmbulanceDashboard() {
           "Ambulance emergencies listener error code:",
           (error as any)?.code,
         );
-        // Typical cause when docs exist but don't show: Firestore security rules (PERMISSION_DENIED).
         setEmergenciesError(
           (error as any)?.code === "permission-denied" ||
             (error as any)?.code === "PERMISSION_DENIED"
@@ -473,8 +461,7 @@ export default function AmbulanceDashboard() {
     liveCallsScrollY,
   ]);
 
-  // SMART REASSIGNMENT: timeout-based reassignment loop (local-only, Firestore-driven).
-  // Any approved ambulance client can act as a dispatcher; transaction guarantees single-winner updates.
+  // SMART REASSIGNMENT: timeout-based reassignment loop
   useEffect(() => {
     if (authLoading) return;
     if (!user?.uid) return;
@@ -516,7 +503,6 @@ export default function AmbulanceDashboard() {
             console.warn("[AutoDispatch][timeout] error:", e.id, err),
           )
           .finally(() => {
-            // allow future attempts if still assigned after this run
             setTimeout(() => {
               delete attemptedTimeoutReassignRef.current[e.id];
             }, 15000);
@@ -541,7 +527,6 @@ export default function AmbulanceDashboard() {
         if (supported) {
           Linking.openURL(url || "");
         } else {
-          // Fallback to Google Maps web
           Linking.openURL(
             `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
           );
@@ -565,16 +550,12 @@ export default function AmbulanceDashboard() {
     setSearching(true);
     try {
       const queryLower = searchQuery.trim().toLowerCase();
-      const queryDigits = searchQuery.trim().replace(/\D/g, ""); // Extract digits for ID search
+      const queryDigits = searchQuery.trim().replace(/\D/g, "");
 
-      // Search by Israeli ID or name or email
       const usersSnapshot = await getDocs(collection(db, "users"));
 
-      // Use find() to stop searching once we find a match
       const foundDoc = usersSnapshot.docs.find((docSnap) => {
         const data = docSnap.data();
-
-        // Check if search matches Israeli ID, name, or email
         return (
           data.israeliId === queryDigits ||
           data.name?.toLowerCase().includes(queryLower) ||
@@ -595,6 +576,127 @@ export default function AmbulanceDashboard() {
     } finally {
       setSearching(false);
     }
+  };
+
+  // ----- Derived data for rendering -----
+
+  const myMission = emergencies.find(
+    (e) => e.assignedAmbulanceId === user?.uid,
+  );
+  const otherCalls = emergencies.filter(
+    (e) => e.assignedAmbulanceId !== user?.uid,
+  );
+
+  const formatDistance = (km?: number) => {
+    if (km == null || !Number.isFinite(km)) return null;
+    return km < 1 ? `${(km * 1000).toFixed(0)} m` : `${km.toFixed(1)} km`;
+  };
+
+  // Compact card used both for "your mission" and "other calls".
+  const renderCallCard = (emergency: Emergency, mine: boolean) => {
+    const isNew = !!newEmergencyIds[emergency.id];
+    const distLabel = formatDistance(emergency.distance);
+    return (
+      <TouchableOpacity
+        key={emergency.id}
+        style={[
+          styles.callCard,
+          isNew && styles.callCardNew,
+          mine && styles.callCardMine,
+        ]}
+        onPress={async () => {
+          await markEmergencySeen(emergency.id);
+          router.push({
+            pathname: "/ambulance/emergency-detail",
+            params: { emergencyId: emergency.id },
+          });
+        }}
+        activeOpacity={0.85}
+      >
+        <View style={styles.callTopRow}>
+          <View style={styles.chipRow}>
+            <StatusChip
+              label={mine ? t("activeEmergencyShort", "YOUR MISSION") : t("emergency", "EMERGENCY")}
+              variant="danger"
+              solid
+            />
+            {isNew ? (
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      scale: pulse.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.06],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <StatusChip label="NEW" variant="warning" solid />
+              </Animated.View>
+            ) : null}
+          </View>
+          <Text style={styles.callTime} numberOfLines={1}>
+            {emergency.timeAgo || t("justNow")}
+          </Text>
+        </View>
+
+        <Text style={styles.callType} numberOfLines={1}>
+          {emergency.victimType === "other"
+            ? t("someoneElse")
+            : emergency.userInfo?.name ||
+              emergency.userInfo?.email ||
+              t("unknownUser")}
+        </Text>
+
+        <View style={styles.callLocRow}>
+          <Text style={styles.callLocText} numberOfLines={1}>
+            📍{" "}
+            {emergency.location.address ||
+              `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
+          </Text>
+          {distLabel ? (
+            <StatusChip label={distLabel} variant="info" />
+          ) : null}
+        </View>
+
+        {emergency.victimType !== "other" && emergency.userInfo ? (
+          <View style={styles.quickInfo}>
+            {emergency.userInfo.bloodType ? (
+              <StatusChip
+                label={`🩸 ${emergency.userInfo.bloodType}`}
+                variant="neutral"
+              />
+            ) : null}
+            {emergency.userInfo.age ? (
+              <StatusChip
+                label={`👤 ${emergency.userInfo.age}`}
+                variant="neutral"
+              />
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.callActions}>
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              openNavigation(emergency);
+            }}
+            style={styles.navBtn}
+            accessibilityRole="button"
+          >
+            <Text style={styles.navBtnText}>
+              🧭 {t("openNavigation") || "Navigate"}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.openHint}>
+            {t("tapToOpenCaseMonitor") || "Tap to open"}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -650,31 +752,104 @@ export default function AmbulanceDashboard() {
       )}
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={styles.headerBar}>
         <TouchableOpacity
           onPress={() => {
             if (router.canGoBack()) router.back();
             else router.replace("/(tabs)");
           }}
           style={styles.backBtn}
+          accessibilityRole="button"
         >
           <Text style={styles.backText}>‹</Text>
         </TouchableOpacity>
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.headerEyebrow}>🚑 {t("ambulance_role")}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {t("ambulance_dashboard_title")}
+          </Text>
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
-      <Text style={styles.logo}>🚑</Text>
-      <Text style={styles.title}>{t("ambulance_dashboard_title")}</Text>
-      <Text style={styles.subtitle}>{t("ambulance_dashboard_sub")}</Text>
-
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
-        {/* Patient Search for Emergency Access */}
+        {/* CURRENT MISSION — only when this ambulance is assigned. */}
+        {myMission ? (
+          <View style={styles.section}>
+            <SectionHeader
+              overline={t("active") || "Mission"}
+              title={t("activeEmergency") || "Your current mission"}
+              accent="#DC2626"
+            />
+            {renderCallCard(myMission, true)}
+          </View>
+        ) : null}
+
+        {/* Nearby / live emergencies */}
+        <View
+          style={styles.section}
+          onLayout={(e) => {
+            const y = e.nativeEvent.layout.y;
+            setLiveCallsScrollY(y);
+          }}
+        >
+          <SectionHeader
+            overline={t("live_calls") || "Active"}
+            title={t("live_calls") || "Live Emergency Calls"}
+            accent={otherCalls.length > 0 ? "#DC2626" : undefined}
+            trailing={
+              otherCalls.length > 0 ? (
+                <StatusChip label={String(otherCalls.length)} variant="danger" solid />
+              ) : null
+            }
+          />
+
+          {loadingEmergencies ? (
+            <View style={styles.softCard}>
+              <Text style={styles.softMuted}>
+                {t("loading") || "Loading emergencies..."}
+              </Text>
+            </View>
+          ) : emergenciesError ? (
+            <View style={styles.softCard}>
+              <Text style={styles.emptyEmoji}>⚠️</Text>
+              <Text style={styles.softMuted}>{emergenciesError}</Text>
+            </View>
+          ) : otherCalls.length === 0 ? (
+            <View style={styles.softCard}>
+              <Text style={styles.emptyEmoji}>🚑</Text>
+              <Text style={styles.emptyTitle}>{t("noActiveEmergencies")}</Text>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {otherCalls.map((emergency) => renderCallCard(emergency, false))}
+            </View>
+          )}
+        </View>
+
+        {/* Dispatcher chat — shown for the assigned mission. */}
+        {myMission && user?.uid ? (
+          <View style={[styles.section, styles.sectionCard]}>
+            <SectionHeader
+              overline={t("chatTitle") || "Dispatcher"}
+              title={t("chatTitle") || "Dispatcher Chat"}
+            />
+            <EmergencyChat
+              emergencyId={myMission.id}
+              currentUserId={user.uid}
+              currentUserRole="ambulance"
+              isActive
+            />
+          </View>
+        ) : null}
+
+        {/* Patient Search */}
         <View style={[styles.section, styles.sectionCard]}>
-          <Text style={styles.sectionOverline}>Directory</Text>
-          <Text style={styles.sectionTitle}>
-            🔍 {t("searchPatient") || "Search Patient"}
-          </Text>
-          <Text style={styles.searchSubtitle}>
+          <SectionHeader
+            overline={t("searchPatient") || "Directory"}
+            title={`🔍 ${t("searchPatient") || "Search Patient"}`}
+          />
+          <Text style={styles.helperText}>
             {t("searchPatientNote") ||
               "Enter Israeli ID or name to access medical information"}
           </Text>
@@ -685,16 +860,20 @@ export default function AmbulanceDashboard() {
               placeholder={t("enterPatientId") || "Enter Israeli ID or Name"}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#ADB5BD"
+              placeholderTextColor="#94A3B8"
               keyboardType="default"
             />
             <TouchableOpacity
-              style={styles.searchBtn}
+              style={[
+                styles.searchBtn,
+                (searching || !searchQuery.trim()) && styles.searchBtnDisabled,
+              ]}
               onPress={handleSearchPatient}
               disabled={searching || !searchQuery.trim()}
+              accessibilityRole="button"
             >
               <Text style={styles.searchBtnText}>
-                {searching ? t("loading") : "🔍"}
+                {searching ? "…" : "🔍"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -703,93 +882,66 @@ export default function AmbulanceDashboard() {
           {patientData && (
             <View style={styles.patientInfoCard}>
               <View style={styles.patientHeader}>
-                <Text style={styles.patientName}>
+                <Text style={styles.patientName} numberOfLines={1}>
                   {patientData.name || patientData.email}
                 </Text>
                 <TouchableOpacity
-                  style={styles.closeBtn}
+                  style={styles.iconBtn}
                   onPress={() => setPatientData(null)}
+                  accessibilityRole="button"
                 >
-                  <Text style={styles.closeBtnText}>✕</Text>
+                  <Text style={styles.iconBtnText}>✕</Text>
                 </TouchableOpacity>
               </View>
 
               {patientData.israeliId && (
-                <View style={styles.patientInfoRow}>
-                  <Text style={styles.patientInfoLabel}>{t("israeliId")}:</Text>
-                  <Text style={styles.patientInfoValue}>
-                    {patientData.israeliId}
-                  </Text>
+                <View style={styles.kvRow}>
+                  <Text style={styles.kvLabel}>{t("israeliId")}</Text>
+                  <Text style={styles.kvValue}>{patientData.israeliId}</Text>
                 </View>
               )}
-
-              <View style={styles.patientInfoRow}>
-                <Text style={styles.patientInfoLabel}>{t("phoneNumber")}:</Text>
-                <Text style={styles.patientInfoValue}>
-                  {patientData.phoneNumber || "N/A"}
-                </Text>
+              <View style={styles.kvRow}>
+                <Text style={styles.kvLabel}>{t("phoneNumber")}</Text>
+                <Text style={styles.kvValue}>{patientData.phoneNumber || "—"}</Text>
               </View>
-
               {patientData.bloodType && (
-                <View style={styles.patientInfoRow}>
-                  <Text style={styles.patientInfoLabel}>
-                    {t("blood_type")}:
-                  </Text>
-                  <Text style={styles.patientInfoValue}>
-                    {patientData.bloodType}
-                  </Text>
+                <View style={styles.kvRow}>
+                  <Text style={styles.kvLabel}>{t("blood_type")}</Text>
+                  <Text style={styles.kvValue}>{patientData.bloodType}</Text>
                 </View>
               )}
-
               {patientData.age && (
-                <View style={styles.patientInfoRow}>
-                  <Text style={styles.patientInfoLabel}>{t("age")}:</Text>
-                  <Text style={styles.patientInfoValue}>{patientData.age}</Text>
+                <View style={styles.kvRow}>
+                  <Text style={styles.kvLabel}>{t("age")}</Text>
+                  <Text style={styles.kvValue}>{patientData.age}</Text>
                 </View>
               )}
 
               {patientData.diseases && (
-                <View style={styles.patientInfoSection}>
-                  <Text style={styles.patientInfoSectionTitle}>
-                    {t("diseases")}:
-                  </Text>
-                  <Text style={styles.patientInfoText}>
-                    {patientData.diseases}
-                  </Text>
+                <View style={styles.patientSubSection}>
+                  <Text style={styles.patientSubTitle}>{t("diseases")}</Text>
+                  <Text style={styles.patientSubText}>{patientData.diseases}</Text>
                 </View>
               )}
-
               {patientData.medications && (
-                <View style={styles.patientInfoSection}>
-                  <Text style={styles.patientInfoSectionTitle}>
-                    {t("medications")}:
-                  </Text>
-                  <Text style={styles.patientInfoText}>
-                    {patientData.medications}
-                  </Text>
+                <View style={styles.patientSubSection}>
+                  <Text style={styles.patientSubTitle}>{t("medications")}</Text>
+                  <Text style={styles.patientSubText}>{patientData.medications}</Text>
                 </View>
               )}
-
               {patientData.allergies && (
-                <View style={styles.patientInfoSection}>
-                  <Text style={styles.patientInfoSectionTitle}>
-                    {t("allergies")}:
-                  </Text>
-                  <Text style={styles.patientInfoText}>
-                    {patientData.allergies}
-                  </Text>
+                <View style={styles.patientSubSection}>
+                  <Text style={styles.patientSubTitle}>{t("allergies")}</Text>
+                  <Text style={styles.patientSubText}>{patientData.allergies}</Text>
                 </View>
               )}
-
               {patientData.emergencyContacts &&
                 patientData.emergencyContacts.length > 0 && (
-                  <View style={styles.patientInfoSection}>
-                    <Text style={styles.patientInfoSectionTitle}>
-                      {t("emergency_contact")}:
-                    </Text>
+                  <View style={styles.patientSubSection}>
+                    <Text style={styles.patientSubTitle}>{t("emergency_contact")}</Text>
                     {patientData.emergencyContacts.map(
                       (contact: any, index: number) => (
-                        <Text key={index} style={styles.patientInfoText}>
+                        <Text key={index} style={styles.patientSubText}>
                           {contact.name}: {contact.phone}
                         </Text>
                       ),
@@ -800,6 +952,7 @@ export default function AmbulanceDashboard() {
               <TouchableOpacity
                 style={styles.viewFullBtn}
                 onPress={() => router.push(`/doctor/patient/${patientData.id}`)}
+                accessibilityRole="button"
               >
                 <Text style={styles.viewFullBtnText}>
                   {t("viewFullProfile") || "View Full Profile"} ›
@@ -809,201 +962,52 @@ export default function AmbulanceDashboard() {
           )}
         </View>
 
-        {/* Live Emergency Calls */}
-        <View
-          style={[styles.section, styles.sectionCard]}
-          onLayout={(e) => {
-            const y = e.nativeEvent.layout.y;
-            setLiveCallsScrollY(y);
-          }}
-        >
-          <Text style={styles.sectionOverline}>Active</Text>
-          <Text style={styles.sectionTitle}>
-            {t("live_calls") || "Live Emergency Calls"}
-          </Text>
-          {loadingEmergencies ? (
-            <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>
-                {t("loading") || "Loading emergencies..."}
-              </Text>
-            </View>
-          ) : emergenciesError ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>⚠️</Text>
-              <Text style={styles.loadingText}>{emergenciesError}</Text>
-            </View>
-          ) : emergencies.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>🚑</Text>
-              <Text style={styles.emptyText}>{t("noActiveEmergencies")}</Text>
-            </View>
-          ) : (
-            emergencies.map((emergency) => (
-              <TouchableOpacity
-                key={emergency.id}
-                style={[
-                  styles.callCard,
-                  newEmergencyIds[emergency.id]
-                    ? styles.callCardNew
-                    : undefined,
-                ]}
-                onPress={async () => {
-                  await markEmergencySeen(emergency.id);
-                  router.push({
-                    pathname: "/ambulance/emergency-detail",
-                    params: { emergencyId: emergency.id },
-                  });
-                }}
-              >
-                <View style={styles.callHeader}>
-                  <View
-                    style={[
-                      styles.priorityBadge,
-                      { backgroundColor: "#DC2626" },
-                    ]}
-                  >
-                    <Text style={styles.priorityText}>
-                      {t("emergency") || "EMERGENCY"}
-                    </Text>
-                  </View>
-                  <Text style={styles.callTime}>
-                    {emergency.timeAgo || t("justNow")}
-                  </Text>
-                </View>
-                {newEmergencyIds[emergency.id] ? (
-                  <Animated.View
-                    style={[
-                      styles.newBadge,
-                      {
-                        transform: [
-                          {
-                            scale: pulse.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [1, 1.08],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  >
-                    <Text style={styles.newBadgeText}>NEW</Text>
-                  </Animated.View>
-                ) : null}
-                <Text style={styles.callType}>
-                  {emergency.victimType === "other"
-                    ? t("someoneElse")
-                    : emergency.userInfo?.name ||
-                      emergency.userInfo?.email ||
-                      t("unknownUser")}
-                </Text>
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    openNavigation(emergency);
-                  }}
-                  style={styles.locationRow}
-                >
-                  <Text style={styles.callDistance}>
-                    📍{" "}
-                    {emergency.location.address ||
-                      `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
-                  </Text>
-                  {emergency.distance !== undefined &&
-                  emergency.distance !== null ? (
-                    <Text style={styles.distanceText}>
-                      {emergency.distance < 1
-                        ? `${(emergency.distance * 1000).toFixed(0)}m away`
-                        : `${emergency.distance.toFixed(1)}km away`}
-                    </Text>
-                  ) : null}
-                </TouchableOpacity>
-                {emergency.victimType !== "other" && emergency.userInfo && (
-                  <View style={styles.quickInfo}>
-                    {emergency.userInfo.bloodType ? (
-                      <Text style={styles.quickInfoText}>
-                        🩸 {t("blood_type") || "Blood"}:{" "}
-                        {emergency.userInfo.bloodType}
-                      </Text>
-                    ) : null}
-                    {emergency.userInfo.age ? (
-                      <Text style={styles.quickInfoText}>
-                        👤 {t("age") || "Age"}: {emergency.userInfo.age}
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-                <Text style={styles.chevron}>›</Text>
-              </TouchableOpacity>
-            ))
-          )}
-        </View>
-
-        {/* Dispatcher chat — shown for the emergency currently assigned to this ambulance */}
-        {(() => {
-          const assignedCase = emergencies.find(
-            (e) => e.assignedAmbulanceId === user?.uid,
-          );
-          if (!assignedCase || !user?.uid) return null;
-          return (
-            <View style={[styles.section, styles.sectionCard]}>
-              <Text style={styles.sectionOverline}>Communication</Text>
-              <Text style={styles.sectionTitle}>Dispatcher Chat</Text>
-              <EmergencyChat
-                emergencyId={assignedCase.id}
-                currentUserId={user.uid}
-                currentUserRole="ambulance"
-                isActive
-              />
-            </View>
-          );
-        })()}
-
-        {/* Vehicle Status */}
+        {/* Vehicle Status — quieter, scannable rows */}
         <View style={[styles.section, styles.sectionCard]}>
-          <Text style={styles.sectionOverline}>Unit</Text>
-          <Text style={styles.sectionTitle}>{t("vehicle_status")}</Text>
-          <View style={styles.statusCard}>
-            <View style={styles.statusRow}>
-              <Text style={styles.statusLabel}>{t("vehicle_status")}</Text>
-              <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>{t("ready")}</Text>
-              </View>
-            </View>
-            <View style={styles.statusRow}>
-              <Text style={styles.statusLabel}>{t("equipment")}</Text>
-              <Text style={styles.statusValue}>✓ {t("complete")}</Text>
-            </View>
-            <View style={styles.statusRow}>
-              <Text style={styles.statusLabel}>{t("fuelLevel")}</Text>
-              <Text style={styles.statusValue}>85%</Text>
-            </View>
+          <SectionHeader
+            overline={t("vehicle_status") || "Unit"}
+            title={t("vehicle_status")}
+          />
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>{t("vehicle_status")}</Text>
+            <StatusChip label={t("ready") || "Ready"} variant="success" solid />
+          </View>
+          <View style={styles.statusRow}>
+            <Text style={styles.statusLabel}>{t("equipment")}</Text>
+            <Text style={styles.statusValue}>✓ {t("complete")}</Text>
+          </View>
+          <View style={[styles.statusRow, { borderBottomWidth: 0 }]}>
+            <Text style={styles.statusLabel}>{t("fuelLevel")}</Text>
+            <Text style={styles.statusValue}>85%</Text>
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <View style={[styles.section, styles.sectionCard]}>
-          <Text style={styles.sectionOverline}>Shortcuts</Text>
-          <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
+        {/* Shortcuts */}
+        <View style={styles.section}>
+          <SectionHeader overline={t("quickActions")} title={t("quickActions")} />
 
           <TouchableOpacity
-            style={styles.actionCard}
+            style={styles.shortcutCard}
             onPress={() => router.push("/ambulance/nearby-emergencies")}
+            activeOpacity={0.85}
           >
-            <Text style={styles.actionIcon}>🗺️</Text>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>{t("nearby_emergencies")}</Text>
-              <Text style={styles.actionSubtitle}>
+            <Text style={styles.shortcutIcon}>🗺️</Text>
+            <View style={styles.shortcutContent}>
+              <Text style={styles.shortcutTitle}>{t("nearby_emergencies")}</Text>
+              <Text style={styles.shortcutSub} numberOfLines={1}>
                 {t("nearby_emergencies_desc")}
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard}>
-            <Text style={styles.actionIcon}>📋</Text>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>{t("routePlanning")}</Text>
-              <Text style={styles.actionSubtitle}>{t("planRoutes")}</Text>
+          <TouchableOpacity style={styles.shortcutCard} activeOpacity={0.85}>
+            <Text style={styles.shortcutIcon}>📋</Text>
+            <View style={styles.shortcutContent}>
+              <Text style={styles.shortcutTitle}>{t("routePlanning")}</Text>
+              <Text style={styles.shortcutSub} numberOfLines={1}>
+                {t("planRoutes")}
+              </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
@@ -1016,9 +1020,7 @@ export default function AmbulanceDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
-    paddingTop: 60,
-    paddingHorizontal: 20,
+    backgroundColor: "#F1F5F9",
   },
   liveBanner: {
     position: "absolute",
@@ -1064,379 +1066,251 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 16,
   },
-  header: {
+  headerBar: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
   backBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  backText: {
-    fontSize: 24,
-    color: "#003049",
-    fontWeight: "700",
-  },
-  headerSpacer: { width: 40, height: 40 },
-  logo: {
-    fontSize: 60,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#003049",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: "#6C757D",
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  scrollContent: {
-    paddingBottom: 30,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#E9ECEF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  sectionOverline: {
+  backText: { fontSize: 24, color: "#0F172A", fontWeight: "800", lineHeight: 26 },
+  headerTextWrap: { flex: 1, marginLeft: 12 },
+  headerEyebrow: {
     fontSize: 11,
     fontWeight: "800",
-    color: "#868E96",
-    textTransform: "uppercase",
+    color: "#94A3B8",
     letterSpacing: 0.8,
-    marginBottom: 6,
+    marginBottom: 2,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#003049",
-    marginBottom: 16,
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: -0.3,
+  },
+  headerSpacer: { width: 40, height: 40 },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  section: { marginBottom: 24 },
+  sectionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  helperText: {
+    fontSize: 13,
+    color: "#64748B",
+    marginBottom: 12,
+    lineHeight: 18,
   },
   callCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
   callCardNew: {
     borderLeftWidth: 4,
     borderLeftColor: "#DC2626",
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#FFFBFB",
   },
-  newBadge: {
-    alignSelf: "flex-start",
-    marginBottom: 8,
-    backgroundColor: "#111827",
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+  callCardMine: {
+    borderWidth: 2,
+    borderColor: "#DC2626",
+    backgroundColor: "#FFFFFF",
   },
-  newBadgeText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  callHeader: {
+  callTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  priorityBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  priorityText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  callTime: {
-    fontSize: 14,
-    color: "#6C757D",
-  },
+  chipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  callTime: { fontSize: 12, color: "#64748B", fontWeight: "700" },
   callType: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#003049",
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
     marginBottom: 8,
   },
-  reporterLabel: {
-    fontSize: 12,
-    color: "#6C757D",
-    marginBottom: 6,
-  },
-  callDistance: {
-    fontSize: 14,
-    color: "#6C757D",
-  },
-  chevron: {
-    position: "absolute",
-    right: 20,
-    top: 20,
-    fontSize: 24,
-    color: "#6C757D",
-  },
-  statusCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statusRow: {
+  callLocRow: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 8,
+  },
+  callLocText: { flex: 1, fontSize: 13, color: "#475569", fontWeight: "600" },
+  quickInfo: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 4,
+    marginBottom: 4,
+    gap: 6,
+  },
+  callActions: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "space-between",
+    gap: 8,
   },
-  statusLabel: {
-    fontSize: 16,
-    color: "#6C757D",
+  navBtn: {
+    backgroundColor: "#0F172A",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
-  statusBadge: {
-    backgroundColor: "#D1FAE5",
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#2D6A4F",
-  },
-  statusValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#003049",
-  },
-  actionCard: {
+  navBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
+  openHint: { fontSize: 12, color: "#64748B", fontWeight: "700" },
+  softCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 20,
-    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     alignItems: "center",
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    gap: 8,
   },
-  actionIcon: {
-    fontSize: 32,
-    marginRight: 16,
-  },
-  actionContent: {
-    flex: 1,
-  },
-  actionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 4,
-  },
-  actionSubtitle: {
-    fontSize: 14,
-    color: "#6C757D",
-  },
-  searchSubtitle: {
-    fontSize: 13,
-    color: "#6C757D",
-    marginBottom: 12,
-  },
+  softMuted: { color: "#64748B", fontWeight: "700", textAlign: "center" },
+  emptyEmoji: { fontSize: 28 },
+  emptyTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
   searchContainer: {
     flexDirection: "row",
-    marginBottom: 16,
+    gap: 8,
+    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F8FAFC",
     borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
     borderWidth: 1.5,
-    borderColor: "#E9ECEF",
-    marginRight: 8,
+    borderColor: "#E2E8F0",
+    color: "#0F172A",
   },
   searchBtn: {
-    backgroundColor: "#D62828",
-    paddingHorizontal: 20,
+    backgroundColor: "#DC2626",
+    paddingHorizontal: 18,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 50,
+    minWidth: 52,
   },
-  searchBtnText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "700",
-  },
+  searchBtnDisabled: { backgroundColor: "#CBD5E1" },
+  searchBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
   patientInfoCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 20,
+    padding: 18,
     marginTop: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 2,
-    borderColor: "#D62828",
+    borderWidth: 1.5,
+    borderColor: "#DC2626",
   },
   patientHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 14,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#E9ECEF",
+    borderBottomColor: "#E2E8F0",
   },
   patientName: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#003049",
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0F172A",
+    flex: 1,
+    marginRight: 8,
   },
-  closeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#F8F9FA",
+  iconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
     justifyContent: "center",
   },
-  closeBtnText: {
-    fontSize: 18,
-    color: "#6C757D",
-    fontWeight: "700",
-  },
-  patientInfoRow: {
+  iconBtnText: { fontSize: 16, color: "#64748B", fontWeight: "800" },
+  kvRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
-  patientInfoLabel: {
-    fontSize: 14,
-    color: "#6C757D",
-    fontWeight: "600",
-  },
-  patientInfoValue: {
-    fontSize: 14,
-    color: "#003049",
-    fontWeight: "700",
-  },
-  patientInfoSection: {
-    marginTop: 16,
-    paddingTop: 16,
+  kvLabel: { fontSize: 13, color: "#64748B", fontWeight: "700" },
+  kvValue: { fontSize: 14, color: "#0F172A", fontWeight: "800" },
+  patientSubSection: {
+    marginTop: 14,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: "#E9ECEF",
+    borderTopColor: "#E2E8F0",
   },
-  patientInfoSectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 8,
+  patientSubTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginBottom: 6,
+    letterSpacing: 0.3,
   },
-  patientInfoText: {
-    fontSize: 14,
-    color: "#212529",
-    lineHeight: 20,
-  },
+  patientSubText: { fontSize: 14, color: "#212529", lineHeight: 20 },
   viewFullBtn: {
     marginTop: 16,
     paddingVertical: 12,
     alignItems: "center",
     borderTopWidth: 1,
-    borderTopColor: "#E9ECEF",
-    paddingTop: 16,
+    borderTopColor: "#E2E8F0",
+    paddingTop: 14,
   },
-  viewFullBtnText: {
-    fontSize: 16,
-    color: "#D62828",
-    fontWeight: "700",
-  },
-  loadingContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-  },
-  loadingText: {
-    fontSize: 16,
-    color: "#6C757D",
-  },
-  emptyContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 40,
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 16,
-    color: "#6C757D",
-    marginTop: 8,
-  },
-  locationRow: {
-    marginTop: 8,
-  },
-  distanceText: {
-    fontSize: 14,
-    color: "#D62828",
-    fontWeight: "700",
-    marginTop: 4,
-  },
-  quickInfo: {
+  viewFullBtnText: { fontSize: 15, color: "#DC2626", fontWeight: "800" },
+  statusRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 12,
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
-  quickInfoText: {
-    fontSize: 12,
-    color: "#6C757D",
-    backgroundColor: "#F8F9FA",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 8,
-    marginBottom: 4,
+  statusLabel: { fontSize: 14, color: "#64748B", fontWeight: "700" },
+  statusValue: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
+  shortcutCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    gap: 12,
   },
+  shortcutIcon: { fontSize: 24 },
+  shortcutContent: { flex: 1 },
+  shortcutTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  shortcutSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  chevron: { fontSize: 22, color: "#94A3B8", fontWeight: "700" },
 });

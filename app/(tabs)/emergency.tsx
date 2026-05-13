@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
-import { theme } from "../../src/ui/theme";
 
 export default function EmergencyScreen() {
   const { t } = useLanguage();
@@ -59,7 +58,6 @@ export default function EmergencyScreen() {
         navigateToActiveEmergency();
         return;
       }
-      // If context says already active, treat as success and navigate.
       if (result.reason === "already_active") {
         navigateToActiveEmergency();
         return;
@@ -71,7 +69,6 @@ export default function EmergencyScreen() {
   };
 
   const handleEmergencyPress = async () => {
-    // Global guard: prevent multiple SOS triggers
     if (isEmergencyActive) {
       navigateToActiveEmergency();
       return;
@@ -80,8 +77,6 @@ export default function EmergencyScreen() {
     locationDataRef.current = null;
     setSosBusy(true);
 
-    // Fetch location first — countdown starts only after location is ready
-    // (mirrors original behaviour so location is always available on navigate)
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       console.log("[SOS][UI] location permission status:", status);
@@ -130,13 +125,24 @@ export default function EmergencyScreen() {
       setSosBusy(false);
     }
 
-    // Show victim selection overlay only after location is ready (or failed)
     setIsVictimSelectOpen(true);
   };
 
   const cancelEmergency = () => {
     setIsVictimSelectOpen(false);
   };
+
+  const busy = sosBusy || startingEmergency;
+  const sosLabel = isEmergencyActive
+    ? t("emergencyActiveShort")
+    : busy
+      ? t("loading", "Preparing…")
+      : t("sos");
+  const sosSubLabel = isEmergencyActive
+    ? t("tapToViewActiveEmergency")
+    : busy
+      ? t("gettingLocation", "Getting your location…")
+      : t("tapForHelp");
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -148,12 +154,19 @@ export default function EmergencyScreen() {
         statusBarTranslucent
       >
         <View style={styles.overlayContainer}>
+          <View style={styles.overlayBadge}>
+            <Text style={styles.overlayBadgeText}>SOS</Text>
+          </View>
           <Text style={styles.overlayQuestion}>{t("sosWhoNeedsHelp")}</Text>
+          <Text style={styles.overlayHint}>
+            {t("tapForHelp", "Tap an option to send your SOS.")}
+          </Text>
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
               style={styles.overlayPrimaryBtn}
               onPress={() => proceedToActiveEmergency("me")}
+              activeOpacity={0.9}
             >
               <Text style={styles.overlayPrimaryText}>{t("sosMe")}</Text>
             </TouchableOpacity>
@@ -161,6 +174,7 @@ export default function EmergencyScreen() {
             <TouchableOpacity
               style={styles.overlaySecondaryBtn}
               onPress={() => proceedToActiveEmergency("other")}
+              activeOpacity={0.9}
             >
               <Text style={styles.overlaySecondaryText}>
                 {t("sosSomeoneElse")}
@@ -176,77 +190,88 @@ export default function EmergencyScreen() {
           </TouchableOpacity>
         </View>
       </Modal>
-      <View style={styles.header}>
-        <Text style={styles.logo}>🚨</Text>
+
+      {/* Hero / Title */}
+      <View style={styles.hero}>
+        <View style={styles.heroBadge}>
+          <Text style={styles.heroBadgeText}>{t("tab_emergency", "EMERGENCY")}</Text>
+        </View>
         <Text style={styles.title}>{t("emergencyTitle")}</Text>
         <Text style={styles.subtitle}>{t("emergencySubtitle")}</Text>
       </View>
 
-      <>
-        {/* Emergency Button */}
-        <TouchableOpacity
-          style={[
-            styles.emergencyBtn,
-            isEmergencyActive && styles.emergencyBtnActive,
-            (sosBusy || startingEmergency) && styles.emergencyBtnDisabled,
-          ]}
-          onPress={handleEmergencyPress}
-          disabled={sosBusy || startingEmergency}
-        >
-          <Text style={styles.emergencyIcon}>🚨</Text>
-          <Text style={styles.emergencyText}>
-            {isEmergencyActive ? t("emergencyActiveShort") : `🚨 ${t("sos")}`}
-          </Text>
-          <Text style={styles.emergencySubtext}>
-            {isEmergencyActive
-              ? t("tapToViewActiveEmergency")
-              : sosBusy || startingEmergency
-                ? t("loading") || t("pleaseWait")
-                : t("tapForHelp")}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Emergency Instructions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("beforeEmergency")}</Text>
-          <View style={styles.instructionCard}>
-            <Text style={styles.instructionText}>✓ {t("stayCalm")}</Text>
-            <Text style={styles.instructionText}>✓ {t("checkLocation")}</Text>
-            <Text style={styles.instructionText}>✓ {t("ensureSafety")}</Text>
-            <Text style={styles.instructionText}>✓ {t("haveMedicalInfo")}</Text>
-          </View>
+      {/* PRIMARY: huge red SOS button — the single most important action. */}
+      <TouchableOpacity
+        style={[
+          styles.sosBtn,
+          isEmergencyActive && styles.sosBtnActive,
+          busy && styles.sosBtnDisabled,
+        ]}
+        onPress={handleEmergencyPress}
+        disabled={busy}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={String(sosLabel)}
+      >
+        <View style={styles.sosRing}>
+          <Text style={styles.sosIcon}>🚨</Text>
         </View>
+        <Text style={styles.sosLabel}>{sosLabel}</Text>
+        <Text style={styles.sosSubLabel}>{sosSubLabel}</Text>
+      </TouchableOpacity>
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push("/(tabs)/firstaid")}
-          >
-            <Text style={styles.actionIcon}>⛑</Text>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>{t("medical_guides")}</Text>
-              <Text style={styles.actionSubtitle}>
-                {t("medical_guides_desc")}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push("/(tabs)/profile")}
-          >
-            <Text style={styles.actionIcon}>📋</Text>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>{t("medicalProfile")}</Text>
-              <Text style={styles.actionSubtitle}>{t("personal_info")}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+      {/* Reassurance / Checklist — quieter card */}
+      <View style={styles.calmCard}>
+        <Text style={styles.calmTitle}>{t("beforeEmergency")}</Text>
+        <View style={styles.calmRow}>
+          <Text style={styles.calmIcon}>✓</Text>
+          <Text style={styles.calmText}>{t("stayCalm")}</Text>
         </View>
-      </>
+        <View style={styles.calmRow}>
+          <Text style={styles.calmIcon}>✓</Text>
+          <Text style={styles.calmText}>{t("checkLocation")}</Text>
+        </View>
+        <View style={styles.calmRow}>
+          <Text style={styles.calmIcon}>✓</Text>
+          <Text style={styles.calmText}>{t("ensureSafety")}</Text>
+        </View>
+        <View style={styles.calmRow}>
+          <Text style={styles.calmIcon}>✓</Text>
+          <Text style={styles.calmText}>{t("haveMedicalInfo")}</Text>
+        </View>
+      </View>
+
+      {/* Secondary actions — smaller, lower visual weight than SOS button. */}
+      <Text style={styles.sectionLabel}>{t("quickActions")}</Text>
+      <TouchableOpacity
+        style={styles.shortcutCard}
+        onPress={() => router.push("/(tabs)/firstaid")}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.shortcutIcon}>⛑</Text>
+        <View style={styles.shortcutContent}>
+          <Text style={styles.shortcutTitle}>{t("medical_guides")}</Text>
+          <Text style={styles.shortcutSub} numberOfLines={1}>
+            {t("medical_guides_desc")}
+          </Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.shortcutCard}
+        onPress={() => router.push("/(tabs)/profile")}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.shortcutIcon}>📋</Text>
+        <View style={styles.shortcutContent}>
+          <Text style={styles.shortcutTitle}>{t("medicalProfile")}</Text>
+          <Text style={styles.shortcutSub} numberOfLines={1}>
+            {t("personal_info")}
+          </Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -254,164 +279,222 @@ export default function EmergencyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: "#F1F5F9",
   },
   content: {
-    paddingTop: 60,
-    paddingBottom: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.lg,
+    paddingTop: 64,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
   },
-  header: {
+  hero: {
     alignItems: "center",
-    marginBottom: theme.spacing.xxl,
+    marginBottom: 24,
   },
-  logo: {
-    fontSize: 60,
-    marginBottom: theme.spacing.sm,
+  heroBadge: {
+    backgroundColor: "#FEE2E2",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginBottom: 12,
+  },
+  heroBadgeText: {
+    color: "#B91C1C",
+    fontWeight: "900",
+    fontSize: 12,
+    letterSpacing: 1.2,
   },
   title: {
-    ...theme.typography.title,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: theme.colors.textMuted,
+    fontSize: 32,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: -0.5,
+    marginBottom: 6,
     textAlign: "center",
   },
-  emergencyBtn: {
-    backgroundColor: theme.colors.danger,
-    borderRadius: theme.radius.lg,
-    padding: 32,
-    alignItems: "center",
-    marginBottom: theme.spacing.xxl,
-    ...theme.shadow.primary,
-  },
-  emergencyBtnActive: {
-    backgroundColor: theme.colors.dangerDark,
-  },
-  emergencyBtnDisabled: {
-    opacity: 0.7,
-  },
-  emergencyIcon: {
-    fontSize: 64,
-    marginBottom: theme.spacing.md,
-  },
-  emergencyText: {
-    color: theme.colors.surface,
-    fontSize: 28,
-    fontWeight: "900",
-    marginBottom: theme.spacing.sm,
-  },
-  emergencySubtext: {
-    color: theme.colors.surface,
-    fontSize: 16,
-    opacity: 0.9,
-  },
-  section: {
-    marginBottom: theme.spacing.xl,
-  },
-  sectionTitle: {
-    ...theme.typography.h2,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.lg,
-  },
-  instructionCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
-    ...theme.shadow.card,
-  },
-  instructionText: {
-    fontSize: 16,
-    color: "#212529",
-    marginBottom: theme.spacing.md,
-    lineHeight: 24,
-  },
-  actionCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: theme.spacing.md,
-    ...theme.shadow.card,
-  },
-  actionIcon: {
-    fontSize: 32,
-    marginRight: theme.spacing.lg,
-  },
-  actionContent: {
-    flex: 1,
-  },
-  actionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  actionSubtitle: {
+  subtitle: {
     fontSize: 14,
-    color: theme.colors.textMuted,
+    color: "#64748B",
+    textAlign: "center",
+    paddingHorizontal: 16,
+    lineHeight: 20,
   },
-  chevron: {
-    fontSize: 24,
-    color: theme.colors.textMuted,
+  sosBtn: {
+    backgroundColor: "#DC2626",
+    borderRadius: 24,
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    marginBottom: 24,
+    shadowColor: "#DC2626",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 10,
   },
-  overlayContainer: {
-    flex: 1,
-    backgroundColor: theme.colors.danger,
+  sosBtnActive: { backgroundColor: "#991B1B" },
+  sosBtnDisabled: { opacity: 0.75 },
+  sosRing: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 4,
+    borderColor: "rgba(255,255,255,0.32)",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: theme.spacing.xxl,
+    marginBottom: 16,
+  },
+  sosIcon: { fontSize: 56 },
+  sosLabel: {
+    color: "#FFFFFF",
+    fontSize: 30,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  sosSubLabel: {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  calmCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 24,
+  },
+  calmTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: 0.4,
+    marginBottom: 12,
+    textTransform: "uppercase",
+  },
+  calmRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 8,
+  },
+  calmIcon: {
+    color: "#16A34A",
+    fontSize: 16,
+    fontWeight: "900",
+    width: 18,
+  },
+  calmText: {
+    fontSize: 14,
+    color: "#334155",
+    fontWeight: "600",
+    flex: 1,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#94A3B8",
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    marginLeft: 4,
+    textTransform: "uppercase",
+  },
+  shortcutCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    gap: 12,
+  },
+  shortcutIcon: { fontSize: 24 },
+  shortcutContent: { flex: 1 },
+  shortcutTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  shortcutSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  chevron: { fontSize: 22, color: "#94A3B8", fontWeight: "700" },
+  overlayContainer: {
+    flex: 1,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  overlayBadge: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  overlayBadgeText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 2,
   },
   overlayQuestion: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: theme.colors.surface,
-    marginBottom: theme.spacing.xxl,
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    marginBottom: 10,
+    textAlign: "center",
+    letterSpacing: -0.3,
+  },
+  overlayHint: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 32,
     textAlign: "center",
   },
   buttonsContainer: {
     width: "100%",
     marginBottom: 40,
-    gap: 16,
+    gap: 14,
   },
   overlayPrimaryBtn: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    paddingVertical: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    paddingVertical: 22,
     paddingHorizontal: 20,
     alignItems: "center",
   },
   overlayPrimaryText: {
-    color: theme.colors.danger,
-    fontSize: 20,
+    color: "#DC2626",
+    fontSize: 22,
     fontWeight: "900",
+    letterSpacing: 0.3,
   },
   overlaySecondaryBtn: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: theme.radius.md,
-    paddingVertical: 16,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 18,
+    paddingVertical: 22,
     paddingHorizontal: 20,
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.35)",
+    borderColor: "rgba(255,255,255,0.4)",
   },
   overlaySecondaryText: {
-    color: theme.colors.surface,
+    color: "#FFFFFF",
     fontSize: 20,
     fontWeight: "900",
+    letterSpacing: 0.3,
   },
   cancelOverlayBtn: {
     backgroundColor: "rgba(0,0,0,0.25)",
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 48,
-    borderRadius: theme.radius.sm,
+    borderRadius: 12,
   },
   cancelOverlayText: {
-    color: theme.colors.surface,
-    fontSize: 18,
-    fontWeight: "700",
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
   },
 });

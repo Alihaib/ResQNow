@@ -2,6 +2,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import EmergencyChat from "../../../components/EmergencyChat";
+import SectionHeader from "../../../components/ui/SectionHeader";
+import StatusChip from "../../../components/ui/StatusChip";
 import {
   ActivityIndicator,
   Alert,
@@ -754,67 +756,81 @@ Shared from ResQNow Emergency App
 
   return (
     <View style={styles.container}>
-      {/* Status Bar */}
+      {/*
+        Hero status header — keeps status + elapsed timer + victim chip
+        within a single calm, scannable block at the very top.
+      */}
       <View style={styles.statusBar}>
-        <View style={styles.statusIndicator} />
-        <Text style={styles.statusText}>{translate("emergencyActive")}</Text>
+        <View style={styles.statusTopRow}>
+          <View style={styles.statusLeft}>
+            <View style={styles.statusIndicator} />
+            <Text style={styles.statusText}>{translate("emergencyActive")}</Text>
+          </View>
+          <View style={styles.statusTimerBlock}>
+            <Text style={styles.statusTimerLabel}>{translate("timeElapsed")}</Text>
+            <Text style={styles.statusTimerValue}>{formatTime(timeElapsed)}</Text>
+          </View>
+        </View>
+        <View style={styles.statusBottomRow}>
+          <StatusChip
+            label={
+              victimType === "me"
+                ? translate("victimReceivingHelp")
+                : translate("victimHelpingOther")
+            }
+            bg="rgba(255,255,255,0.18)"
+            fg="#FFFFFF"
+          />
+          {isAmbulanceArrived ? (
+            <StatusChip
+              label={translate("ambulanceArrivedShort")}
+              bg="#FFFFFF"
+              fg="#DC2626"
+              solid
+            />
+          ) : crewEtaMinutes != null ? (
+            <StatusChip
+              label={`ETA ~${crewEtaMinutes} min`}
+              bg="rgba(255,255,255,0.95)"
+              fg="#B91C1C"
+            />
+          ) : null}
+        </View>
       </View>
 
       <ScrollView ref={mainScrollRef} contentContainerStyle={styles.content}>
-        {/* Timer */}
-        <View style={styles.timerContainer}>
-          <Text style={styles.timerLabel}>{translate("timeElapsed")}</Text>
-          <Text style={styles.timer}>{formatTime(timeElapsed)}</Text>
-        </View>
-
-        {/* Victim label */}
-        <View style={styles.victimLabelCard}>
-          <Text style={styles.victimLabelText}>
-            {victimType === "me" ? translate("victimReceivingHelp") : translate("victimHelpingOther")}
-          </Text>
-        </View>
-
-        {/* Location / share — kept above smart triage so it stays near the top */}
-        <TouchableOpacity 
+        {/* 1. LOCATION + SHARE — tap to share with emergency contacts. */}
+        <TouchableOpacity
           style={styles.infoCard}
           onPress={shareLocation}
-          activeOpacity={0.7}
+          activeOpacity={0.85}
+          accessibilityRole="button"
         >
           <Text style={styles.infoIcon}>📍</Text>
           <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>{translate("yourLocation") || "Your Location"}</Text>
-            <Text style={styles.infoValue}>
-              {locationDisplay || translate("locationLoading") || "Loading location..."}
+            <Text style={styles.infoLabel}>
+              {translate("yourLocation") || "Your Location"}
             </Text>
-            {location && (
+            <Text style={styles.infoValue} numberOfLines={2}>
+              {locationDisplay ||
+                translate("locationLoading") ||
+                "Loading location..."}
+            </Text>
+            {location ? (
               <Text style={styles.locationCoords}>
-                {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
               </Text>
-            )}
-            <Text style={styles.tapToShare}>
-              {translate("tapToShareLocation") || "Tap to share location"}
-            </Text>
+            ) : null}
+            <View style={styles.shareHintRow}>
+              <Text style={styles.shareIcon}>📤</Text>
+              <Text style={styles.tapToShare}>
+                {translate("tapToShareLocation") || "Tap to share location"}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.shareIcon}>📤</Text>
         </TouchableOpacity>
 
-        <View
-          onLayout={(e) => {
-            firstAidSectionYRef.current = e.nativeEvent.layout.y;
-          }}
-        >
-          <SosSmartFirstAid
-            lang={lang}
-            translate={translate}
-            crewEtaMinutes={crewEtaMinutes}
-            ambulanceStatusText={ambulanceStatusLine}
-            isAmbulanceArrived={isAmbulanceArrived}
-            victimType={victimType}
-            onScrollToFirstAidSection={scrollToFirstAidSection}
-          />
-        </View>
-
-        {/* Live tracking map — locations & ETA from Firestore (EmergencyContext onSnapshot) */}
+        {/* 2. LIVE MAP — see ambulance approach in real time. */}
         {mapPatientAnchor && (
           <View style={styles.mapCard}>
             <View style={styles.mapHeader}>
@@ -912,18 +928,25 @@ Shared from ResQNow Emergency App
           </View>
         )}
 
-        <View style={styles.instructionsCardCompact}>
-          <Text style={styles.instructionsCompactText}>
+        {/* Calm reassurance — single short line, low visual weight. */}
+        <View style={styles.calmBanner}>
+          <Text style={styles.calmBannerText}>
             {translate("stayCalmTitle")} — {translate("helpOnWay")}
           </Text>
         </View>
 
-        {/* Chat with medical team — available while emergency is active */}
+        {/* 3. CHAT WITH MEDICAL TEAM — talk to the dispatcher / doctor. */}
         {currentEmergency?.id && user?.uid ? (
-          <View style={styles.chatCard}>
-            <Text style={styles.chatCardTitle}>💬 Chat with Medical Team</Text>
-            <Text style={styles.chatCardSub}>
-              Message the doctor monitoring your case
+          <View style={styles.sectionCard}>
+            <SectionHeader
+              overline={translate("chatTitle", "Communication")}
+              title={translate("chatTitle", "Chat with Medical Team")}
+            />
+            <Text style={styles.sectionHint}>
+              {translate(
+                "chatPlaceholder",
+                "Message the doctor monitoring your case",
+              )}
             </Text>
             <EmergencyChat
               emergencyId={currentEmergency.id}
@@ -934,8 +957,25 @@ Shared from ResQNow Emergency App
           </View>
         ) : null}
 
+        {/* 4. SMART FIRST-AID GUIDANCE — adaptive triage / steps. */}
+        <View
+          onLayout={(e) => {
+            firstAidSectionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <SosSmartFirstAid
+            lang={lang}
+            translate={translate}
+            crewEtaMinutes={crewEtaMinutes}
+            ambulanceStatusText={ambulanceStatusLine}
+            isAmbulanceArrived={isAmbulanceArrived}
+            victimType={victimType}
+            onScrollToFirstAidSection={scrollToFirstAidSection}
+          />
+        </View>
+
         {/*
-          AI Triage Assistant — opens a structured triage modal.
+          5. AI TRIAGE ASSISTANT — opens a structured triage modal.
           When the OpenAI key is missing or the call fails, the modal itself
           falls back to opening the built-in first-aid library, so the button
           is always offered (no silent dead-end).
@@ -951,7 +991,7 @@ Shared from ResQNow Emergency App
             <Text style={styles.actionTitle}>
               {translate("aiTriageButtonTitle", "AI Triage Assistant")}
             </Text>
-            <Text style={styles.actionSubtitle}>
+            <Text style={styles.actionSubtitle} numberOfLines={2}>
               {aiAvailable
                 ? translate(
                     "aiTriageButtonSub",
@@ -966,21 +1006,23 @@ Shared from ResQNow Emergency App
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
 
-        {/* Medical Info Share (only when victim is the user) */}
+        {/* 6. MEDICAL INFO SHARE — only when victim is the user. */}
         {victimType === "me" && (
           <TouchableOpacity
             style={styles.actionCard}
             onPress={shareMedicalInfo}
+            accessibilityRole="button"
           >
             <Text style={styles.actionIcon}>📋</Text>
             <View style={styles.actionContent}>
               <Text style={styles.actionTitle}>{translate("shareMedicalProfile")}</Text>
-              <Text style={styles.actionSubtitle}>{translate("sendMedicalInfo")}</Text>
+              <Text style={styles.actionSubtitle} numberOfLines={2}>
+                {translate("sendMedicalInfo")}
+              </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
         )}
-
       </ScrollView>
 
       {/*
@@ -1004,7 +1046,7 @@ Shared from ResQNow Emergency App
       <View style={styles.footer}>
         {!activeEmergencyHydrated ? (
           <View style={styles.footerSyncRow}>
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color="#DC2626" />
             <Text style={styles.footerSyncText}>
               {translate("loading") || "Loading…"}
             </Text>
@@ -1042,209 +1084,195 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#DC2626",
   },
+  /* Hero status block — calm but unmistakable. */
   statusBar: {
     backgroundColor: "#DC2626",
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 56,
+    paddingBottom: 18,
     paddingHorizontal: 20,
+  },
+  statusTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  statusLeft: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   statusIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: "#FFFFFF",
     marginRight: 8,
   },
   statusText: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "900",
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
-  content: {
-    backgroundColor: "#F8F9FA",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 30,
-    paddingBottom: 100,
-    paddingHorizontal: 20,
+  statusTimerBlock: {
+    alignItems: "flex-end",
   },
-  timerContainer: {
-    alignItems: "center",
-    marginBottom: 30,
+  statusTimerLabel: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
-  victimLabelCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: "#E9ECEF",
-  },
-  victimLabelText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#003049",
-    textAlign: "center",
-  },
-  timerLabel: {
-    fontSize: 16,
-    color: "#6C757D",
-    marginBottom: 8,
-  },
-  timer: {
-    fontSize: 64,
+  statusTimerValue: {
+    color: "#FFFFFF",
+    fontSize: 28,
     fontWeight: "900",
-    color: "#DC2626",
+    letterSpacing: -0.5,
+    fontVariant: ["tabular-nums"],
   },
-  infoCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
+  statusBottomRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 2,
-    borderColor: "#D62828",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  content: {
+    backgroundColor: "#F1F5F9",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 22,
+    paddingBottom: 120,
+    paddingHorizontal: 20,
+  },
+  /* Re-usable section card wrapper for any sub-block needing a header. */
+  sectionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "600",
+    marginBottom: 10,
+    marginTop: -4,
+  },
+  /* Location / share card. */
+  infoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderLeftWidth: 4,
+    borderLeftColor: "#DC2626",
   },
   infoIcon: {
-    fontSize: 32,
-    marginRight: 16,
+    fontSize: 26,
+    marginRight: 12,
+    marginTop: 2,
   },
   infoContent: {
     flex: 1,
   },
   infoLabel: {
-    fontSize: 14,
-    color: "#6C757D",
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#94A3B8",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
     marginBottom: 4,
   },
   infoValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 4,
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+    lineHeight: 20,
   },
   locationCoords: {
-    fontSize: 12,
-    color: "#6C757D",
+    fontSize: 11,
+    color: "#64748B",
     fontFamily: "monospace",
     marginTop: 4,
   },
+  shareHintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    gap: 6,
+  },
+  shareIcon: { fontSize: 14 },
   tapToShare: {
     fontSize: 12,
-    color: "#D62828",
-    fontWeight: "600",
-    marginTop: 8,
-    fontStyle: "italic",
-  },
-  shareIcon: {
-    fontSize: 24,
-    marginLeft: 12,
-  },
-  instructionsCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  instructionsTitle: {
-    fontSize: 20,
+    color: "#DC2626",
     fontWeight: "800",
-    color: "#003049",
-    marginBottom: 12,
+    letterSpacing: 0.3,
   },
-  instructionsText: {
-    fontSize: 16,
-    color: "#212529",
-    lineHeight: 28,
-  },
-  instructionsCardCompact: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
+  /* Compact calm reassurance banner. */
+  calmBanner: {
+    backgroundColor: "#ECFDF5",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#E9ECEF",
+    borderColor: "#A7F3D0",
   },
-  instructionsCompactText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#003049",
-    lineHeight: 22,
+  calmBannerText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#065F46",
     textAlign: "center",
   },
+  /* Generic action card (chat row, AI triage, share). */
   actionCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  actionIcon: {
-    fontSize: 32,
-    marginRight: 16,
-  },
-  actionContent: {
-    flex: 1,
-  },
+  actionIcon: { fontSize: 26, marginRight: 14 },
+  actionContent: { flex: 1 },
   actionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginBottom: 2,
   },
-  actionSubtitle: {
-    fontSize: 14,
-    color: "#6C757D",
-  },
-  chevron: {
-    fontSize: 24,
-    color: "#6C757D",
-  },
+  actionSubtitle: { fontSize: 13, color: "#64748B", fontWeight: "600" },
+  chevron: { fontSize: 22, color: "#94A3B8", fontWeight: "700" },
   mapCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    marginBottom: 20,
+    marginBottom: 16,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 2,
-    borderColor: "#1D4ED8",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
   mapHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
   },
   mapTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#003049",
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#0F172A",
   },
   distanceBadge: {
     backgroundColor: "#EFF6FF",
@@ -1339,84 +1367,63 @@ const styles = StyleSheet.create({
     color: "#6C757D",
     fontWeight: "600",
   },
+  /* Sticky bottom action bar — calm but accessible. */
   footer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: "#FFFFFF",
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 24,
     borderTopWidth: 1,
-    borderTopColor: "#E9ECEF",
+    borderTopColor: "#E2E8F0",
   },
   endBtn: {
-    backgroundColor: "#6C757D",
+    backgroundColor: "#475569",
     paddingVertical: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: "center",
   },
   endBtnDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   endBtnText: {
     color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: 0.3,
   },
   footerSyncRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   footerSyncText: {
     marginLeft: 12,
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
+    color: "#475569",
+    fontSize: 14,
+    fontWeight: "700",
   },
   footerLocked: {
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
   },
   footerLockedTitle: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "800",
-    marginBottom: 6,
+    color: "#0F172A",
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 4,
     textAlign: "center",
   },
   footerLockedBody: {
-    color: "#FEE2E2",
-    fontSize: 14,
+    color: "#64748B",
+    fontSize: 12,
     fontWeight: "600",
     textAlign: "center",
-    lineHeight: 20,
-  },
-  chatCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E9ECEF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  chatCardTitle: {
-    fontSize: 17,
-    fontWeight: "900",
-    color: "#003049",
-    marginBottom: 4,
-  },
-  chatCardSub: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#6C757D",
-    marginBottom: 14,
+    lineHeight: 18,
   },
 });
 
