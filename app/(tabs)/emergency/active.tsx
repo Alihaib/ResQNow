@@ -164,8 +164,8 @@ export default function ActiveEmergencyScreen() {
     }, 280);
     return () => clearTimeout(timer);
   }, [
-    mapPatientAnchor.latitude,
-    mapPatientAnchor.longitude,
+    mapPatientAnchor?.latitude,
+    mapPatientAnchor?.longitude,
     ambulanceCoordsLive?.latitude,
     ambulanceCoordsLive?.longitude,
     liveEmergency?.updatedAt,
