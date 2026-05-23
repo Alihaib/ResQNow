@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -33,6 +34,7 @@ import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
 import { claimEmergencyTransaction } from "../../src/services/emergencyAssignment";
+import { useUiDirection } from "../../components/ui/layout";
 import { tokens } from "../../src/ui/tokens";
 import { caseIdSuffix } from "../../src/utils/formatCaseId";
 import { openMapsNavigation } from "../../src/utils/openMapsNavigation";
@@ -64,6 +66,7 @@ interface Emergency {
 export default function AmbulanceDashboard() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { row } = useUiDirection();
   const { user, role, approved, loading: authLoading } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -138,12 +141,12 @@ export default function AmbulanceDashboard() {
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
-          duration: 650,
+          duration: 1200,
           useNativeDriver: true,
         }),
         Animated.timing(pulse, {
           toValue: 0,
-          duration: 650,
+          duration: 1200,
           useNativeDriver: true,
         }),
       ]),
@@ -630,8 +633,8 @@ export default function AmbulanceDashboard() {
           tone={mine ? "danger" : "default"}
           accentLeft={isNew && !mine}
         >
-          <View style={styles.callTopRow}>
-            <View style={styles.chipRow}>
+          <View style={[styles.callTopRow, row]}>
+            <View style={[styles.chipRow, row]}>
               <StatusChip
                 label={
                   mine
@@ -678,9 +681,14 @@ export default function AmbulanceDashboard() {
                 t("unknownUser")}
           </Text>
 
-          <View style={styles.callLocRow}>
+          <View style={[styles.callLocRow, row]}>
+            <Ionicons
+              name="location-outline"
+              size={16}
+              color={tokens.color.textMuted}
+              style={styles.callLocIcon}
+            />
             <Text style={styles.callLocText} numberOfLines={1}>
-              📍{" "}
               {emergency.location.address ||
                 `${emergency.location.latitude.toFixed(4)}, ${emergency.location.longitude.toFixed(4)}`}
             </Text>
@@ -690,17 +698,17 @@ export default function AmbulanceDashboard() {
           </View>
 
           {emergency.victimType !== "other" && emergency.userInfo ? (
-            <View style={styles.quickInfo}>
+            <View style={[styles.quickInfo, row]}>
               {emergency.userInfo.bloodType ? (
                 <StatusChip
-                  label={`🩸 ${emergency.userInfo.bloodType}`}
+                  label={`${t("blood_type")}: ${emergency.userInfo.bloodType}`}
                   variant="neutral"
                   size="sm"
                 />
               ) : null}
               {emergency.userInfo.age ? (
                 <StatusChip
-                  label={`👤 ${emergency.userInfo.age}`}
+                  label={`${t("age")}: ${emergency.userInfo.age}`}
                   variant="neutral"
                   size="sm"
                 />
@@ -708,7 +716,7 @@ export default function AmbulanceDashboard() {
             </View>
           ) : null}
 
-          <View style={styles.callActions}>
+          <View style={[styles.callActions, row]}>
             {/* Inline TouchableOpacity (not the shared Button) so we can
                 stopPropagation and avoid the outer card's onPress firing in
                 addition to the action handler. */}
@@ -725,7 +733,7 @@ export default function AmbulanceDashboard() {
                   activeOpacity={0.85}
                 >
                   <Text style={styles.navBtnText}>
-                    🧭  {t("openNavigation") || "Navigate"}
+                    {t("openNavigation") || "Navigate"}
                   </Text>
                 </TouchableOpacity>
                 <Text style={styles.openHint}>
@@ -750,11 +758,20 @@ export default function AmbulanceDashboard() {
                   disabled={!!acceptingId}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.acceptBtnText}>
-                    {isAccepting
-                      ? t("acceptingCase", "Accepting…")
-                      : `✓  ${t("acceptCase", "Accept case")}`}
-                  </Text>
+                  <View style={[styles.acceptBtnInner, row]}>
+                    {!isAccepting ? (
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color={tokens.color.textOnPrimary}
+                      />
+                    ) : null}
+                    <Text style={styles.acceptBtnText}>
+                      {isAccepting
+                        ? t("acceptingCase", "Accepting…")
+                        : t("acceptCase", "Accept case")}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
                 <Text style={styles.openHint}>
                   {t("tapToOpenCaseMonitor") || "Tap to open"}
@@ -774,18 +791,11 @@ export default function AmbulanceDashboard() {
         <Animated.View
           style={[
             styles.liveBanner,
+            row,
             {
-              transform: [
-                {
-                  scale: pulse.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [1, 1.02],
-                  }),
-                },
-              ],
               opacity: pulse.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0.95, 1],
+                outputRange: [0.96, 1],
               }),
             },
           ]}
@@ -803,7 +813,7 @@ export default function AmbulanceDashboard() {
             accessibilityRole="button"
           >
             <Text style={styles.liveBannerTitle}>
-              🚨 New Emergency Received
+              {t("newEmergencyReceived", "New emergency received")}
             </Text>
             <Text style={styles.liveBannerSub}>Tap to open</Text>
           </TouchableOpacity>
@@ -817,14 +827,14 @@ export default function AmbulanceDashboard() {
             accessibilityLabel="Dismiss"
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
-            <Text style={styles.liveBannerDismissText}>✕</Text>
+            <Ionicons name="close" size={18} color={tokens.color.textSecondary} />
           </TouchableOpacity>
         </Animated.View>
       )}
 
       <ScreenHeader
         title={t("ambulance_dashboard_title")}
-        eyebrow={`🚑 ${t("ambulance_role")}`}
+        eyebrow={t("ambulance_role")}
       />
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
@@ -836,7 +846,7 @@ export default function AmbulanceDashboard() {
             <SectionHeader
               overline={t("active") || "Mission"}
               title={t("activeEmergency") || "Your current mission"}
-              accent={tokens.color.danger}
+              accent={tokens.color.warning}
             />
             {renderCallCard(myMission, true)}
           </View>
@@ -854,7 +864,7 @@ export default function AmbulanceDashboard() {
             overline={t("live_calls") || "Active"}
             title={t("live_calls") || "Live Emergency Calls"}
             accent={
-              otherCalls.length > 0 ? tokens.color.danger : undefined
+              otherCalls.length > 0 ? tokens.color.warning : undefined
             }
             trailing={
               otherCalls.length > 0 ? (
@@ -873,9 +883,9 @@ export default function AmbulanceDashboard() {
               title={t("loading") || "Loading emergencies..."}
             />
           ) : emergenciesError ? (
-            <EmptyState icon="⚠️" title={emergenciesError} />
+            <EmptyState ionIcon="alert-circle-outline" title={emergenciesError} tone="danger" />
           ) : otherCalls.length === 0 ? (
-            <EmptyState icon="🚑" title={t("noActiveEmergencies")} />
+            <EmptyState ionIcon="car-outline" title={t("noActiveEmergencies")} />
           ) : (
             <View style={styles.cardStack}>
               {otherCalls.map((emergency) => renderCallCard(emergency, false))}
@@ -903,14 +913,14 @@ export default function AmbulanceDashboard() {
         <Card style={styles.section}>
           <SectionHeader
             overline={t("searchPatient") || "Directory"}
-            title={`🔍 ${t("searchPatient") || "Search Patient"}`}
+            title={t("searchPatient") || "Search Patient"}
           />
           <Text style={styles.helperText}>
             {t("searchPatientNote") ||
               "Enter Israeli ID or name to access medical information"}
           </Text>
 
-          <View style={styles.searchContainer}>
+          <View style={[styles.searchContainer, row]}>
             <TextInput
               style={styles.searchInput}
               placeholder={t("enterPatientId") || "Enter Israeli ID or Name"}
@@ -931,16 +941,18 @@ export default function AmbulanceDashboard() {
               accessibilityRole="button"
               accessibilityLabel={t("searchPatient")}
             >
-              <Text style={styles.searchBtnText}>
-                {searching ? "…" : "🔍"}
-              </Text>
+              {searching ? (
+                <Text style={styles.searchBtnText}>…</Text>
+              ) : (
+                <Ionicons name="search-outline" size={20} color={tokens.color.textOnPrimary} />
+              )}
             </TouchableOpacity>
           </View>
 
           {/* Patient Info Display */}
           {patientData && (
-            <Card tone="danger" style={styles.patientInfoCard}>
-              <View style={styles.patientHeader}>
+            <Card tone="accent" style={styles.patientInfoCard}>
+              <View style={[styles.patientHeader, row]}>
                 <Text style={styles.patientName} numberOfLines={1}>
                   {patientData.name || patientData.email}
                 </Text>
@@ -951,30 +963,30 @@ export default function AmbulanceDashboard() {
                   accessibilityLabel="Close"
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
-                  <Text style={styles.iconBtnText}>✕</Text>
+                  <Ionicons name="close" size={20} color={tokens.color.textMuted} />
                 </TouchableOpacity>
               </View>
 
               {patientData.israeliId && (
-                <View style={styles.kvRow}>
+                <View style={[styles.kvRow, row]}>
                   <Text style={styles.kvLabel}>{t("israeliId")}</Text>
                   <Text style={styles.kvValue}>{patientData.israeliId}</Text>
                 </View>
               )}
-              <View style={styles.kvRow}>
+              <View style={[styles.kvRow, row]}>
                 <Text style={styles.kvLabel}>{t("phoneNumber")}</Text>
                 <Text style={styles.kvValue}>
                   {patientData.phoneNumber || "—"}
                 </Text>
               </View>
               {patientData.bloodType && (
-                <View style={styles.kvRow}>
+                <View style={[styles.kvRow, row]}>
                   <Text style={styles.kvLabel}>{t("blood_type")}</Text>
                   <Text style={styles.kvValue}>{patientData.bloodType}</Text>
                 </View>
               )}
               {patientData.age && (
-                <View style={styles.kvRow}>
+                <View style={[styles.kvRow, row]}>
                   <Text style={styles.kvLabel}>{t("age")}</Text>
                   <Text style={styles.kvValue}>{patientData.age}</Text>
                 </View>
@@ -1049,7 +1061,7 @@ export default function AmbulanceDashboard() {
           />
 
           <ShortcutCard
-            icon="🚑"
+            ionIcon="car-outline"
             title={t("quickCurrentMission", "Current Mission")}
             subtitle={
               myMission
@@ -1065,13 +1077,13 @@ export default function AmbulanceDashboard() {
             }
           />
           <ShortcutCard
-            icon="🗺️"
+            ionIcon="map-outline"
             title={t("nearby_emergencies")}
             subtitle={t("nearby_emergencies_desc")}
             onPress={handleQuickNearbyEmergencies}
           />
           <ShortcutCard
-            icon="🧭"
+            ionIcon="navigate-outline"
             title={t("quickStartNavigation", "Start Navigation")}
             subtitle={
               myMission
@@ -1101,17 +1113,16 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.lg,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
-    shadowColor: "#0F172A",
+    shadowColor: tokens.color.textPrimary,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.18,
     shadowRadius: 12,
     elevation: 6,
   },
   liveBannerTitle: {
-    color: "#FFFFFF",
+    color: tokens.color.bgSurface,
     fontWeight: "900",
     fontSize: tokens.font.bodyLg,
     letterSpacing: 0.5,
@@ -1131,7 +1142,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   liveBannerDismissText: {
-    color: "#FFFFFF",
+    color: tokens.color.bgSurface,
     fontWeight: "900",
     fontSize: 16,
   },
@@ -1149,13 +1160,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   callTopRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: tokens.space.sm,
   },
   chipRow: {
-    flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
   },
@@ -1179,11 +1188,13 @@ const styles = StyleSheet.create({
     marginBottom: tokens.space.sm,
   },
   callLocRow: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: tokens.space.sm,
     marginBottom: tokens.space.sm,
+  },
+  callLocIcon: {
+    marginTop: 1,
   },
   callLocText: {
     flex: 1,
@@ -1191,8 +1202,11 @@ const styles = StyleSheet.create({
     color: tokens.color.textSecondary,
     fontWeight: "600",
   },
+  acceptBtnInner: {
+    alignItems: "center",
+    gap: tokens.space.xs,
+  },
   quickInfo: {
-    flexDirection: "row",
     flexWrap: "wrap",
     marginTop: tokens.space.xs,
     marginBottom: tokens.space.xs,
@@ -1203,7 +1217,6 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.md,
     borderTopWidth: tokens.hairline,
     borderTopColor: tokens.color.border,
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: tokens.space.sm,
@@ -1218,7 +1231,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   navBtnText: {
-    color: "#FFFFFF",
+    color: tokens.color.bgSurface,
     fontWeight: "800",
     fontSize: tokens.font.body,
     letterSpacing: 0.3,
@@ -1240,7 +1253,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   acceptBtnText: {
-    color: "#FFFFFF",
+    color: tokens.color.bgSurface,
     fontWeight: "900",
     fontSize: tokens.font.body,
     letterSpacing: 0.4,
@@ -1251,7 +1264,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   searchContainer: {
-    flexDirection: "row",
     gap: tokens.space.sm,
     marginBottom: tokens.space.md,
   },
@@ -1277,12 +1289,11 @@ const styles = StyleSheet.create({
     minHeight: tokens.hitSlop,
   },
   searchBtnDisabled: { backgroundColor: tokens.color.borderStrong },
-  searchBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
+  searchBtnText: { color: tokens.color.bgSurface, fontSize: 18, fontWeight: "700" },
   patientInfoCard: {
     marginTop: tokens.space.md,
   },
   patientHeader: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: tokens.space.md,
@@ -1295,7 +1306,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: tokens.color.textPrimary,
     flex: 1,
-    marginRight: tokens.space.sm,
+    marginEnd: tokens.space.sm,
   },
   iconBtn: {
     width: 32,
@@ -1311,7 +1322,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   kvRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: tokens.space.sm,

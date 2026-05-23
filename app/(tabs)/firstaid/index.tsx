@@ -1,27 +1,47 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withTiming,
-} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  FEATURED_CATEGORY_IDS,
+  FEATURED_FIRST_AID,
+  type FeaturedFirstAidCategory,
+  FirstAidCategoryCard,
+  FirstAidHubHeader,
+  FirstAidQuickHelp,
+  FirstAidSosBanner,
+  type QuickHelpAction,
+} from "../../../components/first-aid";
+import { firstAidTheme } from "../../../components/first-aid/theme";
 import { firstAidCategories } from "../../../src/firstAid/categories";
 import { pick } from "../../../src/firstAid/types";
+import { useUiDirection } from "../../../components/ui/layout";
 import { useLanguage } from "../../../src/context/LanguageContext";
+import { tokens } from "../../../src/ui/tokens";
 
 type SmartCase = "not_breathing" | "unconscious" | "bleeding" | "choking" | "burn" | "general";
 
-function emergencyHighlightKey(smartCase?: string): "bleeding" | "breathing" | "burns" | null {
+/** Life-saving categories first — fixed hub scan order */
+const PRIMARY_HUB_ORDER = [
+  "cpr",
+  "breathing",
+  "bleeding",
+  "cardiac",
+  "burns",
+  "choking",
+] as const;
+
+function featuredHighlightId(smartCase?: string): string | null {
   switch (smartCase as SmartCase | undefined) {
     case "bleeding":
       return "bleeding";
     case "burn":
       return "burns";
-    case "not_breathing":
     case "choking":
+      return "choking";
+    case "not_breathing":
+      return "cpr";
     case "unconscious":
       return "breathing";
     default:
@@ -29,89 +49,23 @@ function emergencyHighlightKey(smartCase?: string): "bleeding" | "breathing" | "
   }
 }
 
-function CategoryCard({
-  icon,
-  title,
-  subtitle,
-  onPress,
-  highlighted,
-  pulsing,
-  dimmed,
-}: {
-  icon: string;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-  highlighted: boolean;
-  pulsing: boolean;
-  dimmed: boolean;
-}) {
-  const on = highlighted;
-  const scale = useSharedValue(on ? 1.02 : 1);
-  const ring = useSharedValue(on ? 1 : 0);
-  const pressed = useSharedValue(0);
-  const pulse = useSharedValue(1);
-  const dim = useSharedValue(dimmed ? 0.65 : 1);
-
-  useEffect(() => {
-    // SOS-only temporary highlight (no visible prioritization in normal mode)
-    scale.value = withTiming(on ? 1.03 : 1, { duration: 220, easing: Easing.out(Easing.cubic) });
-    ring.value = withTiming(on ? 1 : 0, { duration: 220, easing: Easing.out(Easing.cubic) });
-  }, [on, ring, scale]);
-
-  useEffect(() => {
-    dim.value = withTiming(dimmed ? 0.65 : 1, { duration: 220, easing: Easing.out(Easing.cubic) });
-  }, [dimmed, dim]);
-
-  useEffect(() => {
-    if (pulsing) {
-      pulse.value = withRepeat(
-        withTiming(1.03, { duration: 520, easing: Easing.inOut(Easing.ease) }),
-        -1,
-        true,
-      );
-      return;
-    }
-    pulse.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
-  }, [pulsing, pulse]);
-
-  const anim = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value * pulse.value * (pressed.value ? 0.98 : 1) }],
-    borderColor: ring.value ? "#0F172A" : "#E2E8F0",
-    shadowOpacity: pressed.value ? 0.04 : 0.06,
-    opacity: dim.value,
-  }));
-
-  return (
-    <Animated.View style={[styles.card, anim]}>
-      <Pressable
-        style={styles.cardPress}
-        onPress={onPress}
-        onPressIn={() => {
-          pressed.value = 1;
-        }}
-        onPressOut={() => {
-          pressed.value = 0;
-        }}
-      >
-        <View style={styles.iconBubble}>
-          <Text style={styles.cardIcon}>{icon}</Text>
-        </View>
-        <Text style={styles.cardTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={styles.cardSubtitle} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </Pressable>
-    </Animated.View>
-  );
-}
+const CATEGORY_ION: Record<string, keyof typeof Ionicons.glyphMap> = {
+  bleeding: "water-outline",
+  breathing: "fitness-outline",
+  burns: "flame-outline",
+  injuries: "bandage-outline",
+  cardiac: "heart-outline",
+  poisoning: "skull-outline",
+  heatstroke: "thermometer-outline",
+  seizures: "flash-outline",
+  allergic: "alert-circle-outline",
+  drowning: "water-outline",
+};
 
 function categoryDescription(catId: string, t: (k: string, fb?: string) => string): string {
   switch (catId) {
     case "bleeding":
-      return t("firstAidCatDesc_bleeding", "Bleeding control basics");
+      return t("firstAidCatDesc_bleeding", "Stop bleeding with pressure");
     case "breathing":
       return t("firstAidCatDesc_breathing", "Breathing, choking, CPR");
     case "burns":
@@ -135,109 +89,330 @@ function categoryDescription(catId: string, t: (k: string, fb?: string) => strin
   }
 }
 
-export default function FirstAidIndexScreen() {
-  const router = useRouter();
-  const { t, lang } = useLanguage();
-  const { openMode, smartCase } = useLocalSearchParams<{ openMode?: string; smartCase?: string }>();
-  const scrollRef = useRef<ScrollView>(null);
-  const gridYRef = useRef(0);
-  const itemYRef = useRef<Record<string, number>>({});
-
-  const highlightKey = useMemo(() => emergencyHighlightKey(smartCase), [smartCase]);
-  const [sosPulseActive, setSosPulseActive] = useState(false);
-
-  useEffect(() => {
-    if (openMode !== "sos") return;
-    // Pulse + dim for a short time only.
-    setSosPulseActive(true);
-    const id = setTimeout(() => {
-      const key = highlightKey;
-      const y = key ? itemYRef.current[key] : undefined;
-      scrollRef.current?.scrollTo({ y: Math.max(0, (y ?? gridYRef.current) - 10), animated: true });
-    }, 80);
-    const stop = setTimeout(() => setSosPulseActive(false), 2600);
-    return () => {
-      clearTimeout(id);
-      clearTimeout(stop);
-    };
-  }, [openMode, highlightKey]);
-
-  return (
-    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.hubTitle}>{t("firstAidHubTitle", "🧠 First Aid")}</Text>
-        <Text style={styles.hubSubtitle}>{t("firstAidHubSubtitle", "Quick guidance for emergencies")}</Text>
-      </View>
-
-      <View
-        onLayout={(e) => {
-          gridYRef.current = e.nativeEvent.layout.y;
-        }}
-      >
-        <View style={styles.grid}>
-          {firstAidCategories.map((cat) => (
-            <View
-              key={cat.id}
-              onLayout={(e) => {
-                itemYRef.current[cat.id] = e.nativeEvent.layout.y;
-              }}
-              style={styles.gridItem}
-            >
-              <CategoryCard
-                icon={cat.icon}
-                title={pick(lang, cat.title)}
-                subtitle={categoryDescription(cat.id, t)}
-                onPress={() => router.push(`/(tabs)/firstaid/category/${cat.id}`)}
-                highlighted={openMode === "sos" && highlightKey === cat.id}
-                pulsing={openMode === "sos" && sosPulseActive && highlightKey === cat.id}
-                dimmed={openMode === "sos" && sosPulseActive && highlightKey !== null && highlightKey !== cat.id}
-              />
-            </View>
-          ))}
-        </View>
-      </View>
-    </ScrollView>
+function sortPrimaryCategories(items: FeaturedFirstAidCategory[]) {
+  return [...items].sort(
+    (a, b) =>
+      PRIMARY_HUB_ORDER.indexOf(a.id as (typeof PRIMARY_HUB_ORDER)[number]) -
+      PRIMARY_HUB_ORDER.indexOf(b.id as (typeof PRIMARY_HUB_ORDER)[number]),
   );
 }
 
+export default function FirstAidIndexScreen() {
+  const router = useRouter();
+  const { t, lang } = useLanguage();
+  const { row: rowDir, textAlign } = useUiDirection();
+  const insets = useSafeAreaInsets();
+  const { openMode, smartCase } = useLocalSearchParams<{ openMode?: string; smartCase?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
+  const primaryGridYRef = useRef(0);
+  const itemYRef = useRef<Record<string, number>>({});
+
+  const featuredHighlight = useMemo(() => featuredHighlightId(smartCase), [smartCase]);
+  const [sosPulseActive, setSosPulseActive] = useState(false);
+  const [moreTopicsOpen, setMoreTopicsOpen] = useState(false);
+
+  const primaryCategories = useMemo(
+    () => sortPrimaryCategories(FEATURED_FIRST_AID),
+    [],
+  );
+
+  const moreCategories = useMemo(
+    () => firstAidCategories.filter((c) => !FEATURED_CATEGORY_IDS.has(c.id)),
+    [],
+  );
+
+  const highlightedFeatured = useMemo(
+    () => FEATURED_FIRST_AID.find((f) => f.id === featuredHighlight),
+    [featuredHighlight],
+  );
+
+  useEffect(() => {
+    if (openMode !== "sos") return;
+    setSosPulseActive(true);
+    const scrollTimer = setTimeout(() => {
+      const y = featuredHighlight ? itemYRef.current[featuredHighlight] : undefined;
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, (y ?? primaryGridYRef.current) - 12),
+        animated: true,
+      });
+    }, 80);
+    const stop = setTimeout(() => setSosPulseActive(false), 2400);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(stop);
+    };
+  }, [openMode, featuredHighlight]);
+
+  const openFeatured = (item: FeaturedFirstAidCategory) => {
+    if (item.guideId) {
+      router.push(`/(tabs)/firstaid/guide/${item.guideId}`);
+    } else {
+      router.push(`/(tabs)/firstaid/category/${item.categoryId}`);
+    }
+  };
+
+  const sosActionLabel = useMemo(() => {
+    if (!highlightedFeatured) {
+      return t("firstAidSosBannerAction", "Open recommended guide");
+    }
+    const name = t(highlightedFeatured.titleKey, highlightedFeatured.titleFallback);
+    return t("firstAidSosContinueGuide", "Continue {guide}").replace("{guide}", name);
+  }, [highlightedFeatured, t]);
+
+  const quickHelpActions: QuickHelpAction[] = useMemo(
+    () => [
+      {
+        id: "sos",
+        label: t("firstAidQuick_sosShort", "SOS Call"),
+        icon: "call-outline",
+        onPress: () => router.push("/(tabs)/emergency"),
+        urgent: true,
+      },
+      {
+        id: "cpr",
+        label: t("firstAidQuick_cprShort", "CPR"),
+        icon: "heart-circle-outline",
+        onPress: () => router.push("/(tabs)/firstaid/guide/breathing_cpr_overview"),
+      },
+      {
+        id: "location",
+        label: t("firstAidQuick_locationShort", "Share Location"),
+        icon: "location-outline",
+        onPress: () => router.push("/(tabs)/emergency"),
+      },
+      {
+        id: "medical",
+        label: t("firstAidQuick_medicalShort", "Medical ID"),
+        icon: "id-card-outline",
+        onPress: () => router.push("/(tabs)/profile/medical"),
+      },
+      {
+        id: "voice",
+        label: t("firstAidQuick_voiceShort", "Voice Guide"),
+        icon: "volume-high-outline",
+        onPress: () => router.push("/(tabs)/firstaid/guide/breathing_cpr_overview"),
+      },
+    ],
+    [t, router, lang],
+  );
+
+  const isSosMode = openMode === "sos";
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + 108 },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 1. Header */}
+        <FirstAidHubHeader
+          subtitle={t("firstAidGuideLabel", "First Aid Guide")}
+          statusLabel={
+            isSosMode
+              ? t("firstAidStatusEmergency", "Emergency mode")
+              : t("firstAidStatusReady", "Guides ready")
+          }
+          lang={lang}
+        />
+
+        {/* 2. SOS context (compact, one action) */}
+        {isSosMode ? (
+          <FirstAidSosBanner
+            message={t(
+              "firstAidSosBannerShort",
+              "Active emergency — follow the highlighted guide below.",
+            )}
+            actionLabel={sosActionLabel}
+            onAction={() => {
+              if (highlightedFeatured) openFeatured(highlightedFeatured);
+            }}
+            lang={lang}
+          />
+        ) : null}
+
+        {/* 3. Quick help pills */}
+        <FirstAidQuickHelp actions={quickHelpActions} lang={lang} />
+
+        {/* 4. Primary life-saving grid */}
+        <View style={styles.sectionBlock}>
+          <Text style={[styles.sectionTitle, { textAlign }]}>
+            {t("firstAidPrimaryHeading", "Life-saving guides")}
+          </Text>
+          <Text style={[styles.sectionHint, { textAlign }]}>
+            {t("firstAidPrimaryHint", "Tap the situation that matches now")}
+          </Text>
+
+          <View
+            onLayout={(e) => {
+              primaryGridYRef.current = e.nativeEvent.layout.y;
+            }}
+            style={[styles.primaryGrid, rowDir]}
+          >
+            {primaryCategories.map((item) => (
+                <View
+                  key={item.id}
+                  onLayout={(e) => {
+                    itemYRef.current[item.id] = e.nativeEvent.layout.y;
+                  }}
+                  style={styles.gridCell}
+                >
+                  <FirstAidCategoryCard
+                    tier="primary"
+                    priority={!!item.priority}
+                    icon={item.icon}
+                    title={t(item.titleKey, item.titleFallback)}
+                    description={t(item.descKey, item.descFallback)}
+                    accent={item.accent}
+                    onPress={() => openFeatured(item)}
+                    highlighted={isSosMode && featuredHighlight === item.id}
+                    pulsing={isSosMode && sosPulseActive && featuredHighlight === item.id}
+                    dimmed={
+                      isSosMode &&
+                      sosPulseActive &&
+                      featuredHighlight !== null &&
+                      featuredHighlight !== item.id
+                    }
+                    lang={lang}
+                  />
+                </View>
+            ))}
+          </View>
+        </View>
+
+        {/* 5. More topics (collapsible, lighter) */}
+        {moreCategories.length > 0 ? (
+          <View style={styles.sectionBlock}>
+            <Pressable
+              onPress={() => setMoreTopicsOpen((v) => !v)}
+              style={[
+                styles.moreHeader,
+                rowDir,
+                moreTopicsOpen && styles.moreHeaderOpen,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: moreTopicsOpen }}
+            >
+              <Text style={[styles.moreTitle, { textAlign }]}>
+                {t("firstAidMoreTopics", "More topics")}
+              </Text>
+              <Ionicons
+                name={moreTopicsOpen ? "chevron-up" : "chevron-down"}
+                size={22}
+                color={tokens.color.textMuted}
+              />
+            </Pressable>
+
+            {moreTopicsOpen ? (
+              <View style={styles.secondaryGrid}>
+                {moreCategories.map((cat) => (
+                  <View key={cat.id} style={styles.secondaryCell}>
+                    <FirstAidCategoryCard
+                      tier="secondary"
+                      icon={CATEGORY_ION[cat.id] ?? "book-outline"}
+                      title={pick(lang, cat.title)}
+                      description={categoryDescription(cat.id, t)}
+                      accent={cat.accent}
+                      onPress={() => router.push(`/(tabs)/firstaid/category/${cat.id}`)}
+                      lang={lang}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* 6. Calm footer strip */}
+        <View style={styles.infoStrip}>
+          <Text style={[styles.infoText, { textAlign }]}>
+            {t(
+              "firstAidHubFooter",
+              "Tap a category to view step-by-step guidance",
+            )}
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const GUTTER = tokens.space.md;
+const CELL_WIDTH = "48.5%";
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8F9FA" },
-  content: { paddingTop: 28, paddingBottom: 28, paddingHorizontal: 18 },
-  header: { marginBottom: 24 },
-  hubTitle: { fontSize: 28, fontWeight: "900", color: "#0F172A", marginBottom: 6 },
-  hubSubtitle: { fontSize: 14, fontWeight: "700", color: "#64748B" },
-  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  gridItem: { width: "48%", marginBottom: 14 },
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+  screen: {
+    flex: 1,
+    backgroundColor: firstAidTheme.bg,
   },
-  cardPress: {
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+  scroll: { flex: 1 },
+  content: {
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+  },
+  sectionBlock: {
+    marginBottom: tokens.space.xxl,
+  },
+  sectionTitle: {
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs,
+    letterSpacing: -0.2,
+  },
+  sectionHint: {
+    fontSize: tokens.font.body,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textMuted,
+    marginBottom: tokens.space.lg,
+    lineHeight: 18,
+  },
+  primaryGrid: {
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: GUTTER,
+  },
+  gridCell: {
+    width: CELL_WIDTH,
+  },
+  moreHeader: {
     alignItems: "center",
-    justifyContent: "center",
-    minHeight: 132,
+    justifyContent: "space-between",
+    paddingVertical: tokens.space.md,
+    minHeight: 48,
   },
-  iconBubble: {
-    width: 54,
-    height: 54,
-    borderRadius: 999,
-    backgroundColor: "#F1F5F9",
+  moreHeaderOpen: {
+    marginBottom: tokens.space.md,
+  },
+  moreTitle: {
+    flex: 1,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textSecondary,
+  },
+  secondaryGrid: {
+    gap: tokens.space.sm,
+  },
+  secondaryCell: {
+    width: "100%",
+  },
+  infoStrip: {
+    paddingVertical: tokens.space.lg,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.lg,
+    backgroundColor: "rgba(255, 255, 255, 0.55)",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
+    borderColor: tokens.color.border,
+    marginTop: tokens.space.sm,
   },
-  cardIcon: { fontSize: 28 },
-  cardTitle: { fontSize: 18, fontWeight: "900", color: "#0F172A", textAlign: "center" },
-  cardSubtitle: { fontSize: 12, fontWeight: "700", color: "#64748B", marginTop: 6, textAlign: "center" },
+  infoText: {
+    fontSize: tokens.font.body,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textMuted,
+    lineHeight: 20,
+  },
 });

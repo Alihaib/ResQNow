@@ -1,7 +1,17 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Card from "../../../components/ui/Card";
+import { PrimaryButton } from "../../../components/ui/Button";
+import EmptyState from "../../../components/ui/EmptyState";
+import SectionHeader from "../../../components/ui/SectionHeader";
+import SubScreenShell from "../../../components/ui/SubScreenShell";
+import { subScreenStyles } from "../../../components/ui/subScreenStyles";
+import { useUiDirection } from "../../../components/ui/layout";
+import { tokens } from "../../../src/ui/tokens";
+
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
@@ -10,6 +20,7 @@ export default function PatientViewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { t } = useLanguage();
+  const { row, text, marginHorizontal } = useUiDirection();
   const { role, approved, user, loading: authLoading } = useAuth();
   const [patientData, setPatientData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -91,57 +102,49 @@ export default function PatientViewScreen() {
       });
   };
 
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/doctor/dashboard");
+    }
+  };
+
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color="#D62828" />
-        <Text style={styles.loadingText}>{t("loading")}</Text>
-      </View>
+      <SubScreenShell
+        title={t("patientProfile")}
+        onBack={goBack}
+        fallbackRoute="/doctor/dashboard"
+      >
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={tokens.color.primary} />
+          <Text style={styles.loadingText}>{t("loading")}</Text>
+        </View>
+      </SubScreenShell>
     );
   }
 
   if (!patientData) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
-        <Text style={styles.errorText}>{t("patientNotFound")}</Text>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/doctor/dashboard");
-            }
-          }}
-        >
-          <Text style={styles.backBtnText}>{t("goBack")}</Text>
-        </TouchableOpacity>
-      </View>
+      <SubScreenShell
+        title={t("patientProfile")}
+        onBack={goBack}
+        fallbackRoute="/doctor/dashboard"
+      >
+        <EmptyState ionIcon="person-outline" title={t("patientNotFound")} />
+        <PrimaryButton label={t("goBack")} onPress={goBack} style={styles.backAction} />
+      </SubScreenShell>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/doctor/dashboard");
-            }
-          }}
-        >
-          <Text style={styles.backText}>‹</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t("patientProfile")}</Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      {/* Patient Name Card */}
-      <View style={styles.nameCard}>
+    <SubScreenShell
+      title={t("patientProfile")}
+      onBack={goBack}
+      fallbackRoute="/doctor/dashboard"
+    >
+      <Card style={styles.nameCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
             {(patientData.name || patientData.email || "P")?.charAt(0).toUpperCase()}
@@ -151,73 +154,71 @@ export default function PatientViewScreen() {
         {patientData.israeliId && (
           <Text style={styles.patientId}>{t("israeliId")}: {patientData.israeliId}</Text>
         )}
-      </View>
+      </Card>
 
-      {/* Personal Information */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📋 {t("personalInfo")}</Text>
-        <View style={styles.infoCard}>
+      <View style={subScreenStyles.section}>
+        <SectionHeader title={t("personalInfo")} dense />
+        <Card>
           {patientData.name && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("name")}:</Text>
-              <Text style={styles.infoValue}>{patientData.name}</Text>
+              <Text style={[styles.infoValue, text]}>{patientData.name}</Text>
             </View>
           )}
           {patientData.email && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("email")}:</Text>
-              <Text style={styles.infoValue}>{patientData.email}</Text>
+              <Text style={[styles.infoValue, text]}>{patientData.email}</Text>
             </View>
           )}
           {patientData.israeliId && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("israeliId")}:</Text>
-              <Text style={styles.infoValue}>{patientData.israeliId}</Text>
+              <Text style={[styles.infoValue, text]}>{patientData.israeliId}</Text>
             </View>
           )}
           {patientData.phoneNumber && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("phoneNumber")}:</Text>
-              <Text style={styles.infoValue}>{patientData.phoneNumber}</Text>
+              <Text style={[styles.infoValue, text]}>{patientData.phoneNumber}</Text>
             </View>
           )}
           {patientData.age && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("age")}:</Text>
-              <Text style={styles.infoValue}>{patientData.age}</Text>
+              <Text style={[styles.infoValue, text]}>{patientData.age}</Text>
             </View>
           )}
           {patientData.bloodType && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("blood_type")}:</Text>
-              <Text style={[styles.infoValue, styles.bloodType]}>
+              <Text style={[styles.infoValue, styles.bloodType, text]}>
                 {patientData.bloodType}
               </Text>
             </View>
           )}
           {patientData.weight && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("weight")}:</Text>
-              <Text style={styles.infoValue}>{patientData.weight} kg</Text>
+              <Text style={[styles.infoValue, text]}>{patientData.weight} kg</Text>
             </View>
           )}
           {patientData.height && (
-            <View style={styles.infoRow}>
+            <View style={[styles.infoRow, row]}>
               <Text style={styles.infoLabel}>{t("height")}:</Text>
-              <Text style={styles.infoValue}>{patientData.height} cm</Text>
+              <Text style={[styles.infoValue, text]}>{patientData.height} cm</Text>
             </View>
           )}
           {!patientData.name && !patientData.email && !patientData.phoneNumber && 
            !patientData.age && !patientData.bloodType && !patientData.weight && !patientData.height && (
             <Text style={styles.noData}>{t("noDataAvailable")}</Text>
           )}
-        </View>
+        </Card>
       </View>
 
-      {/* Medical History */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🏥 {t("medicalInfo")}</Text>
-        <View style={styles.infoCard}>
+      <View style={subScreenStyles.section}>
+        <SectionHeader title={t("medicalInfo")} dense />
+        <Card>
           {patientData.diseases && (
             <View style={styles.infoSection}>
               <Text style={styles.infoSectionTitle}>{t("diseases")}:</Text>
@@ -234,7 +235,7 @@ export default function PatientViewScreen() {
             <View style={styles.infoSection}>
               <Text style={styles.infoSectionTitle}>{t("allergies")}:</Text>
               <Text style={[styles.infoText, styles.allergyWarning]}>
-                ⚠️ {patientData.allergies}
+                {patientData.allergies}
               </Text>
             </View>
           )}
@@ -248,19 +249,21 @@ export default function PatientViewScreen() {
            !patientData.allergies && !patientData.sensitiveNotes && (
             <Text style={styles.noData}>{t("noDataAvailable")}</Text>
           )}
-        </View>
+        </Card>
       </View>
 
-      {/* Emergency Contacts */}
-      {patientData.emergencyContacts && patientData.emergencyContacts.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📞 {t("emergencyContacts")}</Text>
-          {patientData.emergencyContacts.map((contact: any, index: number) => (
-            <TouchableOpacity
+      {patientData.emergencyContacts && patientData.emergencyContacts.length > 0 ? (
+        <View style={subScreenStyles.section}>
+          <SectionHeader title={t("emergencyContacts")} dense />
+          {patientData.emergencyContacts.map((contact: { name?: string; phone?: string; relationship?: string; relation?: string }, index: number) => (
+            <Card
               key={index}
               style={styles.contactCard}
-              onPress={() => makePhoneCall(contact.phone)}
+            >
+            <TouchableOpacity
+              onPress={() => contact.phone && makePhoneCall(contact.phone)}
               activeOpacity={0.7}
+              style={[styles.contactRow, row]}
             >
               <View style={styles.contactInfo}>
                 <Text style={styles.contactName}>{contact.name}</Text>
@@ -272,21 +275,22 @@ export default function PatientViewScreen() {
                   <Text style={styles.contactRelation}>{contact.relation}</Text>
                 )}
               </View>
-              <View style={styles.callIconContainer}>
-                <Text style={styles.callIcon}>📞</Text>
+              <View style={[styles.callIconContainer, marginHorizontal(16, 0)]}>
+                <Ionicons name="call-outline" size={22} color={tokens.color.primary} />
               </View>
             </TouchableOpacity>
+            </Card>
           ))}
         </View>
-      )}
-    </ScrollView>
+      ) : null}
+    </SubScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: tokens.color.bgPage,
   },
   content: {
     paddingTop: 60,
@@ -296,20 +300,23 @@ const styles = StyleSheet.create({
   centerContent: {
     justifyContent: "center",
     alignItems: "center",
+    paddingVertical: tokens.space.xxl,
+  },
+  backAction: {
+    marginTop: tokens.space.lg,
   },
   loadingText: {
     marginTop: 16,
     fontSize: 16,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
   },
   errorText: {
     fontSize: 18,
-    color: "#D62828",
+    color: tokens.color.primary,
     fontWeight: "700",
     marginBottom: 20,
   },
   header: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 24,
@@ -318,7 +325,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: tokens.color.bgSurface,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -329,19 +336,19 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 24,
-    color: "#003049",
+    color: tokens.color.textPrimary,
     fontWeight: "700",
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: "800",
-    color: "#003049",
+    color: tokens.color.textPrimary,
   },
   placeholder: {
     width: 40,
   },
   nameCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: tokens.color.bgSurface,
     borderRadius: 20,
     padding: 24,
     alignItems: "center",
@@ -356,7 +363,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#D62828",
+    backgroundColor: tokens.color.primary,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
@@ -364,17 +371,17 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 32,
     fontWeight: "900",
-    color: "#FFFFFF",
+    color: tokens.color.bgSurface,
   },
   patientName: {
     fontSize: 24,
     fontWeight: "800",
-    color: "#003049",
+    color: tokens.color.textPrimary,
     marginBottom: 8,
   },
   patientId: {
     fontSize: 14,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
     fontWeight: "600",
     letterSpacing: 1,
   },
@@ -384,11 +391,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#003049",
+    color: tokens.color.textPrimary,
     marginBottom: 16,
   },
   infoCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: tokens.color.bgSurface,
     borderRadius: 16,
     padding: 20,
     shadowColor: "#000",
@@ -398,72 +405,61 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   infoRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E9ECEF",
+    borderBottomColor: tokens.color.border,
   },
   infoLabel: {
     fontSize: 14,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
     fontWeight: "600",
   },
   infoValue: {
     fontSize: 14,
-    color: "#003049",
+    color: tokens.color.textPrimary,
     fontWeight: "700",
     flex: 1,
-    textAlign: "right",
   },
   bloodType: {
-    color: "#D62828",
+    color: tokens.color.primary,
     fontSize: 16,
   },
   infoSection: {
     marginBottom: 20,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#E9ECEF",
+    borderBottomColor: tokens.color.border,
   },
   infoSectionTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#003049",
+    color: tokens.color.textPrimary,
     marginBottom: 8,
   },
   infoText: {
     fontSize: 14,
-    color: "#212529",
+    color: tokens.color.textPrimary,
     lineHeight: 20,
   },
   allergyWarning: {
-    color: "#D62828",
+    color: tokens.color.primary,
     fontWeight: "700",
   },
   noData: {
     fontSize: 14,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
     fontStyle: "italic",
     textAlign: "center",
     padding: 20,
   },
-  contactCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderLeftWidth: 4,
-    borderLeftColor: "#D62828",
-    flexDirection: "row",
+  contactRow: {
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  contactCard: {
+    marginBottom: tokens.space.sm,
   },
   contactInfo: {
     flex: 1,
@@ -471,37 +467,36 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#003049",
+    color: tokens.color.textPrimary,
     marginBottom: 8,
   },
   contactPhone: {
     fontSize: 16,
-    color: "#212529",
+    color: tokens.color.textPrimary,
     marginBottom: 4,
     fontWeight: "600",
   },
   contactRelation: {
     fontSize: 14,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
   },
   callIconContainer: {
-    marginLeft: 16,
     padding: 12,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: tokens.color.bgPage,
     borderRadius: 12,
   },
   callIcon: {
     fontSize: 24,
   },
   backBtn: {
-    backgroundColor: "#D62828",
+    backgroundColor: tokens.color.primary,
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 12,
     marginTop: 20,
   },
   backBtnText: {
-    color: "#FFFFFF",
+    color: tokens.color.bgSurface,
     fontSize: 16,
     fontWeight: "700",
   },

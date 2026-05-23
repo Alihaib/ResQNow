@@ -1,27 +1,50 @@
+import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
-import { StyleSheet, Text } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
+import TabBarIcon from "../../components/ui/TabBarIcon";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { tokens } from "../../src/ui/tokens";
+
+function TabBarBackground() {
+  if (Platform.OS === "android") {
+    return (
+      <View style={styles.tabBarAndroid}>
+        <View style={styles.tabBarBorder} />
+      </View>
+    );
+  }
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <BlurView intensity={88} tint="light" style={StyleSheet.absoluteFill} />
+      <View style={styles.tabBarTint} />
+      <View style={styles.tabBarBorder} />
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   const { t } = useLanguage();
-  
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#D62828",
-        tabBarInactiveTintColor: "#6C757D",
+        tabBarActiveTintColor: tokens.color.primary,
+        tabBarInactiveTintColor: tokens.color.textMuted,
+        tabBarBackground: () => <TabBarBackground />,
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopWidth: 1,
-          borderTopColor: "#E9ECEF",
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          position: "absolute",
+          backgroundColor: "transparent",
+          borderTopWidth: 0,
+          elevation: 0,
+          height: Platform.OS === "ios" ? 84 : 68,
+          paddingBottom: Platform.OS === "ios" ? 24 : tokens.space.sm,
+          paddingTop: tokens.space.sm,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "600",
+          fontSize: tokens.font.caption,
+          fontWeight: tokens.fontWeight.semibold,
+          marginTop: 2,
         },
       }}
     >
@@ -29,100 +52,100 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: t("tab_home"),
-          tabBarIcon: () => <Text style={styles.icon}>🏠</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name="home-outline"
+              activeName="home"
+              color={color}
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="emergency"
         options={{
           title: t("tab_emergency"),
-          tabBarIcon: () => <Text style={styles.icon}>🚨</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name="alert-circle-outline"
+              activeName="alert-circle"
+              color={focused ? tokens.color.danger : color}
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="firstaid"
         options={{
           title: t("tab_firstaid"),
-          tabBarIcon: () => <Text style={styles.icon}>⛑</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name="medkit-outline"
+              activeName="medkit"
+              color={color}
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t("tab_profile"),
-          tabBarIcon: () => <Text style={styles.icon}>👤</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name="person-outline"
+              activeName="person"
+              color={color}
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: t("tab_settings"),
-          tabBarIcon: () => <Text style={styles.icon}>⚙️</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon
+              name="settings-outline"
+              activeName="settings"
+              color={color}
+              focused={focused}
+            />
+          ),
         }}
       />
-      {/* Hide nested routes from tab bar */}
-      <Tabs.Screen
-        name="emergency/active"
-        options={{
-          href: null, // Hide from tab bar
-        }}
-      />
-      <Tabs.Screen
-        name="profile/medical"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile/history"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile/contacts"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile/emergency-history"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="profile/medical-records"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="settings/privacy"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="settings/help"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="settings/about"
-        options={{
-          href: null,
-        }}
-      />
+      <Tabs.Screen name="emergency/active" options={{ href: null }} />
+      <Tabs.Screen name="profile/medical" options={{ href: null }} />
+      <Tabs.Screen name="profile/history" options={{ href: null }} />
+      <Tabs.Screen name="profile/contacts" options={{ href: null }} />
+      <Tabs.Screen name="profile/emergency-history" options={{ href: null }} />
+      <Tabs.Screen name="profile/medical-records" options={{ href: null }} />
+      <Tabs.Screen name="settings/privacy" options={{ href: null }} />
+      <Tabs.Screen name="settings/help" options={{ href: null }} />
+      <Tabs.Screen name="settings/about" options={{ href: null }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  icon: {
-    fontSize: 24,
+  tabBarAndroid: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+  },
+  tabBarTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(246, 248, 251, 0.4)",
+  },
+  tabBarBorder: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: tokens.hairline,
+    backgroundColor: tokens.color.border,
   },
 });
-
-

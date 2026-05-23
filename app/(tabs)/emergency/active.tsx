@@ -1,11 +1,23 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { arrayUnion, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AiEmergencyActionsGrid,
+  AiFloatingHeader,
+  AiHeroSection,
+  AiVoiceDock,
+  AmbientMapBackground,
+  GlassSurface,
+  type EmergencyAction,
+  type HeroChip,
+} from "../../../components/ai-emergency";
+import { AI_RADIUS } from "../../../components/ai-emergency/theme";
 import EmergencyChat from "../../../components/EmergencyChat";
+import AiEmergencyCompanion from "../../../components/AiEmergencyCompanion";
 import Button from "../../../components/ui/Button";
-import SectionHeader from "../../../components/ui/SectionHeader";
+import CollapsibleSection from "../../../components/ui/CollapsibleSection";
+import MapPanel from "../../../components/ui/MapPanel";
 import ShortcutCard from "../../../components/ui/ShortcutCard";
-import StatusChip from "../../../components/ui/StatusChip";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +25,6 @@ import {
   Share,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View
 } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
@@ -25,8 +36,9 @@ import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 import { SosSmartFirstAid } from "../../../src/firstAid/SosSmartFirstAid";
 import { tokens } from "../../../src/ui/tokens";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
-import AiEmergencyCompanion from "../../../components/AiEmergencyCompanion";
 import { isOpenAiConfigured } from "../../../src/services/openaiEmergency";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useUiDirection } from "../../../components/ui/layout";
 
 interface LocationData {
   latitude: number;
@@ -47,6 +59,7 @@ export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
   const { currentEmergency, liveEmergency, activeEmergencyHydrated } = useEmergency();
   const { t: translate, lang } = useLanguage();
+  const { row } = useUiDirection();
   const router = useRouter();
   const params = useLocalSearchParams<{ locationData?: string; victimType?: string }>();
   const initialVictimType = params.victimType === "other" ? "other" : "me";
@@ -136,13 +149,62 @@ export default function ActiveEmergencyScreen() {
 
   const mapRef = useRef<MapView | null>(null);
   const mainScrollRef = useRef<ScrollView>(null);
+  const chatSectionYRef = useRef(0);
   const firstAidSectionYRef = useRef(0);
+  const insets = useSafeAreaInsets();
+  const [moreHelpOpen, setMoreHelpOpen] = useState(false);
+
   const scrollToFirstAidSection = useCallback(() => {
-    mainScrollRef.current?.scrollTo({
-      y: Math.max(0, firstAidSectionYRef.current - 12),
-      animated: true,
-    });
+    setMoreHelpOpen(true);
+    setTimeout(() => {
+      mainScrollRef.current?.scrollTo({
+        y: Math.max(0, firstAidSectionYRef.current - 8),
+        animated: true,
+      });
+    }, 120);
   }, []);
+
+  const scrollToChatSection = useCallback(() => {
+    setTimeout(() => {
+      mainScrollRef.current?.scrollTo({
+        y: Math.max(0, chatSectionYRef.current - 8),
+        animated: true,
+      });
+    }, 120);
+  }, []);
+
+  const lifecycleLabel = useMemo(() => {
+    if (!lifecycleStatus) return translate("helpOnTheWay");
+    const key = `activityEvent_${lifecycleStatus}`;
+    const label = translate(key);
+    return label !== key ? label : translate("helpOnTheWay");
+  }, [lifecycleStatus, translate]);
+
+  const statusChipVariant = useMemo(() => {
+    if (isAmbulanceArrived) return "success" as const;
+    if (lifecycleStatus === "cancelled") return "danger" as const;
+    if (ambulanceAssigned) return "info" as const;
+    return "warning" as const;
+  }, [isAmbulanceArrived, lifecycleStatus, ambulanceAssigned]);
+
+  const openPrimaryContacts = useCallback(() => {
+    if (victimType !== "me" || emergencyContacts.length === 0) {
+      scrollToChatSection();
+      return;
+    }
+    const first = emergencyContacts.find((c) => c.phone?.trim());
+    if (!first) {
+      scrollToChatSection();
+      return;
+    }
+    let phoneNumber = first.phone.replace(/\D/g, "");
+    if (phoneNumber.startsWith("0")) {
+      phoneNumber = `+972${phoneNumber.substring(1)}`;
+    } else if (!phoneNumber.startsWith("+")) {
+      phoneNumber = `+${phoneNumber}`;
+    }
+    Linking.openURL(`tel:${phoneNumber}`).catch(() => scrollToChatSection());
+  }, [victimType, emergencyContacts, scrollToChatSection]);
 
   /** Refit viewport when Firestore pushes new patient or ambulance coordinates (same source as markers). */
   useEffect(() => {
@@ -242,33 +304,33 @@ export default function ActiveEmergencyScreen() {
       
       // Format medical information for sharing
       const locationInfo = location
-        ? `📍 Location: ${location.address || `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`}\n`
+        ? `${translate("shareLocation")}: ${location.address || `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}`}\n`
         : "";
-      
+
       const medicalInfo = `
-⛑ ResQNow Medical Information - EMERGENCY
+${translate("appName")} — ${translate("shareMedicalProfile")}
 
 ${locationInfo}
-👤 Personal Information:
-${data.name ? `Name: ${data.name}` : ""}
-${data.age ? `Age: ${data.age}` : ""}
-${data.bloodType ? `Blood Type: ${data.bloodType}` : ""}
-${data.weight ? `Weight: ${data.weight} kg` : ""}
-${data.height ? `Height: ${data.height} cm` : ""}
+${translate("personalInformation")}:
+${data.name ? `${translate("name")}: ${data.name}` : ""}
+${data.age ? `${translate("age")}: ${data.age}` : ""}
+${data.bloodType ? `${translate("blood_type")}: ${data.bloodType}` : ""}
+${data.weight ? `${translate("weight")}: ${data.weight} kg` : ""}
+${data.height ? `${translate("height")}: ${data.height} cm` : ""}
 
-🏥 Medical History:
-${data.diseases ? `Diseases: ${data.diseases}` : ""}
-${data.medications ? `Medications: ${data.medications}` : ""}
-${data.allergies ? `Allergies: ${data.allergies}` : ""}
-${data.sensitiveNotes ? `Notes: ${data.sensitiveNotes}` : ""}
+${translate("medicalHistory")}:
+${data.diseases ? `${translate("diseases")}: ${data.diseases}` : ""}
+${data.medications ? `${translate("medications")}: ${data.medications}` : ""}
+${data.allergies ? `${translate("allergies")}: ${data.allergies}` : ""}
+${data.sensitiveNotes ? `${translate("sensitive_notes")}: ${data.sensitiveNotes}` : ""}
 
-📞 Emergency Contacts:
+${translate("emergencyContacts")}:
 ${data.emergencyContacts && data.emergencyContacts.length > 0
   ? data.emergencyContacts.map((c: any) => `${c.name}: ${c.phone}`).join("\n")
-  : "No emergency contacts"}
+  : translate("noEmergencyContacts")}
 
 ---
-Shared from ResQNow App - Emergency Situation
+${translate("appName")}
       `.trim();
 
       await Share.share({
@@ -540,28 +602,28 @@ Shared from ResQNow App - Emergency Situation
       const locationMessage =
         victimType === "other"
           ? `
-${translate("emergencyAlertTitle")} 🚨
+${translate("emergencyAlertTitle")}
 ${translate("emergencyAlertSomeoneNeedsHelpAt")}
 ${googleMapsLink}
 
 ${translate("timeLabel")}: ${timestampText}
           `.trim()
           : `
-🚨 EMERGENCY LOCATION 🚨
+${translate("emergencyAlertTitle")}
 
-📍 Location:
+${translate("shareLocation")}:
 ${addressText}
 
-Coordinates:
+${translate("coordinates")}:
 ${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}
 
-🗺️ ${translate("openInMaps")}:
+${translate("openInMaps")}:
 ${googleMapsLink}
 
 ${translate("timeLabel")}: ${timestampText}
 
 ---
-Shared from ResQNow Emergency App
+${translate("appName")}
           `.trim();
 
       // If helping someone else, avoid loading/using contacts or preferences.
@@ -757,259 +819,289 @@ Shared from ResQNow Emergency App
     liveEmergency?.currentSnapshot,
   ]);
 
+  const primaryIsCall =
+    victimType === "me" && emergencyContacts.some((c) => c.phone?.trim());
+
+  const aiHeroStatusLine = useMemo(() => {
+    if (isAmbulanceArrived) {
+      return translate("ambulanceArrivedBanner", "Ambulance has arrived");
+    }
+    if (lifecycleStatus === "enRoute" || lifecycleStatus === "dispatched") {
+      return translate("aiStatusDispatched", "Ambulance dispatched — stay calm");
+    }
+    if (ambulanceAssigned) {
+      return translate("aiStatusMonitoring", "Monitoring your emergency in real time");
+    }
+    return translate("aiStatusGuidance", "Guiding you until help arrives");
+  }, [isAmbulanceArrived, lifecycleStatus, ambulanceAssigned, translate]);
+
+  const statusSubtitle = useMemo(() => {
+    const parts: string[] = [];
+    if (ambulanceStatusLine) {
+      parts.push(`${translate("responderStatus")}: ${ambulanceStatusLine}`);
+    } else if (ambulanceAssigned) {
+      parts.push(translate("ambulanceOnWay"));
+    } else {
+      parts.push(translate("ambulanceLocating"));
+    }
+    if (distanceText) {
+      parts.push(`${translate("distanceToScene")}: ${distanceText}`);
+    }
+    parts.push(`${translate("timeElapsed")}: ${formatTime(timeElapsed)}`);
+    return parts.join(" · ");
+  }, [
+    ambulanceStatusLine,
+    ambulanceAssigned,
+    distanceText,
+    timeElapsed,
+    translate,
+  ]);
+
+  const heroChips: HeroChip[] = useMemo(
+    () => [
+      {
+        id: "vitals",
+        label: translate("aiChipVitals", "Check Vitals"),
+        icon: "pulse-outline",
+        onPress: scrollToFirstAidSection,
+      },
+      {
+        id: "eta",
+        label: translate("aiChipEta", "Ambulance ETA"),
+        icon: "time-outline",
+        onPress: () => {
+          mainScrollRef.current?.scrollTo({ y: 0, animated: true });
+        },
+      },
+      {
+        id: "location",
+        label: translate("shareLocation"),
+        icon: "location-outline",
+        onPress: shareLocation,
+      },
+      {
+        id: "dispatcher",
+        label: translate("aiChipDispatcher", "Call Dispatcher"),
+        icon: "call-outline",
+        onPress: primaryIsCall ? openPrimaryContacts : scrollToChatSection,
+      },
+    ],
+    [
+      translate,
+      scrollToFirstAidSection,
+      shareLocation,
+      primaryIsCall,
+      openPrimaryContacts,
+      scrollToChatSection,
+    ],
+  );
+
+  const quickActions: EmergencyAction[] = useMemo(
+    () => [
+      {
+        id: "cpr",
+        title: translate("aiActionCpr", "CPR Guide"),
+        icon: "heart-circle-outline",
+        accent: tokens.color.danger,
+        onPress: () => router.push("/(tabs)/firstaid/guide/breathing_cpr_overview"),
+      },
+      {
+        id: "breathing",
+        title: translate("aiActionBreathing", "Breathing Help"),
+        icon: "fitness-outline",
+        accent: tokens.color.aiBlue,
+        onPress: () => router.push("/(tabs)/firstaid/category/breathing"),
+      },
+      {
+        id: "bleeding",
+        title: translate("aiActionBleeding", "Bleeding Control"),
+        icon: "water-outline",
+        accent: tokens.color.danger,
+        onPress: () => router.push("/(tabs)/firstaid/guide/bleeding_basic"),
+      },
+      {
+        id: "heart",
+        title: translate("aiActionHeart", "Heart Symptoms"),
+        icon: "medical-outline",
+        accent: "#BE123C",
+        onPress: () => router.push("/(tabs)/firstaid/category/cardiac"),
+      },
+      {
+        id: "medical-id",
+        title: translate("shareMedicalProfile"),
+        icon: "id-card-outline",
+        accent: tokens.color.primary,
+        onPress: shareMedicalInfo,
+      },
+      {
+        id: "ambulance",
+        title: translate("aiActionAmbulance", "Call Ambulance"),
+        subtitle: translate("aiActionAmbulanceSub", "Response team & contacts"),
+        icon: "call-outline",
+        accent: tokens.color.primary,
+        onPress: primaryIsCall ? openPrimaryContacts : scrollToChatSection,
+        wide: true,
+      },
+    ],
+    [
+      translate,
+      router,
+      shareMedicalInfo,
+      primaryIsCall,
+      openPrimaryContacts,
+      scrollToChatSection,
+    ],
+  );
+
+  const responderHeroLine = useMemo(() => {
+    if (ambulanceStatusLine) {
+      return `${translate("responderStatus")}: ${ambulanceStatusLine}`;
+    }
+    if (isAmbulanceArrived) return translate("ambulanceArrivedShort", "Ambulance arrived");
+    if (ambulanceAssigned) return translate("ambulanceOnWay");
+    return translate("ambulanceLocating");
+  }, [ambulanceStatusLine, isAmbulanceArrived, ambulanceAssigned, translate]);
+
+  const filteredQuickActions = useMemo(
+    () =>
+      quickActions.filter((a) => a.id !== "medical-id" || victimType === "me"),
+    [quickActions, victimType],
+  );
+
   return (
     <View style={styles.container}>
-      {/*
-        Hero status header — keeps status + elapsed timer + victim chip
-        within a single calm, scannable block at the very top.
-      */}
-      <View style={styles.statusBar}>
-        <View style={styles.statusTopRow}>
-          <View style={styles.statusLeft}>
-            <View style={styles.statusIndicator} />
-            <Text style={styles.statusText}>{translate("emergencyActive")}</Text>
-          </View>
-          <View style={styles.statusTimerBlock}>
-            <Text style={styles.statusTimerLabel}>{translate("timeElapsed")}</Text>
-            <Text style={styles.statusTimerValue}>{formatTime(timeElapsed)}</Text>
-          </View>
-        </View>
-        <View style={styles.statusBottomRow}>
-          <StatusChip
-            label={
-              victimType === "me"
-                ? translate("victimReceivingHelp")
-                : translate("victimHelpingOther")
-            }
-            bg="rgba(255,255,255,0.18)"
-            fg="#FFFFFF"
-          />
-          {isAmbulanceArrived ? (
-            <StatusChip
-              label={translate("ambulanceArrivedShort")}
-              bg="#FFFFFF"
-              fg="#DC2626"
-              solid
-            />
-          ) : crewEtaMinutes != null ? (
-            <StatusChip
-              label={`ETA ~${crewEtaMinutes} min`}
-              bg="rgba(255,255,255,0.95)"
-              fg="#B91C1C"
-            />
-          ) : null}
-        </View>
-      </View>
+      <AmbientMapBackground patientAnchor={mapPatientAnchor} />
 
-      <ScrollView ref={mainScrollRef} contentContainerStyle={styles.content}>
-        {/* 1. LOCATION + SHARE — tap to share with emergency contacts. */}
-        <TouchableOpacity
-          style={styles.infoCard}
-          onPress={shareLocation}
-          activeOpacity={0.85}
-          accessibilityRole="button"
+      <ScrollView
+        ref={mainScrollRef}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + tokens.space.md,
+            paddingBottom: 200 + insets.bottom,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <AiFloatingHeader
+          statusLabel={lifecycleLabel}
+          chipVariant={statusChipVariant}
+          aiActive={aiCompanionVisible || aiAvailable}
+          subtitle={statusSubtitle}
+        />
+
+        <AiHeroSection
+          statusLine={aiHeroStatusLine}
+          subtitle={translate("helpOnTheWay")}
+          etaMinutes={!isAmbulanceArrived ? crewEtaMinutes : null}
+          etaLabel={translate("etaLabel")}
+          etaUnit={translate("etaMinutesUnit")}
+          responderLine={responderHeroLine}
+          chips={heroChips}
+          aiListening={aiCompanionVisible}
+        />
+
+        {mapPatientAnchor ? (
+          <GlassSurface radius={AI_RADIUS.card} style={styles.mapGlass}>
+            <MapPanel height={168} style={styles.mapPanel}>
+              <MapView
+                ref={mapRef}
+                style={styles.mapFill}
+                initialRegion={{
+                  latitude: mapPatientAnchor.latitude,
+                  longitude: mapPatientAnchor.longitude,
+                  latitudeDelta: 0.014,
+                  longitudeDelta: 0.014,
+                }}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                pitchEnabled={false}
+                rotateEnabled={false}
+              >
+                {ambulanceCoordsLive ? (
+                  <Polyline
+                    coordinates={[ambulanceCoordsLive, mapPatientAnchor]}
+                    strokeColor={tokens.color.aiBlue}
+                    strokeWidth={3}
+                    lineCap="round"
+                  />
+                ) : null}
+                <Marker coordinate={mapPatientAnchor} pinColor={tokens.color.danger} />
+                {ambulanceCoordsLive ? (
+                  <Marker coordinate={ambulanceCoordsLive} pinColor={tokens.color.aiBlue} />
+                ) : null}
+              </MapView>
+            </MapPanel>
+          </GlassSurface>
+        ) : null}
+
+        <AiEmergencyActionsGrid
+          title={translate("aiQuickActions", "Quick emergency actions")}
+          actions={filteredQuickActions}
+        />
+
+        <CollapsibleSection
+          title={translate("moreHelp")}
+          subtitle={translate("getGuidance")}
+          expanded={moreHelpOpen}
+          onExpandedChange={setMoreHelpOpen}
         >
-          <Text style={styles.infoIcon}>📍</Text>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>
-              {translate("yourLocation") || "Your Location"}
-            </Text>
-            <Text style={styles.infoValue} numberOfLines={2}>
-              {locationDisplay ||
-                translate("locationLoading") ||
-                "Loading location..."}
-            </Text>
-            {location ? (
-              <Text style={styles.locationCoords}>
-                {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
-              </Text>
-            ) : null}
-            <View style={styles.shareHintRow}>
-              <Text style={styles.shareIcon}>📤</Text>
-              <Text style={styles.tapToShare}>
-                {translate("tapToShareLocation") || "Tap to share location"}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* 2. LIVE MAP — see ambulance approach in real time. */}
-        {mapPatientAnchor && (
-          <View style={styles.mapCard}>
-            <View style={styles.mapHeader}>
-              <Text style={styles.mapTitle}>
-                🚑{" "}
-                {isAmbulanceArrived
-                  ? translate("ambulanceArrivedShort")
-                  : translate("ambulanceOnWay") || "Ambulance On The Way"}
-              </Text>
-              {distanceText ? (
-                <View style={styles.distanceBadge}>
-                  <Text style={styles.distanceText}>📏 {distanceText}</Text>
-                </View>
-              ) : null}
-            </View>
-
-            {isAmbulanceArrived ? (
-              <View style={styles.etaBannerArrived}>
-                <Text style={styles.etaBannerArrivedText}>
-                  {translate("ambulanceArrivedBanner")}
-                </Text>
-              </View>
-            ) : crewEtaMinutes != null ? (
-              <View style={styles.etaBanner}>
-                <Text style={styles.etaBannerText}>
-                  {translate("ambulanceArrivingMinutes").replace("{minutes}", String(crewEtaMinutes))}
-                </Text>
-              </View>
-            ) : ambulanceAssigned || ambulanceCoordsLive ? (
-              <Text style={styles.etaPending}>
-                {translate("ambulanceLocating") || "Locating ambulance…"}
-              </Text>
-            ) : null}
-
-            <MapView
-              ref={mapRef}
-              style={styles.map}
-              initialRegion={{
-                latitude: mapPatientAnchor.latitude,
-                longitude: mapPatientAnchor.longitude,
-                latitudeDelta: 0.012,
-                longitudeDelta: 0.012,
-              }}
-              scrollEnabled
-              zoomEnabled
-              pitchEnabled={false}
-              rotateEnabled={false}
-            >
-              {ambulanceCoordsLive ? (
-                <Polyline
-                  coordinates={[ambulanceCoordsLive, mapPatientAnchor]}
-                  strokeColor="#0074D9"
-                  strokeWidth={4}
-                  lineCap="round"
-                  lineJoin="round"
-                />
-              ) : null}
-              <Marker
-                coordinate={mapPatientAnchor}
-                title={translate("mapLegendPatient") || "Patient"}
-                description={translate("yourLocation") || "Your position"}
-                pinColor="#D62828"
-              />
-              {ambulanceCoordsLive ? (
-                <Marker
-                  key={`amb-${liveEmergency?.updatedAt ?? ""}-${ambulanceCoordsLive.latitude}-${ambulanceCoordsLive.longitude}`}
-                  coordinate={ambulanceCoordsLive}
-                  title={translate("mapLegendAmbulance") || "Ambulance"}
-                  description={translate("ambulance") || "Ambulance"}
-                  pinColor="#0074D9"
-                />
-              ) : null}
-            </MapView>
-
-            {ambulanceAssigned && !ambulanceCoordsLive && crewEtaMinutes == null && !isAmbulanceArrived ? (
-              <View style={styles.mapWaiting}>
-                <Text style={styles.mapWaitingText}>
-                  {translate("ambulanceLocating") || "Locating ambulance..."}
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={styles.mapLegend}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: "#D62828" }]} />
-                <Text style={styles.legendLabel}>{translate("mapLegendPatient") || "Patient"}</Text>
-              </View>
-              {ambulanceCoordsLive ? (
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: "#0074D9" }]} />
-                  <Text style={styles.legendLabel}>{translate("mapLegendAmbulance") || "Ambulance"}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-        )}
-
-        {/* Calm reassurance — single short line, low visual weight. */}
-        <View style={styles.calmBanner}>
-          <Text style={styles.calmBannerText}>
-            {translate("stayCalmTitle")} — {translate("helpOnWay")}
-          </Text>
-        </View>
-
-        {/* 3. CHAT WITH MEDICAL TEAM — talk to the dispatcher / doctor. */}
-        {currentEmergency?.id && user?.uid ? (
-          <View style={styles.sectionCard}>
-            <SectionHeader
-              overline={translate("chatTitle", "Communication")}
-              title={translate("chatTitle", "Chat with Medical Team")}
+          <View
+            onLayout={(e) => {
+              firstAidSectionYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
+            <SosSmartFirstAid
+              lang={lang}
+              translate={translate}
+              crewEtaMinutes={crewEtaMinutes}
+              ambulanceStatusText={ambulanceStatusLine}
+              isAmbulanceArrived={isAmbulanceArrived}
+              victimType={victimType}
+              onScrollToFirstAidSection={scrollToFirstAidSection}
             />
-            <Text style={styles.sectionHint}>
-              {translate(
-                "chatPlaceholder",
-                "Message the doctor monitoring your case",
-              )}
-            </Text>
+          </View>
+
+          <ShortcutCard
+            ionIcon="medkit-outline"
+            title={translate("aiTriageButtonTitle")}
+            subtitle={
+              aiAvailable
+                ? translate("aiTriageButtonSub")
+                : translate("aiTriageButtonSubOffline")
+            }
+            onPress={() => setAiCompanionVisible(true)}
+          />
+        </CollapsibleSection>
+
+        {currentEmergency?.id && user?.uid ? (
+          <View
+            onLayout={(e) => {
+              chatSectionYRef.current = e.nativeEvent.layout.y;
+            }}
+            style={styles.chatSection}
+          >
             <EmergencyChat
               emergencyId={currentEmergency.id}
               currentUserId={user.uid}
               currentUserRole="user"
               isActive={currentEmergency.sessionStatus === "active"}
+              variant="premium"
             />
           </View>
         ) : null}
-
-        {/* 4. SMART FIRST-AID GUIDANCE — adaptive triage / steps. */}
-        <View
-          onLayout={(e) => {
-            firstAidSectionYRef.current = e.nativeEvent.layout.y;
-          }}
-        >
-          <SosSmartFirstAid
-            lang={lang}
-            translate={translate}
-            crewEtaMinutes={crewEtaMinutes}
-            ambulanceStatusText={ambulanceStatusLine}
-            isAmbulanceArrived={isAmbulanceArrived}
-            victimType={victimType}
-            onScrollToFirstAidSection={scrollToFirstAidSection}
-          />
-        </View>
-
-        {/*
-          5. AI TRIAGE ASSISTANT — opens a structured triage modal.
-          When the OpenAI key is missing or the call fails, the modal itself
-          falls back to opening the built-in first-aid library, so the button
-          is always offered (no silent dead-end).
-        */}
-        <ShortcutCard
-          icon="🩺"
-          title={translate("aiTriageButtonTitle", "AI Triage Assistant")}
-          subtitle={
-            aiAvailable
-              ? translate(
-                  "aiTriageButtonSub",
-                  "Find the right guide and one next action",
-                )
-              : translate(
-                  "aiTriageButtonSubOffline",
-                  "Browse first-aid guides (AI unavailable)",
-                )
-          }
-          onPress={() => setAiCompanionVisible(true)}
-        />
-
-        {/* 6. MEDICAL INFO SHARE — only when victim is the user. */}
-        {victimType === "me" && (
-          <ShortcutCard
-            icon="📋"
-            title={translate("shareMedicalProfile")}
-            subtitle={translate("sendMedicalInfo")}
-            onPress={shareMedicalInfo}
-          />
-        )}
       </ScrollView>
+
+      <View style={styles.dockLayer} pointerEvents="box-none">
+        <AiVoiceDock
+          onMicPress={() => setAiCompanionVisible(true)}
+          onOpenAi={() => setAiCompanionVisible(true)}
+          listening={aiCompanionVisible}
+          hint={translate("aiVoiceHint", "Tap to speak with AI triage assistant")}
+          micLabel={translate("aiTriageButtonTitle")}
+        />
+      </View>
 
       {/*
         AI Triage Assistant modal — fully isolated from SOS dispatch, Firestore
@@ -1031,8 +1123,8 @@ Shared from ResQNow Emergency App
       {/* End emergency — only before crew arrival; sync loading vs lifecycle lock */}
       <View style={styles.footer}>
         {!activeEmergencyHydrated ? (
-          <View style={styles.footerSyncRow}>
-            <ActivityIndicator color="#DC2626" />
+          <View style={[styles.footerSyncRow, row]}>
+            <ActivityIndicator color={tokens.color.primary} />
             <Text style={styles.footerSyncText}>
               {translate("loading") || "Loading…"}
             </Text>
@@ -1051,8 +1143,8 @@ Shared from ResQNow Emergency App
           </View>
         ) : (
           <Button
-            variant="neutralDark"
-            size="lg"
+            variant="ghost"
+            size="md"
             fullWidth
             label={
               ending
@@ -1073,282 +1165,41 @@ Shared from ResQNow Emergency App
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: tokens.color.danger,
-  },
-  /* Hero status block — red bar at the very top with the elapsed timer.
-     Kept compact so the content card below it dominates the screen. */
-  statusBar: {
-    backgroundColor: tokens.color.danger,
-    paddingTop: 56,
-    paddingBottom: tokens.space.lg,
-    paddingHorizontal: tokens.space.lg,
-  },
-  statusTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: tokens.space.md,
-  },
-  statusLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statusIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#FFFFFF",
-    marginRight: tokens.space.sm,
-  },
-  statusText: {
-    color: "#FFFFFF",
-    fontSize: tokens.font.bodyLg,
-    fontWeight: "900",
-    letterSpacing: 1.5,
-  },
-  statusTimerBlock: {
-    alignItems: "flex-end",
-  },
-  statusTimerLabel: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-  },
-  statusTimerValue: {
-    color: "#FFFFFF",
-    fontSize: tokens.font.h1,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    fontVariant: ["tabular-nums"],
-  },
-  statusBottomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    flexWrap: "wrap",
+    backgroundColor: tokens.color.aiBgSoft,
   },
   content: {
-    backgroundColor: tokens.color.bgPage,
-    borderTopLeftRadius: tokens.radius.xl,
-    borderTopRightRadius: tokens.radius.xl,
-    paddingTop: tokens.space.lg,
-    /* Footer overlays the bottom; reserve enough space so the last card
-       (Share Medical) is never trapped under it. */
-    paddingBottom: 120,
     paddingHorizontal: tokens.space.lg,
+    gap: tokens.space.sm,
   },
-  /* Re-usable section card wrapper for any sub-block needing a header. */
-  sectionCard: {
-    backgroundColor: tokens.color.bgSurface,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.space.lg,
-    marginBottom: tokens.space.md,
-    borderWidth: tokens.hairline,
-    borderColor: tokens.color.border,
-  },
-  sectionHint: {
-    fontSize: tokens.font.caption,
-    color: tokens.color.textMuted,
-    fontWeight: "600",
-    marginBottom: tokens.space.sm,
-    marginTop: -tokens.space.xs,
-  },
-  /* Location / share card — red left bar marks it as the primary share affordance. */
-  infoCard: {
-    backgroundColor: tokens.color.bgSurface,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.space.lg,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: tokens.space.md,
-    borderWidth: tokens.hairline,
-    borderColor: tokens.color.border,
-    borderLeftWidth: 3,
-    borderLeftColor: tokens.color.danger,
-  },
-  infoIcon: {
-    fontSize: 24,
-    marginRight: tokens.space.md,
-    marginTop: 2,
-  },
-  infoContent: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: tokens.font.overline,
-    fontWeight: "900",
-    color: tokens.color.textFaint,
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-    marginBottom: tokens.space.xs,
-  },
-  infoValue: {
-    fontSize: tokens.font.label,
-    fontWeight: "800",
-    color: tokens.color.textPrimary,
-    lineHeight: 20,
-  },
-  locationCoords: {
-    fontSize: tokens.font.overline,
-    color: tokens.color.textMuted,
-    fontFamily: "monospace",
-    marginTop: tokens.space.xs,
-  },
-  shareHintRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: tokens.space.sm,
-    gap: tokens.space.xs,
-  },
-  shareIcon: { fontSize: 14 },
-  tapToShare: {
-    fontSize: tokens.font.caption,
-    color: tokens.color.danger,
-    fontWeight: "800",
-    letterSpacing: 0.3,
-  },
-  /* Compact calm reassurance banner. */
-  calmBanner: {
-    backgroundColor: tokens.color.successBg,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    marginBottom: tokens.space.md,
-    borderWidth: tokens.hairline,
-    borderColor: tokens.color.successBorder,
-  },
-  calmBannerText: {
-    fontSize: tokens.font.body,
-    fontWeight: "800",
-    color: tokens.color.successText,
-    textAlign: "center",
-  },
-  mapCard: {
-    backgroundColor: tokens.color.bgSurface,
-    borderRadius: tokens.radius.lg,
-    marginBottom: tokens.space.md,
+  mapGlass: {
+    marginBottom: tokens.space.lg,
     overflow: "hidden",
-    borderWidth: tokens.hairline,
-    borderColor: tokens.color.border,
   },
-  mapHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    borderBottomWidth: tokens.hairline,
-    borderBottomColor: tokens.color.border,
+  mapPanel: {
+    marginBottom: 0,
+    height: 168,
+    borderRadius: AI_RADIUS.card - 4,
+    overflow: "hidden",
   },
-  mapTitle: {
-    fontSize: tokens.font.label,
-    fontWeight: "900",
-    color: tokens.color.textPrimary,
-  },
-  distanceBadge: {
-    backgroundColor: tokens.color.infoBg,
-    borderRadius: tokens.radius.pill,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.xs,
-    borderWidth: tokens.hairline,
-    borderColor: tokens.color.infoBorder,
-  },
-  distanceText: {
-    fontSize: tokens.font.bodyLg,
-    fontWeight: "700",
-    color: tokens.color.info,
-  },
-  etaBanner: {
-    marginHorizontal: tokens.space.md,
-    marginBottom: tokens.space.sm,
-    backgroundColor: tokens.color.successBg,
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderWidth: tokens.hairline,
-    borderColor: tokens.color.successBorder,
-  },
-  etaBannerText: {
-    fontSize: tokens.font.label,
-    fontWeight: "900",
-    color: tokens.color.successText,
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  etaPending: {
-    marginHorizontal: tokens.space.md,
-    marginBottom: tokens.space.sm,
-    fontSize: tokens.font.body,
-    fontWeight: "700",
-    color: tokens.color.textMuted,
-    textAlign: "center",
-  },
-  etaBannerArrived: {
-    marginHorizontal: tokens.space.md,
-    marginBottom: tokens.space.sm,
-    backgroundColor: "#DCFCE7",
-    borderRadius: tokens.radius.md,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderWidth: tokens.hairline,
-    borderColor: "#86EFAC",
-  },
-  etaBannerArrivedText: {
-    fontSize: tokens.font.label,
-    fontWeight: "900",
-    color: "#166534",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  /* Reduced map height — important context, but the chat / triage actions
-     below it deserve equal weight on the screen. */
-  map: {
+  mapFill: {
     width: "100%",
-    height: 180,
+    height: "100%",
   },
-  mapWaiting: {
-    height: 72,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.color.bgSubtle,
+  chatSection: {
+    marginBottom: tokens.space.lg,
   },
-  mapWaitingText: {
-    fontSize: tokens.font.bodyLg,
-    color: tokens.color.textMuted,
-    fontStyle: "italic",
+  dockLayer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 88,
   },
-  mapLegend: {
-    flexDirection: "row",
-    gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderTopWidth: tokens.hairline,
-    borderTopColor: tokens.color.border,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.xs,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendLabel: {
-    fontSize: tokens.font.body,
-    color: tokens.color.textMuted,
-    fontWeight: "600",
-  },
-  /* Sticky bottom action bar — calm but accessible. */
   footer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: tokens.color.bgSurface,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xl,
@@ -1356,32 +1207,30 @@ const styles = StyleSheet.create({
     borderTopColor: tokens.color.border,
   },
   footerSyncRow: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: tokens.space.md,
+    gap: tokens.space.md,
   },
   footerSyncText: {
-    marginLeft: tokens.space.md,
     color: tokens.color.textSecondary,
     fontSize: tokens.font.bodyLg,
-    fontWeight: "700",
+    fontWeight: tokens.fontWeight.semibold,
   },
   footerLocked: {
     paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.xs,
   },
   footerLockedTitle: {
     color: tokens.color.textPrimary,
     fontSize: tokens.font.bodyLg,
-    fontWeight: "900",
+    fontWeight: tokens.fontWeight.semibold,
     marginBottom: tokens.space.xs,
     textAlign: "center",
   },
   footerLockedBody: {
     color: tokens.color.textMuted,
     fontSize: tokens.font.caption,
-    fontWeight: "600",
+    fontWeight: tokens.fontWeight.medium,
     textAlign: "center",
     lineHeight: 18,
   },

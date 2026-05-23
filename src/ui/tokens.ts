@@ -1,29 +1,13 @@
 /**
- * Design tokens — single source of truth for the ResQNow UI system.
+ * ResQNow design tokens — single source of truth.
  *
- * Spacing is on an 8-point base scale (4 / 8 / 12 / 16 / 20 / 24 / 32). Every
- * screen aligns to the same vertical rhythm so the UI feels exact and calm.
- *
- * Borders are deliberately light and shadows are deliberately subtle. This
- * is a medical control system — emphasis comes from typography hierarchy
- * and meaningful colour, not heavy outlines or drop shadows.
- *
- * Anything that is used in more than one screen MUST live here.
+ * Visual direction: calm medical product. Soft page background, white cards,
+ * medical blue for primary actions, red reserved for SOS / destructive only.
  */
 
-import { type ViewStyle } from "react-native";
+import { type TextStyle, type ViewStyle } from "react-native";
 
 export const tokens = {
-  /**
-   * 8-point spacing scale.
-   *
-   * Use these names everywhere — never inline `12`, `16`, `24` numbers in
-   * StyleSheets. NEVER use arithmetic (`+ 2`, `+ 4`) on these tokens: pick
-   * the nearest semantic step. If a layout needs an off-grid value, that's
-   * a signal that the design is reaching for a value the system doesn't
-   * support yet — extend the scale here instead of patching at the call
-   * site.
-   */
   space: {
     xs: 4,
     sm: 8,
@@ -34,64 +18,79 @@ export const tokens = {
     huge: 40,
   },
 
-  /** Border radii. */
   radius: {
-    xs: 6,
-    sm: 10,
-    md: 12,
-    lg: 16,
-    xl: 20,
+    xs: 8,
+    sm: 12,
+    md: 14,
+    lg: 18,
+    xl: 24,
+    xxl: 28,
     pill: 999,
   },
 
-  /** Hairline border width — keep dividers light. */
   hairline: 1,
 
-  /** Semantic colour tokens. */
   color: {
-    // Page surfaces
-    bgPage: "#F4F6F9",
+    bgPage: "#F6F8FB",
     bgSurface: "#FFFFFF",
-    bgSubtle: "#F8FAFC",
+    bgSubtle: "#F1F5F9",
 
-    // Borders / dividers (use these by default — kept light on purpose)
-    border: "#E5E8EE",
+    border: "#E2E8F0",
     borderStrong: "#CBD5E1",
 
-    // Text — tuned for high readability on white surfaces.
     textPrimary: "#0F172A",
     textSecondary: "#475569",
     textMuted: "#64748B",
     textFaint: "#94A3B8",
+    textOnPrimary: "#FFFFFF",
     textOnDanger: "#FFFFFF",
 
-    // Brand / accent (red = emergency)
+    /** Medical blue — default primary actions, links, mission accent */
+    primary: "#1D4ED8",
+    primaryDark: "#1E3A8A",
+    primaryBg: "#EFF6FF",
+    primaryBorder: "#BFDBFE",
+    primarySurface: "#F8FAFF",
+
+    /** Legacy alias used by buttons */
+    primarySolid: "#1D4ED8",
+
+    /** AI emergency assistant — calm medical command center */
+    aiBlue: "#2563EB",
+    aiBlueSoft: "#60A5FA",
+    aiBgSoft: "#F4F8FF",
+    aiGlass: "rgba(255, 255, 255, 0.72)",
+    aiGlassBorder: "rgba(255, 255, 255, 0.85)",
+    aiGlow: "rgba(37, 99, 235, 0.28)",
+
+    /** Emergency / destructive only */
     danger: "#DC2626",
     dangerDark: "#B91C1C",
-    dangerBg: "#FEE2E2",
-    /** Tinted surface used as the "live mission" card background — calm, not loud. */
-    dangerSurface: "#FFF7F7",
+    dangerBg: "#FEF2F2",
+    dangerSurface: "#FFFBFB",
     dangerBorder: "#FECACA",
 
-    // Status semantics
     success: "#16A34A",
-    successBg: "#ECFDF5",
-    successText: "#065F46",
-    successBorder: "#A7F3D0",
-    warning: "#F59E0B",
-    warningBg: "#FEF3C7",
+    successBg: "#F0FDF4",
+    successText: "#166534",
+    successBorder: "#BBF7D0",
+
+    warning: "#D97706",
+    warningBg: "#FFFBEB",
     warningText: "#92400E",
+    warningBorder: "#FDE68A",
+
     info: "#1D4ED8",
-    infoBg: "#DBEAFE",
+    infoBg: "#EFF6FF",
     infoBorder: "#BFDBFE",
 
-    // Neutral solid (used for "navigate", "open", quiet primary buttons)
-    primarySolid: "#0F172A",
-    /** Slate used for the "End emergency" / non-destructive heavy buttons. */
+    neutralBg: "#F1F5F9",
+    neutralText: "#475569",
+
+    /** Secondary solid actions (end session, quiet confirm) */
     slate: "#475569",
   },
 
-  /** Typography sizes. Weights are inline strings ("700" / "800" / "900"). */
   font: {
     overline: 11,
     caption: 12,
@@ -100,35 +99,111 @@ export const tokens = {
     label: 15,
     title: 16,
     h3: 18,
-    h2: 22,
-    h1: 28,
-    display: 32,
+    h2: 20,
+    h1: 24,
+    display: 28,
+    metric: 32,
+    /** Mission ETA — large, calm, scannable */
+    eta: 40,
   },
 
-  /** Minimum touch target — keep all tap surfaces at or above this. */
+  /** Calm UI motion (ms) */
+  motion: {
+    fast: 120,
+    normal: 180,
+    slow: 220,
+  },
+
+  fontWeight: {
+    medium: "600" as const,
+    semibold: "700" as const,
+    bold: "800" as const,
+    heavy: "900" as const,
+  },
+
   hitSlop: 44,
 } as const;
 
-/**
- * Card-level drop shadow — very subtle. Used on every white card so that
- * cards float above the page surface without competing for attention.
- */
 export const cardShadow: ViewStyle = {
   shadowColor: "#0F172A",
   shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.04,
-  shadowRadius: 4,
+  shadowOpacity: 0.03,
+  shadowRadius: 3,
   elevation: 1,
 };
 
-/**
- * Elevated shadow — used sparingly: the SOS button and the live alert
- * banner. NEVER use this for ambient cards.
- */
+/** SOS hero and live alert only */
 export const elevatedShadow: ViewStyle = {
   shadowColor: "#0F172A",
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.14,
-  shadowRadius: 12,
-  elevation: 5,
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  elevation: 3,
 };
+
+export const textStyles = {
+  overline: {
+    fontSize: tokens.font.overline,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.color.textFaint,
+    letterSpacing: 0.8,
+    textTransform: "uppercase" as const,
+  },
+  h1: {
+    fontSize: tokens.font.h1,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.3,
+  },
+  h2: {
+    fontSize: tokens.font.h2,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.2,
+  },
+  h3: {
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.2,
+  },
+  body: {
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textSecondary,
+    lineHeight: 20,
+  },
+  caption: {
+    fontSize: tokens.font.caption,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textMuted,
+    lineHeight: 16,
+  },
+  metric: {
+    fontSize: tokens.font.metric,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.5,
+  },
+  eta: {
+    fontSize: tokens.font.eta,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.primary,
+    letterSpacing: -0.6,
+  },
+} satisfies Record<string, TextStyle>;
+
+/** Standard page background + horizontal padding for scroll screens */
+export const pageStyles = {
+  screen: {
+    flex: 1,
+    backgroundColor: tokens.color.bgPage,
+  } satisfies ViewStyle,
+  content: {
+    paddingBottom: tokens.space.xxl,
+  } satisfies ViewStyle,
+  /** Vertical rhythm between major blocks on mission / emergency screens */
+  sectionGap: {
+    marginBottom: tokens.space.xl,
+  } satisfies ViewStyle,
+} as const;

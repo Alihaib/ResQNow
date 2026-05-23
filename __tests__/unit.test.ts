@@ -24,7 +24,13 @@ import {
 } from "../src/emergency/patientSnapshot";
 
 import { pick } from "../src/firstAid/types";
-import { isRTL, getFlexDirection, getTextAlign, getRTLMargin, getRTLPadding } from "../src/utils/rtl";
+import {
+  isRTL,
+  getFlexDirection,
+  getTextAlign,
+  marginHorizontal,
+  paddingHorizontal,
+} from "../src/utils/rtl";
 
 // ─── normalizeLifecycleStatus ─────────────────────────────────────────────────
 
@@ -327,14 +333,17 @@ describe("isRTL", () => {
     expect(isRTL("en")).toBe(false);
   });
 
-  test("returns false for any other language code", () => {
-    expect(isRTL("ar")).toBe(false);
+  test("returns true for Arabic", () => {
+    expect(isRTL("ar")).toBe(true);
+  });
+
+  test("returns false for other language codes", () => {
     expect(isRTL("fr")).toBe(false);
   });
 });
 
 describe("getFlexDirection", () => {
-  test("returns 'row-reverse' for Hebrew", () => {
+  test("returns 'row-reverse' for Hebrew (lang-driven, no reload)", () => {
     expect(getFlexDirection("he")).toBe("row-reverse");
   });
 
@@ -353,22 +362,14 @@ describe("getTextAlign", () => {
   });
 });
 
-describe("getRTLMargin", () => {
-  test("swaps left/right margins for Hebrew", () => {
-    expect(getRTLMargin("he", 10, 20)).toEqual({ marginLeft: 20, marginRight: 10 });
-  });
-
-  test("keeps natural left/right margins for English", () => {
-    expect(getRTLMargin("en", 10, 20)).toEqual({ marginLeft: 10, marginRight: 20 });
+describe("marginHorizontal (logical spacing)", () => {
+  test("maps start/end regardless of language", () => {
+    expect(marginHorizontal(10, 20)).toEqual({ marginStart: 10, marginEnd: 20 });
   });
 });
 
-describe("getRTLPadding", () => {
-  test("swaps left/right padding for Hebrew", () => {
-    expect(getRTLPadding("he", 8, 16)).toEqual({ paddingLeft: 16, paddingRight: 8 });
-  });
-
-  test("keeps natural left/right padding for English", () => {
-    expect(getRTLPadding("en", 8, 16)).toEqual({ paddingLeft: 8, paddingRight: 16 });
+describe("paddingHorizontal (logical spacing)", () => {
+  test("maps start/end regardless of language", () => {
+    expect(paddingHorizontal(8, 16)).toEqual({ paddingStart: 8, paddingEnd: 16 });
   });
 });

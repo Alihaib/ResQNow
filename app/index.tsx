@@ -1,14 +1,18 @@
 import { useRouter, useSegments } from "expo-router";
 import { useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../src/context/AuthContext";
 import { useLanguage } from "../src/context/LanguageContext";
+import { pageStyles, tokens } from "../src/ui/tokens";
 
 export default function HomePage() {
   const { user, role, approved, loading } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
   const segments = useSegments();
+  const insets = useSafeAreaInsets();
 
   // Handle navigation redirects
   useEffect(() => {
@@ -65,8 +69,10 @@ export default function HomePage() {
   // -------------------------
   if (!user) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.logo}>⛑</Text>
+      <View style={[pageStyles.screen, styles.container, { paddingTop: insets.top + 24 }]}>
+        <View style={styles.brandBadge}>
+          <Ionicons name="medkit" size={36} color={tokens.color.primary} />
+        </View>
         <Text style={styles.title}>ResQNow</Text>
         <Text style={styles.subtitle}>{t("home_subtitle")}</Text>
 
@@ -104,129 +110,122 @@ export default function HomePage() {
 // ----------------------------
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
-    paddingTop: 70,
-    paddingHorizontal: 20,
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xxl,
   },
-
-  // Logo + Titles
-  logo: {
-    fontSize: 50,
-    textAlign: "center",
-    marginBottom: 10,
+  brandBadge: {
+    alignSelf: "center",
+    width: 72,
+    height: 72,
+    borderRadius: tokens.radius.xxl,
+    backgroundColor: tokens.color.primaryBg,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primaryBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: tokens.space.md,
   },
   title: {
-    fontSize: 40,
-    fontWeight: "900",
-    color: "#003049",
+    fontSize: tokens.font.display,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
     textAlign: "center",
+    letterSpacing: -0.4,
   },
   subtitle: {
-    fontSize: 14,
-    color: "#6C757D",
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
     textAlign: "center",
-    marginBottom: 25,
+    marginBottom: tokens.space.xl,
+    marginTop: tokens.space.sm,
   },
-
-  // role text
   role: {
-    fontSize: 18,
+    fontSize: tokens.font.h3,
     textAlign: "center",
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 10,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.sm,
   },
   pending: {
-    color: "#D62828",
-    fontWeight: "700",
+    color: tokens.color.danger,
+    fontWeight: tokens.fontWeight.semibold,
   },
-
-  // card container
   card: {
-    backgroundColor: "white",
-    padding: 25,
-    borderRadius: 20,
-    elevation: 6,
-    marginTop: 10,
+    backgroundColor: tokens.color.bgSurface,
+    padding: tokens.space.xl,
+    borderRadius: tokens.radius.xxl,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
+    marginTop: tokens.space.md,
   },
-
-  // buttons
   primaryBtn: {
-    backgroundColor: "#D62828",
-    paddingVertical: 16,
-    borderRadius: 14,
+    backgroundColor: tokens.color.primary,
+    paddingVertical: tokens.space.lg,
+    borderRadius: tokens.radius.xl,
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: tokens.space.md,
   },
   primaryText: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "700",
+    color: tokens.color.textOnPrimary,
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.heavy,
   },
-
   secondaryBtn: {
-    borderWidth: 2,
-    borderColor: "#D62828",
-    paddingVertical: 14,
-    borderRadius: 14,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primary,
+    paddingVertical: tokens.space.md,
+    borderRadius: tokens.radius.xl,
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: tokens.space.md,
   },
   secondaryText: {
-    color: "#D62828",
-    fontSize: 16,
-    fontWeight: "700",
+    color: tokens.color.primary,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
   },
-
-  // emergency
   emergencyBtn: {
-    backgroundColor: "#DC2626",
-    paddingVertical: 18,
-    borderRadius: 16,
+    backgroundColor: tokens.color.danger,
+    paddingVertical: tokens.space.lg,
+    borderRadius: tokens.radius.xl,
     alignItems: "center",
-    marginBottom: 18,
+    marginBottom: tokens.space.lg,
   },
   emergencyText: {
-    color: "white",
-    fontSize: 22,
-    fontWeight: "900",
+    color: tokens.color.textOnDanger,
+    fontSize: tokens.font.h2,
+    fontWeight: tokens.fontWeight.heavy,
   },
-
-  // panel buttons
   panelBtn: {
-    borderWidth: 2,
-    borderColor: "#003049",
-    paddingVertical: 16,
-    borderRadius: 14,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.borderStrong,
+    paddingVertical: tokens.space.lg,
+    borderRadius: tokens.radius.xl,
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: tokens.space.md,
+    backgroundColor: tokens.color.bgSurface,
   },
   panelText: {
-    color: "#003049",
-    fontWeight: "700",
-    fontSize: 16,
+    color: tokens.color.textPrimary,
+    fontWeight: tokens.fontWeight.semibold,
+    fontSize: tokens.font.label,
   },
-
-  // logout
   logoutBtn: {
-    marginTop: 25,
+    marginTop: tokens.space.xl,
     alignSelf: "center",
   },
   logoutText: {
-    color: "#D62828",
-    fontSize: 16,
-    fontWeight: "700",
+    color: tokens.color.danger,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
   },
-
-  // loading
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: tokens.color.bgPage,
   },
   loading: {
-    fontSize: 18,
-    color: "#6C757D",
+    fontSize: tokens.font.h3,
+    color: tokens.color.textMuted,
   },
 });

@@ -2,17 +2,20 @@ import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import {
-    Alert,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { PrimaryButton } from "../../components/ui/Button";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { auth, db } from "../../src/firebase/config";
-import { theme } from "../../src/ui/theme";
+import { pageStyles, tokens } from "../../src/ui/tokens";
 
 export default function Login() {
   const router = useRouter();
@@ -20,6 +23,7 @@ export default function Login() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const insets = useSafeAreaInsets();
 
   const login = async () => {
     try {
@@ -50,14 +54,14 @@ export default function Login() {
   };
 
   return (
-    <View style={styles.container}>
-
-      {/* 🌍 Language Switch */}
+    <View style={[pageStyles.screen, styles.container, { paddingTop: insets.top + 16 }]}>
       <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
         <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
       </TouchableOpacity>
 
-      <Text style={styles.logo}>⛑</Text>
+      <View style={styles.brandBadge}>
+        <Ionicons name="medkit" size={32} color={tokens.color.primary} />
+      </View>
       <Text style={styles.title}>{t("login_title")}</Text>
       <Text style={styles.subtitle}>{t("login_subtitle")}</Text>
 
@@ -67,7 +71,7 @@ export default function Login() {
         <TextInput
           style={styles.input}
           placeholder={t("email_placeholder")}
-          placeholderTextColor="#ADB5BD"
+          placeholderTextColor={tokens.color.textFaint}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -78,16 +82,19 @@ export default function Login() {
         <TextInput
           style={styles.input}
           placeholder="●●●●●●●●"
-          placeholderTextColor="#ADB5BD"
+          placeholderTextColor={tokens.color.textFaint}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
         />
 
         {/* LOGIN BUTTON */}
-        <TouchableOpacity style={styles.primaryBtn} onPress={login}>
-          <Text style={styles.primaryText}>{t("login")}</Text>
-        </TouchableOpacity>
+        <PrimaryButton
+          label={t("login")}
+          onPress={login}
+          fullWidth
+          style={{ marginTop: tokens.space.xl }}
+        />
 
         {/* SIGNUP LINK */}
         <TouchableOpacity
@@ -108,113 +115,92 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-    paddingTop: 70,
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xxl,
   },
-
   languageBtn: {
     position: "absolute",
-    top: 40,
-    right: 20,
-    backgroundColor: theme.colors.text,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
+    top: 56,
+    right: tokens.space.lg,
+    backgroundColor: tokens.color.primary,
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.pill,
     zIndex: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  languageText: { 
-    color: "#FFF", 
-    fontWeight: "700",
-    fontSize: 14,
+  languageText: {
+    color: tokens.color.textOnPrimary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.font.caption,
   },
-
-  logo: {
-    fontSize: 60,
-    textAlign: "center",
-    marginBottom: 12,
+  brandBadge: {
+    alignSelf: "center",
+    width: 64,
+    height: 64,
+    borderRadius: tokens.radius.xl,
+    backgroundColor: tokens.color.primaryBg,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primaryBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: tokens.space.md,
   },
-
   title: {
-    ...theme.typography.title,
-    color: theme.colors.text,
+    fontSize: tokens.font.display,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
     textAlign: "center",
-    marginBottom: theme.spacing.sm,
+    marginBottom: tokens.space.sm,
+    letterSpacing: -0.4,
   },
-
   subtitle: {
-    fontSize: 15,
-    color: theme.colors.textMuted,
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: tokens.space.xxl,
     lineHeight: 22,
   },
-
   card: {
-    backgroundColor: theme.colors.surface,
-    padding: 28,
-    borderRadius: 24,
-    ...theme.shadow.card,
+    backgroundColor: tokens.color.bgSurface,
+    padding: tokens.space.xl,
+    borderRadius: tokens.radius.xxl,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
   },
-
   label: {
-    fontSize: 15,
-    color: "#212529",
-    marginBottom: 8,
-    fontWeight: "600",
-    marginTop: 4,
+    fontSize: tokens.font.label,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.sm,
+    fontWeight: tokens.fontWeight.semibold,
+    marginTop: tokens.space.xs,
   },
-
   input: {
-    backgroundColor: theme.colors.bg,
-    borderRadius: theme.radius.sm,
+    backgroundColor: tokens.color.bgPage,
+    borderRadius: tokens.radius.lg,
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: "#212529",
-    marginBottom: 4,
-    borderWidth: 1.5,
-    borderColor: theme.colors.border,
+    paddingHorizontal: tokens.space.lg,
+    fontSize: tokens.font.title,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
   },
-
-  primaryBtn: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: 18,
-    borderRadius: 14,
-    alignItems: "center",
-    marginTop: 24,
-    ...theme.shadow.primary,
-  },
-  primaryText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-
   secondaryBtn: {
-    marginTop: 20,
-    paddingVertical: 8,
+    marginTop: tokens.space.lg,
+    paddingVertical: tokens.space.sm,
     alignItems: "center",
   },
   secondaryText: {
-    color: theme.colors.text,
-    fontWeight: "600",
-    fontSize: 15,
+    color: tokens.color.textPrimary,
+    fontWeight: tokens.fontWeight.semibold,
+    fontSize: tokens.font.label,
   },
-
   forgotText: {
-    marginTop: 16,
+    marginTop: tokens.space.lg,
     textAlign: "center",
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    fontWeight: "500",
+    color: tokens.color.textMuted,
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.medium,
   },
 });
 

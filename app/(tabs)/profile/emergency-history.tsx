@@ -1,14 +1,5 @@
 import { useRouter } from "expo-router";
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useLanguage } from "../../../src/context/LanguageContext";
-import { useAuth } from "../../../src/context/AuthContext";
-import {
   collection,
   onSnapshot,
   orderBy,
@@ -16,8 +7,17 @@ import {
   where,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
+import Card from "../../../components/ui/Card";
+import EmptyState from "../../../components/ui/EmptyState";
+import StatusChip from "../../../components/ui/StatusChip";
+import SubScreenShell from "../../../components/ui/SubScreenShell";
+import { useAuth } from "../../../src/context/AuthContext";
+import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
 import { caseIdSuffix } from "../../../src/utils/formatCaseId";
+import { useUiDirection } from "../../../components/ui/layout";
+import { tokens } from "../../../src/ui/tokens";
 
 type EmergencyHistoryItem = {
   id: string;
@@ -28,9 +28,32 @@ type EmergencyHistoryItem = {
   location?: { address?: string | null; latitude?: number; longitude?: number } | null;
 };
 
+function formatStatusLabel(status: string) {
+  if (!status) return "—";
+  return status
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function statusVariant(
+  sessionStatus?: string,
+): "info" | "success" | "danger" | "neutral" {
+  switch (sessionStatus) {
+    case "active":
+      return "info";
+    case "resolved":
+      return "success";
+    case "cancelled":
+      return "danger";
+    default:
+      return "neutral";
+  }
+}
+
 export default function EmergencyHistoryScreen() {
   const router = useRouter();
   const { t } = useLanguage();
+  const { row, chevronForward } = useUiDirection();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<EmergencyHistoryItem[]>([]);
@@ -47,42 +70,47 @@ export default function EmergencyHistoryScreen() {
     setLoading(true);
     setLoadError(null);
     const ref = collection(db, "emergencies");
-    // NOTE:
-    // This query (where userId == X + orderBy timestamp desc) may require a Firestore composite index:
-    //   Collection: emergencies
-    //   Fields: userId (ASC), timestamp (DESC)
-    // If you see "FirebaseError: The query requires an index", create the index using the link in the error.
-    const q = query(ref, where("userId", "==", user.uid), orderBy("timestamp", "desc"));
+    const q = query(
+      ref,
+      where("userId", "==", user.uid),
+      orderBy("timestamp", "desc"),
+    );
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         const next: EmergencyHistoryItem[] = snap.docs.map((d) => {
-          const data = d.data() as any;
+          const data = d.data() as Record<string, unknown>;
           return {
             id: d.id,
-            timestamp: typeof data.timestamp === "string" ? data.timestamp : undefined,
-            victimType: typeof data.victimType === "string" ? data.victimType : undefined,
+            timestamp:
+              typeof data.timestamp === "string" ? data.timestamp : undefined,
+            victimType:
+              typeof data.victimType === "string" ? data.victimType : undefined,
             status: typeof data.status === "string" ? data.status : undefined,
-            sessionStatus: typeof data.sessionStatus === "string" ? data.sessionStatus : undefined,
-            location: (data.location ?? data.patientLocation ?? null) as any,
+            sessionStatus:
+              typeof data.sessionStatus === "string"
+                ? data.sessionStatus
+                : undefined,
+            location: (data.location ?? data.patientLocation ?? null) as EmergencyHistoryItem["location"],
           };
         });
         setItems(next);
         setLoading(false);
       },
       (err) => {
-        // Avoid console.error here because it triggers a full-screen redbox in RN dev.
         console.warn("Emergency history listener error:", err);
-        const code = (err as any)?.code as string | undefined;
+        const code = (err as { code?: string })?.code;
         if (code === "failed-precondition") {
-          setLoadError("This query requires a Firestore index. Please create the composite index for emergencies (userId + timestamp desc).");
+          setLoadError(
+            "This query requires a Firestore index. Please create the composite index for emergencies (userId + timestamp desc).",
+          );
         } else {
           setLoadError("Failed to load emergency history.");
         }
         setItems([]);
         setLoading(false);
-      }
+      },
     );
 
     return () => unsub();
@@ -91,10 +119,16 @@ export default function EmergencyHistoryScreen() {
   const historyItems = useMemo(() => {
     return items.map((item) => {
       const dt = item.timestamp ? new Date(item.timestamp) : null;
-      const date = dt && !Number.isNaN(dt.getTime()) ? dt.toISOString().slice(0, 10) : "—";
+      const date =
+        dt && !Number.isNaN(dt.getTime())
+          ? dt.toISOString().slice(0, 10)
+          : "—";
       const time =
         dt && !Number.isNaN(dt.getTime())
-          ? dt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+          ? dt.toLocaleTimeString(undefined, {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
           : "—";
 
       const type =
@@ -107,7 +141,8 @@ export default function EmergencyHistoryScreen() {
       const statusText = item.sessionStatus || item.status || t("unknownUser");
       const address = item.location?.address ?? null;
       const coords =
-        typeof item.location?.latitude === "number" && typeof item.location?.longitude === "number"
+        typeof item.location?.latitude === "number" &&
+        typeof item.location?.longitude === "number"
           ? `${item.location.latitude.toFixed(4)}, ${item.location.longitude.toFixed(4)}`
           : null;
 
@@ -123,209 +158,100 @@ export default function EmergencyHistoryScreen() {
   }, [items, t]);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            // Always return to Profile tab from Profile sub-screens
-            router.replace("/(tabs)/profile");
-          }}
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>‹ {t("back")}</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{t("emergencyHistory")}</Text>
-      </View>
-
+    <SubScreenShell
+      title={t("emergencyHistory")}
+      fallbackRoute="/(tabs)/profile"
+      onBack={() => router.replace("/(tabs)/profile")}
+    >
       {loading ? (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>⏳</Text>
-          <Text style={styles.emptyText}>{t("loadingEmergencies")}</Text>
-        </View>
+        <EmptyState loading tone="primary" title={t("loadingEmergencies")} />
       ) : historyItems.length > 0 ? (
-        historyItems.map((item) => {
-          const badgeStyle = getStatusBadgeStyle(item.sessionStatus);
-          const textStyle = getStatusTextStyle(item.sessionStatus);
-
-          return (
-            <TouchableOpacity key={item.id} style={styles.historyCard} activeOpacity={0.85}>
-              <Text style={styles.historyCaseId} numberOfLines={1}>
-                {t("activityEmergencyRef", "Case {id}").replace(
-                  "{id}",
-                  caseIdSuffix(item.id),
-                )}
-              </Text>
-              <View style={styles.historyHeader}>
-                <Text style={styles.historyType}>{item.type}</Text>
-                <View style={[styles.statusBadge, badgeStyle]}>
-                  <Text style={[styles.statusText, textStyle]} numberOfLines={1}>
-                    {formatStatusLabel(item.statusText)}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.historyDate}>
-                {item.date} at {item.time}
-              </Text>
-              {!!item.locationText && <Text style={styles.historyLocation}>{item.locationText}</Text>}
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          );
-        })
+        historyItems.map((item) => (
+          <Card key={item.id} style={styles.historyCard}>
+            <Text style={styles.historyCaseId} numberOfLines={1}>
+              {t("activityEmergencyRef", "Case {id}").replace(
+                "{id}",
+                caseIdSuffix(item.id),
+              )}
+            </Text>
+            <View style={[styles.historyHeader, row]}>
+              <Text style={styles.historyType}>{item.type}</Text>
+              <StatusChip
+                label={formatStatusLabel(item.statusText)}
+                variant={statusVariant(item.sessionStatus)}
+                size="sm"
+              />
+            </View>
+            <Text style={styles.historyDate}>
+              {item.date} at {item.time}
+            </Text>
+            {!!item.locationText ? (
+              <Text style={styles.historyLocation}>{item.locationText}</Text>
+            ) : null}
+            <Text style={styles.chevron}>{chevronForward}</Text>
+          </Card>
+        ))
       ) : (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📋</Text>
-          <Text style={styles.emptyText}>{t("noEmergencyHistory")}</Text>
-          <Text style={styles.emptySubtext}>{t("emergencyHistorySubtext")}</Text>
-          {!!loadError && <Text style={styles.errorText}>{loadError}</Text>}
-        </View>
+        <>
+          <EmptyState
+            ionIcon="time-outline"
+            title={t("noEmergencyHistory")}
+            subtitle={t("emergencyHistorySubtext")}
+          />
+          {!!loadError ? (
+            <Text style={styles.errorText}>{loadError}</Text>
+          ) : null}
+        </>
       )}
-    </ScrollView>
+    </SubScreenShell>
   );
 }
 
-function formatStatusLabel(status: string) {
-  if (!status) return "—";
-  return status
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (m) => m.toUpperCase());
-}
-
-function getStatusBadgeStyle(sessionStatus?: string) {
-  switch (sessionStatus) {
-    case "active":
-      return { backgroundColor: "#DBEAFE" };
-    case "resolved":
-      return { backgroundColor: "#D1FAE5" };
-    case "cancelled":
-      return { backgroundColor: "#FEF2F2" };
-    default:
-      return { backgroundColor: "#F1F5F9" };
-  }
-}
-
-function getStatusTextStyle(sessionStatus?: string) {
-  switch (sessionStatus) {
-    case "active":
-      return { color: "#1D4ED8" };
-    case "resolved":
-      return { color: "#166534" };
-    case "cancelled":
-      return { color: "#B91C1C" };
-    default:
-      return { color: "#334155" };
-  }
-}
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
-  },
-  content: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  backBtn: {
-    marginBottom: 16,
-  },
-  backText: {
-    fontSize: 18,
-    color: "#003049",
-    fontWeight: "700",
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#003049",
-  },
   historyCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: tokens.space.sm,
   },
   historyHeader: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: tokens.space.sm,
+    gap: tokens.space.sm,
   },
   historyType: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#003049",
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    flex: 1,
   },
   historyCaseId: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#64748B",
+    fontSize: tokens.font.overline,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.color.textMuted,
     letterSpacing: 0.4,
-    marginBottom: 6,
-  },
-  statusBadge: {
-    backgroundColor: "#D1FAE5",
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#2D6A4F",
+    marginBottom: tokens.space.xs,
   },
   historyDate: {
-    fontSize: 14,
-    color: "#6C757D",
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
   },
   historyLocation: {
-    marginTop: 6,
-    fontSize: 13,
-    color: "#6C757D",
+    marginTop: tokens.space.xs,
+    fontSize: tokens.font.caption,
+    color: tokens.color.textSecondary,
   },
   chevron: {
     position: "absolute",
-    right: 20,
-    top: 20,
-    fontSize: 24,
-    color: "#6C757D",
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#6C757D",
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: "#ADB5BD",
+    end: tokens.space.lg,
+    top: tokens.space.lg,
+    fontSize: tokens.font.h3,
+    color: tokens.color.textFaint,
+    fontWeight: tokens.fontWeight.semibold,
   },
   errorText: {
-    marginTop: 12,
-    fontSize: 13,
-    color: "#B91C1C",
+    marginTop: tokens.space.md,
+    fontSize: tokens.font.caption,
+    color: tokens.color.danger,
     textAlign: "center",
-    fontWeight: "600",
+    fontWeight: tokens.fontWeight.semibold,
   },
 });
-
-
-
-
-

@@ -1,134 +1,83 @@
-import { useRouter } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { StyleSheet, Text, View } from "react-native";
+import Card from "../../../components/ui/Card";
+import SectionHeader from "../../../components/ui/SectionHeader";
+import SubScreenShell from "../../../components/ui/SubScreenShell";
+import { subScreenStyles } from "../../../components/ui/subScreenStyles";
 import { useLanguage } from "../../../src/context/LanguageContext";
-import { theme } from "../../../src/ui/theme";
+import { tokens } from "../../../src/ui/tokens";
 
 export default function AboutScreen() {
-  const router = useRouter();
   const { t } = useLanguage();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)/settings");
-            }
-          }} 
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>‹ {t("back")}</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{t("about")}</Text>
-      </View>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.logo}>⛑</Text>
+    <SubScreenShell title={t("about")} fallbackRoute="/(tabs)/settings">
+      <Card style={styles.brandCard}>
+        <View style={styles.iconBadge}>
+          <Ionicons name="medkit" size={32} color={tokens.color.primary} />
+        </View>
         <Text style={styles.appName}>{t("appName")}</Text>
-        <Text style={styles.version}>{t("appVersion").replace("{version}", "1.0.0")}</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("aboutResQNow")}</Text>
-        <Text style={styles.description}>
-          {t("aboutDescription")}
+        <Text style={styles.version}>
+          {t("appVersion").replace("{version}", "1.0.0")}
         </Text>
+      </Card>
+
+      <View style={subScreenStyles.section}>
+        <SectionHeader title={t("aboutResQNow")} dense />
+        <Text style={subScreenStyles.body}>{t("aboutDescription")}</Text>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("features")}</Text>
-        <Text style={styles.feature}>{t("featureOneTap")}</Text>
-        <Text style={styles.feature}>{t("featureFirstAid")}</Text>
-        <Text style={styles.feature}>{t("featureMedicalProfile")}</Text>
-        <Text style={styles.feature}>{t("featureContacts")}</Text>
-        <Text style={styles.feature}>{t("featureLocation")}</Text>
+      <View style={subScreenStyles.section}>
+        <SectionHeader title={t("features")} dense />
+        <Card tone="subtle" compact>
+          <Text style={styles.feature}>{t("featureOneTap")}</Text>
+          <Text style={styles.feature}>{t("featureFirstAid")}</Text>
+          <Text style={styles.feature}>{t("featureMedicalProfile")}</Text>
+          <Text style={styles.feature}>{t("featureContacts")}</Text>
+          <Text style={styles.feature}>{t("featureLocation")}</Text>
+        </Card>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("contact")}</Text>
-        <Text style={styles.contactText}>{t("website")}</Text>
+      <View style={subScreenStyles.section}>
+        <SectionHeader title={t("contact")} dense />
+        <Text style={subScreenStyles.body}>{t("website")}</Text>
       </View>
-    </ScrollView>
+    </SubScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-  },
-  content: {
-    paddingTop: 60,
-    paddingBottom: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.lg,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  backBtn: {
-    marginBottom: 16,
-  },
-  backText: {
-    fontSize: 18,
-    color: theme.colors.text,
-    fontWeight: "700",
-  },
-  title: {
-    ...theme.typography.h1,
-    color: theme.colors.text,
-  },
-  infoCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.xxl,
+  brandCard: {
     alignItems: "center",
-    marginBottom: 24,
-    ...theme.shadow.card,
+    marginBottom: tokens.space.xl,
   },
-  logo: {
-    fontSize: 64,
-    marginBottom: 16,
+  iconBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: tokens.radius.xl,
+    backgroundColor: tokens.color.primaryBg,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primaryBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: tokens.space.md,
   },
   appName: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
+    fontSize: tokens.font.h2,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs,
   },
   version: {
-    fontSize: 16,
-    color: theme.colors.textMuted,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    ...theme.typography.h2,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
-  },
-  description: {
-    fontSize: 16,
-    color: theme.colors.textMuted,
-    lineHeight: 24,
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
+    fontWeight: tokens.fontWeight.medium,
   },
   feature: {
-    fontSize: 16,
-    color: theme.colors.textMuted,
-    marginBottom: theme.spacing.sm,
-    lineHeight: 24,
-  },
-  contactText: {
-    fontSize: 16,
-    color: theme.colors.textMuted,
-    marginBottom: theme.spacing.sm,
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textSecondary,
+    fontWeight: tokens.fontWeight.medium,
+    marginBottom: tokens.space.sm,
+    lineHeight: 22,
   },
 });
-
-
-
-
-

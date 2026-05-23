@@ -1,10 +1,14 @@
 import { useRouter } from "expo-router";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { PrimaryButton } from "../../../components/ui/Button";
+import SubScreenShell from "../../../components/ui/SubScreenShell";
+import { subScreenStyles } from "../../../components/ui/subScreenStyles";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
+import { pageStyles, tokens } from "../../../src/ui/tokens";
 
 export default function MedicalHistoryScreen() {
   const router = useRouter();
@@ -75,31 +79,24 @@ export default function MedicalHistoryScreen() {
     }
   };
 
+  const goProfile = () => router.replace("/(tabs)/profile");
+
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
+      <View style={[pageStyles.screen, styles.center]}>
         <Text style={styles.loadingText}>{t("loading")}</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => {
-            // Always return to Profile tab from Profile sub-screens
-            router.replace("/(tabs)/profile");
-          }} 
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>‹ {t("back")}</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{t("medical_history")}</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("diseases")}</Text>
+    <SubScreenShell
+      title={t("medical_history")}
+      onBack={goProfile}
+      fallbackRoute="/(tabs)/profile"
+    >
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("diseases")}</Text>
         <TextInput
           style={styles.textArea}
           value={diseases}
@@ -110,8 +107,8 @@ export default function MedicalHistoryScreen() {
         />
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("medications")}</Text>
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("medications")}</Text>
         <TextInput
           style={styles.textArea}
           value={medications}
@@ -122,8 +119,8 @@ export default function MedicalHistoryScreen() {
         />
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("allergies")}</Text>
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("allergies")}</Text>
         <TextInput
           style={styles.textArea}
           value={allergies}
@@ -134,8 +131,8 @@ export default function MedicalHistoryScreen() {
         />
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("sensitive_notes")}</Text>
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("sensitive_notes")}</Text>
         <TextInput
           style={styles.textArea}
           value={notes}
@@ -146,83 +143,22 @@ export default function MedicalHistoryScreen() {
         />
       </View>
 
-      <TouchableOpacity 
-        style={[styles.saveBtn, saving && styles.saveBtnDisabled]} 
+      <PrimaryButton
+        label={saving ? t("loading") : t("saveChanges")}
         onPress={saveHistory}
         disabled={saving}
-      >
-        <Text style={styles.saveBtnText}>
-          {saving ? t("loading") : t("saveChanges")}
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+        loading={saving}
+        fullWidth
+      />
+    </SubScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
-  },
-  content: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  backBtn: {
-    marginBottom: 16,
-  },
-  backText: {
-    fontSize: 18,
-    color: "#003049",
-    fontWeight: "700",
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#003049",
-  },
-  section: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 8,
-  },
   textArea: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 1.5,
-    borderColor: "#E9ECEF",
+    ...subScreenStyles.input,
     minHeight: 100,
     textAlignVertical: "top",
-  },
-  saveBtn: {
-    backgroundColor: "#D62828",
-    paddingVertical: 18,
-    borderRadius: 14,
-    alignItems: "center",
-    marginTop: 20,
-    shadowColor: "#D62828",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  saveBtnText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  saveBtnDisabled: {
-    opacity: 0.6,
   },
   center: {
     flex: 1,
@@ -231,7 +167,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 18,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
   },
 });
 

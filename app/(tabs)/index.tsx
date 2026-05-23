@@ -1,9 +1,13 @@
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AppPageHeader from "../../components/ui/AppPageHeader";
 import Card from "../../components/ui/Card";
 import EmptyState from "../../components/ui/EmptyState";
 import SectionHeader from "../../components/ui/SectionHeader";
+import ShortcutCard from "../../components/ui/ShortcutCard";
+import SosHeroButton from "../../components/ui/SosHeroButton";
 import StatusChip from "../../components/ui/StatusChip";
 import { useAuth } from "../../src/context/AuthContext";
 import { useEmergency } from "../../src/context/EmergencyContext";
@@ -13,8 +17,8 @@ import type {
   ActivityFeedItem,
 } from "../../src/hooks/useEmergencyActivityFeed";
 import { useEmergencyActivityFeed } from "../../src/hooks/useEmergencyActivityFeed";
-import { tokens } from "../../src/ui/tokens";
-import { theme } from "../../src/ui/theme";
+import { useUiDirection } from "../../components/ui/layout";
+import { pageStyles, tokens } from "../../src/ui/tokens";
 import { caseIdSuffix } from "../../src/utils/formatCaseId";
 
 type ChipVariant = "danger" | "warning" | "success" | "info" | "neutral";
@@ -42,7 +46,9 @@ export default function HomeTab() {
   const { user, role, approved } = useAuth();
   const { isEmergencyActive, navigateToActiveEmergency } = useEmergency();
   const { t, lang } = useLanguage();
+  const { row } = useUiDirection();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { groups, loading, error } = useEmergencyActivityFeed(
     user?.uid,
     role,
@@ -89,7 +95,7 @@ export default function HomeTab() {
         index !== 0 && styles.eventRowDivider,
       ]}
     >
-      <View style={styles.eventTopRow}>
+      <View style={[styles.eventTopRow, row]}>
         <StatusChip
           label={activityLabel(item.eventType)}
           variant={chipVariantForEvent(item.eventType)}
@@ -122,7 +128,7 @@ export default function HomeTab() {
           )}
           style={styles.groupHeader}
         >
-          <View style={styles.groupHeaderTop}>
+          <View style={[styles.groupHeaderTop, row]}>
             <StatusChip
               label={activityLabel(latest.eventType)}
               variant={chipVariantForEvent(latest.eventType)}
@@ -132,14 +138,14 @@ export default function HomeTab() {
               {formatActivityTime(latest.timestampIso)}
             </Text>
           </View>
-          <View style={styles.groupHeaderBottom}>
+          <View style={[styles.groupHeaderBottom, row]}>
             <Text style={styles.groupCaseId} selectable numberOfLines={1}>
               {t("activityEmergencyRef", "Case {id}").replace(
                 "{id}",
                 caseIdSuffix(group.emergencyId),
               )}
             </Text>
-            <View style={styles.groupHeaderRight}>
+            <View style={[styles.groupHeaderRight, row]}>
               <Text style={styles.groupEventCount}>
                 {t("activityEventCount", "{n} events").replace(
                   "{n}",
@@ -167,114 +173,99 @@ export default function HomeTab() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.logo}>⛑</Text>
-        <Text style={styles.title}>ResQNow</Text>
-        <Text style={styles.subtitle}>{t("home_subtitle")}</Text>
-      </View>
+    <ScrollView
+      style={pageStyles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + 96 },
+      ]}
+    >
+      <AppPageHeader title="ResQNow" subtitle={t("home_subtitle")} />
 
-      {/* Global emergency state indicator (home) */}
-      {isEmergencyActive && (
-        <View style={styles.emergencyStatusCard}>
-          <Text style={styles.emergencyStatusTitle}>{t("emergencyActiveTitle")}</Text>
-          <Text style={styles.emergencyStatusSubtitle}>
+      {isEmergencyActive ? (
+        <Card tone="danger" style={styles.statusStrip}>
+          <Text style={styles.statusTitle}>{t("emergencyActiveTitle")}</Text>
+          <Text style={styles.statusSubtitle}>
             {t("continueActiveEmergencyHint")}
           </Text>
-        </View>
-      )}
+        </Card>
+      ) : null}
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("quickActions")}</Text>
-
-        {/* Emergency Button */}
-        <TouchableOpacity
-          style={[styles.emergencyBtn, isEmergencyActive && styles.emergencyBtnActive]}
+      <View style={styles.hero}>
+        <SosHeroButton
+          size="large"
+          label={isEmergencyActive ? t("emergencyActiveShort") : t("sos")}
+          sublabel={
+            isEmergencyActive
+              ? t("tapToViewActiveEmergency")
+              : t("tapForHelp")
+          }
+          activeEmergency={isEmergencyActive}
           onPress={() =>
             isEmergencyActive
               ? navigateToActiveEmergency()
               : router.push("/(tabs)/emergency")
           }
-        >
-          <Text style={styles.emergencyIcon}>🚨</Text>
-          <Text style={styles.emergencyText}>
-            {isEmergencyActive ? t("emergencyActiveShort") : `🚨 ${t("sos")}`}
-          </Text>
-          <Text style={styles.emergencySubtext}>
-            {isEmergencyActive ? t("tapToViewActiveEmergency") : t("tapForHelp")}
-          </Text>
-        </TouchableOpacity>
+        />
+      </View>
 
-        {/* Quick Access Cards */}
-        <View style={styles.quickAccessRow}>
-          <TouchableOpacity
-            style={styles.quickCard}
-            onPress={() => router.push("/(tabs)/firstaid")}
-          >
-            <Text style={styles.quickIcon}>⛑</Text>
-            <Text style={styles.quickText}>{t("firstAid")}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickCard}
-            onPress={() => router.push("/(tabs)/profile")}
-          >
-            <Text style={styles.quickIcon}>📋</Text>
-            <Text style={styles.quickText}>{t("medicalProfile")}</Text>
-          </TouchableOpacity>
+      <View style={styles.section}>
+        <SectionHeader title={t("quickActions")} />
+        <View style={[styles.quickGrid, row]}>
+          <View style={styles.quickCell}>
+            <ShortcutCard
+              ionIcon="medkit-outline"
+              title={t("firstAid")}
+              onPress={() => router.push("/(tabs)/firstaid")}
+              style={styles.quickCard}
+            />
+          </View>
+          <View style={styles.quickCell}>
+            <ShortcutCard
+              ionIcon="document-text-outline"
+              title={t("medicalProfile")}
+              onPress={() => router.push("/(tabs)/profile")}
+              style={styles.quickCard}
+            />
+          </View>
         </View>
       </View>
 
-      {/* Role-Specific Sections */}
-      {role === "doctor" && approved && (
+      {role === "doctor" && approved ? (
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.roleCard}
+          <ShortcutCard
+            ionIcon="pulse-outline"
+            title={t("doctor_dashboard")}
+            subtitle={t("manageCases")}
+            emphasis="accent"
             onPress={() => router.push("/doctor/dashboard")}
-          >
-            <Text style={styles.roleIcon}>👨‍⚕️</Text>
-            <View style={styles.roleContent}>
-              <Text style={styles.roleTitle}>{t("doctor_dashboard")}</Text>
-              <Text style={styles.roleSubtitle}>{t("manageCases")}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          />
         </View>
-      )}
+      ) : null}
 
-      {role === "ambulance" && approved && (
+      {role === "ambulance" && approved ? (
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.roleCard}
+          <ShortcutCard
+            ionIcon="car-outline"
+            title={t("ambulance_dashboard")}
+            subtitle={t("viewLiveCalls")}
+            emphasis="accent"
             onPress={() => router.push("/ambulance/dashboard")}
-          >
-            <Text style={styles.roleIcon}>🚑</Text>
-            <View style={styles.roleContent}>
-              <Text style={styles.roleTitle}>{t("ambulance_dashboard")}</Text>
-              <Text style={styles.roleSubtitle}>{t("viewLiveCalls")}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          />
         </View>
-      )}
+      ) : null}
 
-      {role === "admin" && (
+      {role === "admin" ? (
         <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.roleCard}
+          <ShortcutCard
+            ionIcon="shield-outline"
+            title={t("admin_panel")}
+            subtitle={t("manageUsers")}
+            emphasis="accent"
             onPress={() => router.push("/admin/panel")}
-          >
-            <Text style={styles.roleIcon}>🔧</Text>
-            <View style={styles.roleContent}>
-              <Text style={styles.roleTitle}>{t("admin_panel")}</Text>
-              <Text style={styles.roleSubtitle}>{t("manageUsers")}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          />
         </View>
-      )}
+      ) : null}
 
       {/* Recent Activity — grouped per emergency, expandable. Live via onSnapshot. */}
       <View style={styles.section}>
@@ -287,13 +278,14 @@ export default function HomeTab() {
           <EmptyState loading title={t("activityLoading", "Loading activity…")} />
         ) : error ? (
           <EmptyState
-            icon="⚠️"
+            ionIcon="alert-circle-outline"
             title={t("activityLoadError", "Could not load activity.")}
             subtitle={t("activitySubtext")}
+            tone="danger"
           />
         ) : groups.length === 0 ? (
           <EmptyState
-            icon="📋"
+            ionIcon="time-outline"
             title={t("noRecentActivity")}
             subtitle={t("activitySubtext")}
           />
@@ -306,138 +298,38 @@ export default function HomeTab() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-  },
   content: {
-    paddingTop: 60,
-    paddingBottom: theme.spacing.xl,
+    ...pageStyles.content,
   },
-  header: {
+  statusStrip: {
+    marginHorizontal: tokens.space.lg,
+    marginBottom: tokens.space.md,
+  },
+  statusTitle: {
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.danger,
+    marginBottom: tokens.space.xs,
+  },
+  statusSubtitle: {
+    fontSize: tokens.font.body,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textSecondary,
+  },
+  hero: {
     alignItems: "center",
-    paddingHorizontal: theme.spacing.lg,
-    marginBottom: theme.spacing.xxl,
-  },
-  logo: {
-    fontSize: 60,
-    marginBottom: theme.spacing.sm,
-  },
-  title: {
-    ...theme.typography.title,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: theme.colors.textMuted,
-    textAlign: "center",
-  },
-  emergencyStatusCard: {
-    marginHorizontal: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-    backgroundColor: "#FFF5F5",
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.md,
-    borderWidth: 2,
-    borderColor: theme.colors.danger,
-  },
-  emergencyStatusTitle: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: theme.colors.danger,
-    marginBottom: 4,
-  },
-  emergencyStatusSubtitle: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: theme.colors.textMuted,
+    paddingVertical: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
   },
   section: {
-    paddingHorizontal: theme.spacing.lg,
-    marginBottom: theme.spacing.xl,
+    paddingHorizontal: tokens.space.lg,
+    marginBottom: tokens.space.xl,
   },
-  sectionTitle: {
-    ...theme.typography.h2,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.lg,
+  quickGrid: {
+    gap: tokens.space.sm,
   },
-  emergencyBtn: {
-    backgroundColor: theme.colors.danger,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.xl,
-    alignItems: "center",
-    marginBottom: theme.spacing.lg,
-    ...theme.shadow.primary,
-  },
-  emergencyBtnActive: {
-    backgroundColor: theme.colors.dangerDark,
-  },
-  emergencyIcon: {
-    fontSize: 48,
-    marginBottom: theme.spacing.sm,
-  },
-  emergencyText: {
-    color: theme.colors.surface,
-    fontSize: 24,
-    fontWeight: "900",
-    marginBottom: 4,
-  },
-  emergencySubtext: {
-    color: theme.colors.surface,
-    fontSize: 14,
-    opacity: 0.9,
-  },
-  quickAccessRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  quickCard: {
-    flex: 1,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
-    alignItems: "center",
-    ...theme.shadow.card,
-  },
-  quickIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  quickText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: theme.colors.text,
-  },
-  roleCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
-    padding: theme.spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    ...theme.shadow.card,
-  },
-  roleIcon: {
-    fontSize: 32,
-    marginRight: theme.spacing.lg,
-  },
-  roleContent: {
-    flex: 1,
-  },
-  roleTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  roleSubtitle: {
-    fontSize: 14,
-    color: theme.colors.textMuted,
-  },
-  chevron: {
-    fontSize: 24,
-    color: theme.colors.textMuted,
-  },
+  quickCell: { flex: 1 },
+  quickCard: { marginBottom: 0 },
   // ---- Recent Activity (per-emergency group) ---------------------------
   activityList: {
     gap: tokens.space.sm,
@@ -449,19 +341,16 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
   },
   groupHeaderTop: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: tokens.space.sm,
   },
   groupHeaderBottom: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: tokens.space.sm,
   },
   groupHeaderRight: {
-    flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
     flexShrink: 0,
@@ -505,7 +394,6 @@ const styles = StyleSheet.create({
     borderTopColor: tokens.color.border,
   },
   eventTopRow: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: tokens.space.sm,

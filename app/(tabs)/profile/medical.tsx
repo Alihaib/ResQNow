@@ -1,15 +1,21 @@
 import { useRouter } from "expo-router";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { PrimaryButton } from "../../../components/ui/Button";
+import { useUiDirection } from "../../../components/ui/layout";
+import SubScreenShell from "../../../components/ui/SubScreenShell";
+import { subScreenStyles } from "../../../components/ui/subScreenStyles";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
+import { pageStyles, tokens } from "../../../src/ui/tokens";
 
 export default function MedicalProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { row } = useUiDirection();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
@@ -18,7 +24,6 @@ export default function MedicalProfileScreen() {
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
 
-  // Load existing profile data
   useEffect(() => {
     if (!user) return;
 
@@ -62,7 +67,7 @@ export default function MedicalProfileScreen() {
           height: height.trim(),
           updatedAt: new Date().toISOString(),
         },
-        { merge: true }
+        { merge: true },
       );
       Alert.alert(t("Success"), t("saveChanges") + " " + t("Success"));
       if (router.canGoBack()) {
@@ -78,53 +83,48 @@ export default function MedicalProfileScreen() {
     }
   };
 
+  const goProfile = () => router.replace("/(tabs)/profile");
+
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
+      <View style={[pageStyles.screen, styles.center]}>
         <Text style={styles.loadingText}>{t("loading")}</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => {
-            // Always return to Profile tab from Profile sub-screens
-            router.replace("/(tabs)/profile");
-          }} 
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>‹ {t("back")}</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{t("personalInformation")}</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("full_name")}</Text>
+    <SubScreenShell
+      title={t("personalInformation")}
+      onBack={goProfile}
+      fallbackRoute="/(tabs)/profile"
+    >
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("full_name")}</Text>
         <TextInput
-          style={styles.input}
+          style={subScreenStyles.input}
           value={name}
           onChangeText={setName}
           placeholder={t("fullName_placeholder")}
+          placeholderTextColor={tokens.color.textFaint}
         />
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("age")}</Text>
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("age")}</Text>
         <TextInput
-          style={styles.input}
+          style={subScreenStyles.input}
           value={age}
           onChangeText={setAge}
           keyboardType="numeric"
           placeholder={t("age")}
+          placeholderTextColor={tokens.color.textFaint}
         />
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("blood_type")}</Text>
-        <View style={styles.bloodTypeRow}>
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("blood_type")}</Text>
+        <View style={[styles.bloodTypeRow, row]}>
           {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((type) => (
             <TouchableOpacity
               key={type}
@@ -147,139 +147,75 @@ export default function MedicalProfileScreen() {
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("weight")}</Text>
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("weight")}</Text>
         <TextInput
-          style={styles.input}
+          style={subScreenStyles.input}
           value={weight}
           onChangeText={setWeight}
           keyboardType="numeric"
           placeholder={t("weight")}
+          placeholderTextColor={tokens.color.textFaint}
         />
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.label}>{t("height")}</Text>
+      <View style={subScreenStyles.section}>
+        <Text style={subScreenStyles.label}>{t("height")}</Text>
         <TextInput
-          style={styles.input}
+          style={subScreenStyles.input}
           value={height}
           onChangeText={setHeight}
           keyboardType="numeric"
           placeholder={t("height")}
+          placeholderTextColor={tokens.color.textFaint}
         />
       </View>
 
-      <TouchableOpacity 
-        style={[styles.saveBtn, saving && styles.saveBtnDisabled]} 
+      <PrimaryButton
+        label={saving ? t("loading") : t("saveChanges")}
         onPress={saveProfile}
         disabled={saving}
-      >
-        <Text style={styles.saveBtnText}>
-          {saving ? t("loading") : t("saveChanges")}
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+        loading={saving}
+        fullWidth
+      />
+    </SubScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
-  },
-  content: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  backBtn: {
-    marginBottom: 16,
-  },
-  backText: {
-    fontSize: 18,
-    color: "#003049",
-    fontWeight: "700",
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#003049",
-  },
-  section: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 1.5,
-    borderColor: "#E9ECEF",
-  },
-  bloodTypeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  bloodTypeBtn: {
-    width: "22%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 12,
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#E9ECEF",
-  },
-  bloodTypeBtnActive: {
-    borderColor: "#D62828",
-    backgroundColor: "#FFF5F5",
-  },
-  bloodTypeText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#6C757D",
-  },
-  bloodTypeTextActive: {
-    color: "#D62828",
-  },
-  saveBtn: {
-    backgroundColor: "#D62828",
-    paddingVertical: 18,
-    borderRadius: 14,
-    alignItems: "center",
-    marginTop: 20,
-    shadowColor: "#D62828",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  saveBtnText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  saveBtnDisabled: {
-    opacity: 0.6,
-  },
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
   loadingText: {
-    fontSize: 18,
-    color: "#6C757D",
+    fontSize: tokens.font.h3,
+    color: tokens.color.textMuted,
+    fontWeight: tokens.fontWeight.medium,
+  },
+  bloodTypeRow: {
+    flexWrap: "wrap",
+    gap: tokens.space.sm,
+  },
+  bloodTypeBtn: {
+    width: "22%",
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.md,
+    alignItems: "center",
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
+  },
+  bloodTypeBtnActive: {
+    borderColor: tokens.color.primary,
+    backgroundColor: tokens.color.primaryBg,
+  },
+  bloodTypeText: {
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textMuted,
+  },
+  bloodTypeTextActive: {
+    color: tokens.color.primary,
   },
 });
-
-

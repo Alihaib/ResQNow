@@ -5,21 +5,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useUiDirection } from "../../components/ui/layout";
+import ScreenHeader from "../../components/ui/ScreenHeader";
+import EmptyState from "../../components/ui/EmptyState";
+import { cardShadow, tokens } from "../../src/ui/tokens";
+
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
-import { theme } from "../../src/ui/theme";
-
 export default function AdminPanel() {
   const router = useRouter();
   const { role, loading: authLoading, logout } = useAuth();
   const { lang, toggleLanguage, t } = useLanguage();
+  const { row, marginHorizontal } = useUiDirection();
 
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,33 +126,30 @@ export default function AdminPanel() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* 🌍 Language Button */}
+    <View style={styles.container}>
       <TouchableOpacity style={styles.langBtn} onPress={toggleLanguage}>
         <Text style={styles.langText}>{lang === "he" ? "EN" : "HE"}</Text>
       </TouchableOpacity>
 
-      {/* HEADER */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity style={styles.backBtn} onPress={goBack} accessibilityRole="button">
-            <Text style={styles.backIcon}>‹</Text>
-          </TouchableOpacity>
-          <View style={styles.headerContent}>
-            <Text style={styles.title}>{t("adminPanel")}</Text>
-            <View style={styles.titlePill}>
-              <Text style={styles.titlePillText}>{t("manageUsers")}</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} accessibilityRole="button">
+      <ScreenHeader
+        title={t("adminPanel")}
+        eyebrow={t("manageUsers")}
+        onBack={goBack}
+        fallbackRoute="/(tabs)"
+        trailing={
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={handleLogout}
+            accessibilityRole="button"
+          >
             <Text style={styles.logoutText}>{t("logout")}</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        }
+      />
 
       {/* STATISTICS CARDS */}
       {!loading && (
-        <View style={styles.statsContainer}>
+        <View style={[styles.statsContainer, row]}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{stats.total}</Text>
             <Text style={styles.statLabel}>{t("users") || t("cases")}</Text>
@@ -183,10 +183,7 @@ export default function AdminPanel() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>👥</Text>
-              <Text style={styles.emptyText}>{t("noUsersFound")}</Text>
-            </View>
+            <EmptyState ionIcon="people-outline" title={t("noUsersFound")} />
           }
           renderItem={({ item }) => {
             const roleName = t(item.role || "user");
@@ -201,8 +198,14 @@ export default function AdminPanel() {
             return (
               <View style={styles.card}>
                 {/* USER AVATAR & INFO */}
-                <View style={styles.cardHeader}>
-                  <View style={[styles.avatar, { backgroundColor: roleColor }]}>
+                <View style={[styles.cardHeader, row]}>
+                  <View
+                    style={[
+                      styles.avatar,
+                      marginHorizontal(0, 12),
+                      { backgroundColor: roleColor },
+                    ]}
+                  >
                     <Text style={styles.avatarText}>{initials}</Text>
                   </View>
                   <View style={styles.userInfo}>
@@ -211,7 +214,7 @@ export default function AdminPanel() {
                       <Text style={styles.email}>{item.email}</Text>
                     )}
                     {item.phoneNumber && (
-                      <Text style={styles.phone}>📞 {item.phoneNumber}</Text>
+                      <Text style={styles.phone}>{item.phoneNumber}</Text>
                     )}
                   </View>
                   <View style={[styles.roleTag, { borderColor: roleColor }]}>
@@ -233,14 +236,14 @@ export default function AdminPanel() {
                         item.approved ? styles.statusTextSuccess : styles.statusTextPending,
                       ]}
                     >
-                      {item.approved ? "✓ " + t("approved") : "⏳ " + t("awaitingApproval")}
+                      {item.approved ? t("approved") : t("awaitingApproval")}
                     </Text>
                   </View>
                 </View>
 
                 {/* ACTION BUTTONS */}
                 {(item.role === "doctor" || item.role === "ambulance") && !item.approved && (
-                  <View style={styles.btnRow}>
+                  <View style={[styles.btnRow, row]}>
                     <TouchableOpacity
                       style={styles.approveBtn}
                       onPress={() => approve(item.id)}
@@ -258,7 +261,7 @@ export default function AdminPanel() {
                 )}
 
                 {/* ACTION BUTTONS ROW */}
-                <View style={styles.actionButtonsRow}>
+                <View style={[styles.actionButtonsRow, row]}>
                   {/* MAKE ADMIN */}
                   {item.role !== "admin" && (
                     <TouchableOpacity
@@ -282,58 +285,57 @@ export default function AdminPanel() {
           }}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 function getRoleColor(role: string | undefined) {
   switch (role) {
     case "doctor":
-      return "#0EA5E9";
+      return tokens.color.primary;
     case "ambulance":
-      return "#F97316";
+      return tokens.color.warning;
     case "admin":
-      return "#DC2626";
+      return tokens.color.danger;
     default:
-      return "#6B7280";
+      return tokens.color.textMuted;
   }
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: tokens.color.bgPage,
   },
 
   langBtn: {
     position: "absolute",
     top: 12,
-    right: 12,
-    backgroundColor: theme.colors.surface,
+    end: 12,
+    backgroundColor: tokens.color.bgSurface,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: tokens.color.border,
     zIndex: 50,
-    ...theme.shadow.card,
+    ...cardShadow,
   },
   langText: {
-    color: theme.colors.text,
+    color: tokens.color.textPrimary,
     fontWeight: "900",
     fontSize: 14,
   },
 
   header: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: tokens.color.bgSurface,
     paddingTop: 48,
     paddingBottom: 14,
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: tokens.space.lg,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: tokens.color.border,
   },
   headerTop: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
@@ -341,15 +343,15 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: tokens.color.bgPage,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: tokens.color.border,
     alignItems: "center",
     justifyContent: "center",
   },
   backIcon: {
     fontSize: 24,
-    color: theme.colors.text,
+    color: tokens.color.textPrimary,
     fontWeight: "700",
   },
   headerContent: {
@@ -358,21 +360,22 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: {
-    ...theme.typography.h2,
-    color: theme.colors.text,
+    fontSize: tokens.font.h2,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
   },
   logoutBtn: {
     paddingHorizontal: 12,
     height: 40,
     borderRadius: 999,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: tokens.color.bgPage,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: tokens.color.border,
     alignItems: "center",
     justifyContent: "center",
   },
   logoutText: {
-    color: theme.colors.text,
+    color: tokens.color.textPrimary,
     fontWeight: "800",
     fontSize: 13,
   },
@@ -381,52 +384,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: tokens.color.bgPage,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderColor: tokens.color.border,
   },
   titlePillText: {
-    color: theme.colors.textMuted,
+    color: tokens.color.textMuted,
     fontWeight: "700",
     fontSize: 12,
   },
 
   statsContainer: {
-    flexDirection: "row",
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.md,
-    paddingBottom: theme.spacing.sm,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.sm,
     gap: 10,
   },
   statCard: {
     flex: 1,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.md,
     paddingVertical: 14,
     paddingHorizontal: 10,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    ...theme.shadow.card,
+    borderColor: tokens.color.border,
+    ...cardShadow,
   },
   statCardSuccess: {
-    backgroundColor: "#ECFDF5",
+    backgroundColor: tokens.color.successBg,
   },
   statCardWarning: {
-    backgroundColor: "#FFFBEB",
+    backgroundColor: tokens.color.warningBg,
   },
   statCardDanger: {
-    backgroundColor: "#FEF2F2",
+    backgroundColor: tokens.color.dangerBg,
   },
   statNumber: {
     fontSize: 22,
     fontWeight: "900",
-    color: theme.colors.text,
+    color: tokens.color.textPrimary,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 11,
-    color: theme.colors.textMuted,
+    color: tokens.color.textMuted,
     fontWeight: "600",
     textAlign: "center",
   },
@@ -439,28 +441,27 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
     fontWeight: "600",
   },
 
   listContent: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.xl,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.xl,
   },
 
   card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.lg,
+    marginBottom: tokens.space.md,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    ...theme.shadow.card,
+    borderColor: tokens.color.border,
+    ...cardShadow,
   },
 
   cardHeader: {
-    flexDirection: "row",
     alignItems: "center",
     marginBottom: 16,
   },
@@ -470,10 +471,9 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
   },
   avatarText: {
-    color: theme.colors.surface,
+    color: tokens.color.bgSurface,
     fontSize: 20,
     fontWeight: "900",
   },
@@ -483,17 +483,17 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 18,
     fontWeight: "800",
-    color: theme.colors.text,
+    color: tokens.color.textPrimary,
     marginBottom: 4,
   },
   email: {
     fontSize: 14,
-    color: theme.colors.textMuted,
+    color: tokens.color.textMuted,
     marginBottom: 4,
   },
   phone: {
     fontSize: 13,
-    color: theme.colors.textMuted,
+    color: tokens.color.textMuted,
     fontWeight: "500",
   },
   roleTag: {
@@ -519,85 +519,81 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   statusBadgeSuccess: {
-    backgroundColor: "#ECFDF5",
+    backgroundColor: tokens.color.successBg,
   },
   statusBadgePending: {
-    backgroundColor: "#FEF2F2",
+    backgroundColor: tokens.color.dangerBg,
   },
   statusText: {
     fontSize: 13,
     fontWeight: "700",
   },
   statusTextSuccess: {
-    color: "#166534",
+    color: tokens.color.successText,
   },
   statusTextPending: {
-    color: "#B91C1C",
+    color: tokens.color.dangerDark,
   },
 
   btnRow: {
-    flexDirection: "row",
     gap: 10,
-    marginBottom: theme.spacing.sm,
+    marginBottom: tokens.space.sm,
   },
   approveBtn: {
     flex: 1,
-    backgroundColor: "#16A34A",
+    backgroundColor: tokens.color.success,
     paddingVertical: 12,
-    borderRadius: theme.radius.md,
+    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
-    ...theme.shadow.primary,
   },
   rejectBtn: {
     flex: 1,
-    backgroundColor: "#DC2626",
+    backgroundColor: tokens.color.danger,
     paddingVertical: 12,
-    borderRadius: theme.radius.md,
+    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
-    ...theme.shadow.primary,
   },
   btnText: {
-    color: "#FFFFFF",
+    color: tokens.color.bgSurface,
     fontSize: 14,
     fontWeight: "900",
   },
 
   actionButtonsRow: {
-    flexDirection: "row",
     gap: 10,
     marginTop: 4,
   },
   adminBtn: {
     flex: 1,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: tokens.color.bgSurface,
     paddingVertical: 12,
-    borderRadius: theme.radius.md,
+    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    ...theme.shadow.card,
+    borderColor: tokens.color.border,
+    ...cardShadow,
   },
   adminBtnText: {
-    color: theme.colors.text,
+    color: tokens.color.textPrimary,
     fontSize: 14,
     fontWeight: "900",
   },
   deleteUserBtn: {
     flex: 1,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: tokens.color.bgSurface,
     paddingVertical: 12,
-    borderRadius: theme.radius.md,
+    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#FCA5A5",
-    ...theme.shadow.card,
+    borderColor: tokens.color.dangerBorder,
+    ...cardShadow,
   },
   deleteBtnText: {
-    color: "#B91C1C",
+    color: tokens.color.dangerDark,
     fontSize: 14,
     fontWeight: "900",
   },
@@ -612,7 +608,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
     fontWeight: "600",
   },
 });

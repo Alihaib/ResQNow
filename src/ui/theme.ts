@@ -1,57 +1,75 @@
+/**
+ * @deprecated Import from `src/ui/tokens` for new code.
+ * Compatibility layer so legacy screens pick up the unified palette without
+ * per-screen edits in this pass.
+ */
+
+import { cardShadow, elevatedShadow, tokens } from "./tokens";
+
 export const theme = {
   colors: {
-    bg: "#F8F9FA",
-    surface: "#FFFFFF",
-    text: "#003049",
-    textMuted: "#6C757D",
-    textFaint: "#ADB5BD",
-    border: "#E9ECEF",
-    danger: "#DC2626",
-    dangerDark: "#991B1B",
-    primary: "#D62828",
-    primaryDark: "#B91C1C",
-    warningBg: "#FEF3C7",
-    warningText: "#92400E",
-    successBg: "#D1FAE5",
-    successText: "#2D6A4F",
+    bg: tokens.color.bgPage,
+    surface: tokens.color.bgSurface,
+    text: tokens.color.textPrimary,
+    textMuted: tokens.color.textMuted,
+    textFaint: tokens.color.textFaint,
+    border: tokens.color.border,
+    danger: tokens.color.danger,
+    dangerDark: tokens.color.dangerDark,
+    primary: tokens.color.primary,
+    primaryDark: tokens.color.primaryDark,
+    warningBg: tokens.color.warningBg,
+    warningText: tokens.color.warningText,
+    successBg: tokens.color.successBg,
+    successText: tokens.color.successText,
   },
   radius: {
-    sm: 12,
-    md: 16,
-    lg: 20,
-    xl: 24,
-    pill: 999,
+    sm: tokens.radius.sm,
+    md: tokens.radius.md,
+    lg: tokens.radius.lg,
+    xl: tokens.radius.xl,
+    pill: tokens.radius.pill,
   },
   spacing: {
-    xs: 6,
-    sm: 10,
-    md: 16,
-    lg: 20,
-    xl: 24,
-    xxl: 30,
+    xs: tokens.space.xs,
+    sm: tokens.space.sm,
+    md: tokens.space.md,
+    lg: tokens.space.lg,
+    xl: tokens.space.xl,
+    xxl: tokens.space.xxl,
   },
   typography: {
-    title: { fontSize: 36, fontWeight: "900" as const, letterSpacing: -0.5 },
-    h1: { fontSize: 32, fontWeight: "900" as const, letterSpacing: -0.4 },
-    h2: { fontSize: 20, fontWeight: "800" as const },
-    body: { fontSize: 16, fontWeight: "600" as const },
-    caption: { fontSize: 13, fontWeight: "600" as const },
+    title: {
+      fontSize: tokens.font.display,
+      fontWeight: tokens.fontWeight.heavy,
+      letterSpacing: -0.4,
+    },
+    h1: {
+      fontSize: tokens.font.h1,
+      fontWeight: tokens.fontWeight.heavy,
+      letterSpacing: -0.3,
+    },
+    h2: {
+      fontSize: tokens.font.h2,
+      fontWeight: tokens.fontWeight.heavy,
+    },
+    body: {
+      fontSize: tokens.font.bodyLg,
+      fontWeight: tokens.fontWeight.medium,
+    },
+    caption: {
+      fontSize: tokens.font.caption,
+      fontWeight: tokens.fontWeight.medium,
+    },
   },
   shadow: {
-    card: {
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
-      elevation: 3,
-    },
+    card: cardShadow,
     primary: {
-      shadowColor: "#D62828",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.25,
-      shadowRadius: 10,
-      elevation: 6,
+      shadowColor: tokens.color.primary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      elevation: 2,
     },
   },
 };
-

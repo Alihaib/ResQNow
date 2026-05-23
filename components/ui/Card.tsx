@@ -1,80 +1,63 @@
 /**
- * Universal white card.
- *
- * Used everywhere a section needs a contained surface (search section,
- * patient info, chat block, emergency case, AI triage row…). Centralising
- * its visual style here guarantees corner radii, border colours, padding
- * and elevation stay in lock-step across every screen.
- *
- * Tone variants:
- *  - "default" : standard white card with a near-invisible hairline border.
- *  - "danger"  : faint red-tinted surface with a soft red border. Used for
- *                "your active mission" / "selected critical patient". The
- *                accent is intentionally restrained — emphasis comes from
- *                a status chip and a left bar, not from a thick red box.
- *  - "subtle"  : muted background used for nested/secondary blocks.
- *
- * `accentLeft` / `accentTop` add a 3px coloured edge bar — for "this is
- * your mission" style emphasis. Pick a single side; both is intentionally
- * not supported.
- *
- * `compact` removes the inner padding when the consumer needs to render
- * its own layout (lists, custom rows, full-bleed media).
- *
- * `elevated` adds the very-subtle drop shadow defined by the token system.
- * Use sparingly — only the most-prominent cards on a screen should be
- * elevated.
+ * Universal surface card — calm white, hairline border, optional accent stripe.
  */
 
 import React from "react";
 import { StyleSheet, View, ViewProps, ViewStyle } from "react-native";
 import { cardShadow, tokens } from "../../src/ui/tokens";
 
-type Tone = "default" | "danger" | "subtle";
+export type CardTone = "default" | "subtle" | "accent" | "danger";
 
-type Props = ViewProps & {
-  tone?: Tone;
-  /** Drop inner padding (useful when the card contains custom rows). */
+export type CardProps = ViewProps & {
+  tone?: CardTone;
   compact?: boolean;
-  /** Coloured 3px left stripe (defaults to the danger colour). */
+  /** Coloured start-edge stripe (RTL-aware) */
+  accentStart?: boolean | string;
+  /** @deprecated Use accentStart */
   accentLeft?: boolean | string;
-  /** Coloured 3px top stripe (defaults to the danger colour). */
   accentTop?: boolean | string;
-  /** Add a soft elevation (only on the most prominent cards). */
   elevated?: boolean;
   style?: ViewStyle | ViewStyle[];
   children: React.ReactNode;
 };
 
-const ACCENT_THICKNESS = 3;
+const ACCENT = 3;
 
 export default function Card({
   tone = "default",
   compact,
+  accentStart,
   accentLeft,
   accentTop,
   elevated,
   style,
   children,
   ...rest
-}: Props) {
-  const leftColor =
-    typeof accentLeft === "string" ? accentLeft : tokens.color.danger;
-  const topColor =
-    typeof accentTop === "string" ? accentTop : tokens.color.danger;
+}: CardProps) {
+  const stripe = accentStart ?? accentLeft;
+  const startColor =
+    typeof stripe === "string"
+      ? stripe
+      : tone === "danger"
+        ? tokens.color.danger
+        : tokens.color.primary;
 
   return (
     <View
       style={[
         styles.base,
-        !compact && styles.padded,
+        compact ? styles.compactPad : styles.padded,
+        tone === "accent" && styles.accent,
         tone === "danger" && styles.danger,
         tone === "subtle" && styles.subtle,
-        accentLeft
-          ? { borderLeftWidth: ACCENT_THICKNESS, borderLeftColor: leftColor }
+        stripe
+          ? {
+              borderStartWidth: ACCENT,
+              borderStartColor: startColor,
+            }
           : null,
         accentTop
-          ? { borderTopWidth: ACCENT_THICKNESS, borderTopColor: topColor }
+          ? { borderTopWidth: ACCENT, borderTopColor: startColor }
           : null,
         elevated && cardShadow,
         style as ViewStyle,
@@ -89,15 +72,20 @@ export default function Card({
 const styles = StyleSheet.create({
   base: {
     backgroundColor: tokens.color.bgSurface,
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.xl,
     borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
+    ...cardShadow,
   },
-  padded: { padding: tokens.space.lg },
+  padded: { padding: tokens.space.xl },
+  compactPad: { padding: tokens.space.lg },
+  accent: {
+    backgroundColor: tokens.color.primarySurface,
+    borderColor: tokens.color.primaryBorder,
+  },
   danger: {
     backgroundColor: tokens.color.dangerSurface,
     borderColor: tokens.color.dangerBorder,
-    borderWidth: tokens.hairline,
   },
   subtle: { backgroundColor: tokens.color.bgSubtle },
 });

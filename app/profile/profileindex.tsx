@@ -1,15 +1,33 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Card from "../../components/ui/Card";
+import { DangerButton, PrimaryButton } from "../../components/ui/Button";
+import ListRow from "../../components/ui/ListRow";
+import SubScreenShell from "../../components/ui/SubScreenShell";
+import { subScreenStyles } from "../../components/ui/subScreenStyles";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { useUiDirection } from "../../components/ui/layout";
+import { tokens } from "../../src/ui/tokens";
 
 export default function Profile() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const { lang, toggleLanguage, t } = useLanguage();
+  const { row } = useUiDirection();
 
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +53,7 @@ export default function Profile() {
         const docRef = doc(db, "users", user.uid);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setProfile(docSnap.data() as any);
+          setProfile(docSnap.data() as typeof profile);
         }
       } catch (e) {
         console.error("Failed to load profile:", e);
@@ -52,46 +70,56 @@ export default function Profile() {
 
     try {
       await setDoc(doc(db, "users", user.uid), profile, { merge: true });
-      alert(t("save_update_profile") + "!");
+      Alert.alert(t("save_update_profile") + "!");
     } catch (e) {
       console.error(e);
-      alert(t("signupFailed"));
+      Alert.alert(t("signupFailed"));
     }
   };
 
-  const bmi = profile.weight && profile.height
-    ? Number(profile.weight) / ((Number(profile.height) / 100) ** 2)
-    : 0;
+  const bmi =
+    profile.weight && profile.height
+      ? Number(profile.weight) / (Number(profile.height) / 100) ** 2
+      : 0;
 
-  const bmiCategory = (bmi: number) => {
-    if (bmi === 0) return t("coming_soon");
-    if (bmi < 18.5) return t("Underweight");
-    if (bmi < 25) return t("Normal");
-    if (bmi < 30) return t("Overweight");
+  const bmiCategory = (value: number) => {
+    if (value === 0) return t("coming_soon");
+    if (value < 18.5) return t("Underweight");
+    if (value < 25) return t("Normal");
+    if (value < 30) return t("Overweight");
     return t("Obese");
   };
 
-  const bmiColor = (bmi: number) => {
-    if (bmi === 0) return "#ccc";
-    if (bmi < 18.5) return "#f0ad4e";
-    if (bmi < 25) return "#28a745";
-    if (bmi < 30) return "#ffc107";
-    return "#dc3545";
+  const bmiColor = (value: number) => {
+    if (value === 0) return tokens.color.textFaint;
+    if (value < 18.5) return tokens.color.warning;
+    if (value < 25) return tokens.color.success;
+    if (value < 30) return tokens.color.warning;
+    return tokens.color.danger;
   };
 
   const bloodCompatibility = (type?: string) => {
     if (!type) return { donateTo: "N/A", receiveFrom: "N/A" };
     const formatted = type.trim().toUpperCase();
     switch (formatted) {
-      case "A+": return { donateTo: "A+, AB+", receiveFrom: "A+, A-, O+, O-" };
-      case "A-": return { donateTo: "A+, A-, AB+, AB-", receiveFrom: "A-, O-" };
-      case "B+": return { donateTo: "B+, AB+", receiveFrom: "B+, B-, O+, O-" };
-      case "B-": return { donateTo: "B+, B-, AB+, AB-", receiveFrom: "B-, O-" };
-      case "AB+": return { donateTo: "AB+", receiveFrom: t("everyone") };
-      case "AB-": return { donateTo: "AB+, AB-", receiveFrom: "A-, B-, AB-, O-" };
-      case "O+": return { donateTo: "O+, A+, B+, AB+", receiveFrom: "O+, O-" };
-      case "O-": return { donateTo: t("everyone"), receiveFrom: "O-" };
-      default: return { donateTo: "N/A", receiveFrom: "N/A" };
+      case "A+":
+        return { donateTo: "A+, AB+", receiveFrom: "A+, A-, O+, O-" };
+      case "A-":
+        return { donateTo: "A+, A-, AB+, AB-", receiveFrom: "A-, O-" };
+      case "B+":
+        return { donateTo: "B+, AB+", receiveFrom: "B+, B-, O+, O-" };
+      case "B-":
+        return { donateTo: "B+, B-, AB+, AB-", receiveFrom: "B-, O-" };
+      case "AB+":
+        return { donateTo: "AB+", receiveFrom: t("everyone") };
+      case "AB-":
+        return { donateTo: "AB+, AB-", receiveFrom: "A-, B-, AB-, O-" };
+      case "O+":
+        return { donateTo: "O+, A+, B+, AB+", receiveFrom: "O+, O-" };
+      case "O-":
+        return { donateTo: t("everyone"), receiveFrom: "O-" };
+      default:
+        return { donateTo: "N/A", receiveFrom: "N/A" };
     }
   };
 
@@ -121,337 +149,295 @@ export default function Profile() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#e63946" />
-        <Text style={{ marginTop: 10, color: "#1d3557" }}>{t("loading")}</Text>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+        <Text style={styles.loadingText}>{t("loading")}</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.header}>{t("hello_user")}, {user?.email || t("user")}!</Text>
-      <Text style={styles.subHeader}>{t("manage_health_profile")}</Text>
+    <SubScreenShell
+      title={`${t("hello_user")}, ${user?.email || t("user")}!`}
+      eyebrow={t("manage_health_profile")}
+      fallbackRoute="/(tabs)/profile"
+    >
+      <ListRow
+        icon="language-outline"
+        title={lang === "en" ? "עברית" : "English"}
+        subtitle={t("change_language") || undefined}
+        onPress={toggleLanguage}
+      />
 
-      <TouchableOpacity style={styles.button} onPress={toggleLanguage}>
-        <Text style={styles.buttonText}>
-          {lang === "en" ? "🇮🇱 עברית" : "🇺🇸 English"}
+      <Card style={subScreenStyles.card}>
+        <Text style={subScreenStyles.label}>{t("personal_info")}</Text>
+        <TextInput
+          style={[subScreenStyles.input, styles.field]}
+          placeholder={t("full_name")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.name}
+          onChangeText={(text) => setProfile({ ...profile, name: text })}
+        />
+        <TextInput
+          style={[subScreenStyles.input, styles.field]}
+          placeholder={t("age")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.age}
+          onChangeText={(text) => setProfile({ ...profile, age: text })}
+          keyboardType="numeric"
+        />
+        <TextInput
+          style={[subScreenStyles.input, styles.field]}
+          placeholder={t("weight")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.weight}
+          onChangeText={(text) => setProfile({ ...profile, weight: text })}
+          keyboardType="numeric"
+        />
+        <TextInput
+          style={[subScreenStyles.input, styles.field]}
+          placeholder={t("height")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.height}
+          onChangeText={(text) => setProfile({ ...profile, height: text })}
+          keyboardType="numeric"
+        />
+        <TextInput
+          style={[subScreenStyles.input, styles.field]}
+          placeholder={t("blood_type")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.bloodType}
+          onChangeText={(text) => setProfile({ ...profile, bloodType: text })}
+        />
+      </Card>
+
+      <Card style={subScreenStyles.card}>
+        <Text style={subScreenStyles.label}>{t("medical_info")}</Text>
+        <TextInput
+          style={[subScreenStyles.input, styles.field, styles.multiline]}
+          placeholder={t("medical_history")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.medicalInfo}
+          onChangeText={(text) => setProfile({ ...profile, medicalInfo: text })}
+          multiline
+        />
+        <TextInput
+          style={[subScreenStyles.input, styles.field, styles.multiline]}
+          placeholder={t("diseases")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.diseases}
+          onChangeText={(text) => setProfile({ ...profile, diseases: text })}
+          multiline
+        />
+        <TextInput
+          style={[subScreenStyles.input, styles.field, styles.multiline]}
+          placeholder={t("medications")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.medications}
+          onChangeText={(text) => setProfile({ ...profile, medications: text })}
+          multiline
+        />
+        <TextInput
+          style={[subScreenStyles.input, styles.field, styles.multiline]}
+          placeholder={t("sensitive_notes")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.sensitiveNotes}
+          onChangeText={(text) => setProfile({ ...profile, sensitiveNotes: text })}
+          multiline
+        />
+      </Card>
+
+      <PrimaryButton
+        label={t("save_update_profile")}
+        onPress={saveProfile}
+        fullWidth
+        style={styles.actionBtn}
+      />
+
+      <DangerButton
+        label={t("logout")}
+        onPress={async () => {
+          await logout();
+          router.replace("../../auth/login");
+        }}
+        fullWidth
+        style={styles.actionBtn}
+      />
+
+      <Card style={subScreenStyles.card}>
+        <Text style={subScreenStyles.label}>{t("bmi_calculator")}</Text>
+        <Text style={styles.meta}>
+          {t("age")}: <Text style={styles.metaValue}>{profile.age || "—"}</Text>
         </Text>
-      </TouchableOpacity>
-
-      <View style={styles.profileRow}>
-        <View style={styles.leftColumn}>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle} >{t("personal_info")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("full_name")}
-              placeholderTextColor="#888888"
-              value={profile.name}
-              onChangeText={(text) => setProfile({ ...profile, name: text })}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t("age")}
-              placeholderTextColor="#888888"
-              value={profile.age}
-              onChangeText={(text) => setProfile({ ...profile, age: text })}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t("weight")}
-              placeholderTextColor="#888888"
-              value={profile.weight}
-              onChangeText={(text) => setProfile({ ...profile, weight: text })}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t("height")}
-              placeholderTextColor="#888888"
-              value={profile.height}
-              onChangeText={(text) => setProfile({ ...profile, height: text })}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t("blood_type")}
-              placeholderTextColor="#888888"
-              value={profile.bloodType}
-              onChangeText={(text) => setProfile({ ...profile, bloodType: text })}
-            />
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("medical_info")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("medical_history")}
-              placeholderTextColor="#888888"
-              value={profile.medicalInfo}
-              onChangeText={(text) => setProfile({ ...profile, medicalInfo: text })}
-              multiline
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t("diseases")}
-              placeholderTextColor="#888888"
-              value={profile.diseases}
-              onChangeText={(text) => setProfile({ ...profile, diseases: text })}
-              multiline
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t("medications")}
-              placeholderTextColor="#888888"
-              value={profile.medications}
-              onChangeText={(text) => setProfile({ ...profile, medications: text })}
-              multiline
-            />
-            <TextInput
-              style={styles.input}
-              placeholder={t("sensitive_notes")}
-              placeholderTextColor="#888888"
-              value={profile.sensitiveNotes}
-              onChangeText={(text) => setProfile({ ...profile, sensitiveNotes: text })}
-              multiline
-            />
-          </View>
-
-          <TouchableOpacity style={styles.button} onPress={saveProfile}>
-            <Text style={styles.buttonText}>{t("save_update_profile")}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={async () => {
-              await logout();
-              router.replace("../../auth/login");
-            }}
-          >
-            <Text style={styles.logoutText}>{t("logout")}</Text>
-          </TouchableOpacity>
+        <Text style={styles.meta}>
+          {t("weight")}: <Text style={styles.metaValue}>{profile.weight || "—"} kg</Text>
+        </Text>
+        <Text style={styles.meta}>
+          {t("height")}: <Text style={styles.metaValue}>{profile.height || "—"} cm</Text>
+        </Text>
+        <Text style={styles.bmiText}>
+          {t("your_bmi")}: {bmi.toFixed(1)}
+        </Text>
+        <Text style={[styles.bmiCategory, { color: bmiColor(bmi) }]}>
+          {bmiCategory(bmi)}
+        </Text>
+        <View style={styles.bmiBarContainer}>
+          <View
+            style={[
+              styles.bmiBar,
+              { width: `${Math.min(bmi * 3, 100)}%`, backgroundColor: bmiColor(bmi) },
+            ]}
+          />
         </View>
+        <Text style={styles.bmiGuide}>
+          {"< 18.5: " +
+            t("Underweight") +
+            " | 18.5-24.9: " +
+            t("Normal") +
+            " | 25-29.9: " +
+            t("Overweight") +
+            " | ≥ 30: " +
+            t("Obese")}
+        </Text>
+      </Card>
 
-        <View style={styles.rightColumn}>
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("bmi_calculator")}</Text>
-            <Text style={styles.label}>{t("age")}: <Text style={styles.value}>{profile.age}</Text></Text>
-            <Text style={styles.label}>{t("weight")}: <Text style={styles.value}>{profile.weight} kg</Text></Text>
-            <Text style={styles.label}>{t("height")}: <Text style={styles.value}>{profile.height} cm</Text></Text>
-            <Text style={styles.bmiText}>{t("your_bmi")}: {bmi.toFixed(1)}</Text>
-            <Text style={{ color: bmiColor(bmi), fontWeight: "700", marginBottom: 10 }}>
-              {bmiCategory(bmi)}
-            </Text>
-            <View style={styles.bmiBarContainer}>
-              <View
-                style={[styles.bmiBar, { width: `${Math.min(bmi * 3, 100)}%`, backgroundColor: bmiColor(bmi) }]}
-              />
-            </View>
-            <Text style={styles.bmiGuide}>
-              {"< 18.5: " + t("Underweight") + " | 18.5-24.9: " + t("Normal") + " | 25-29.9: " + t("Overweight") + " | ≥ 30: " + t("Obese")}
-            </Text>
-          </View>
+      <Card style={subScreenStyles.card}>
+        <Text style={subScreenStyles.label}>{t("blood_type_info")}</Text>
+        <Text style={styles.meta}>
+          {t("your_blood_type")}: <Text style={styles.metaValue}>{profile.bloodType || "N/A"}</Text>
+        </Text>
+        <Text style={styles.meta}>
+          {t("can_donate_to")}: <Text style={styles.metaValue}>{donateTo}</Text>
+        </Text>
+        <Text style={styles.meta}>
+          {t("can_receive_from")}: <Text style={styles.metaValue}>{receiveFrom}</Text>
+        </Text>
+      </Card>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("blood_type_info")}</Text>
-            <Text style={styles.label}>{t("your_blood_type")}:</Text>
-            <Text style={styles.value}>{profile.bloodType || "N/A"}</Text>
-            <Text style={styles.label}>{t("can_donate_to")}:</Text>
-            <Text style={styles.value}>{donateTo}</Text>
-            <Text style={styles.label}>{t("can_receive_from")}:</Text>
-            <Text style={styles.value}>{receiveFrom}</Text>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("blood_type")}</Text>
-            <Text style={styles.value}>{normalBP()}</Text>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("blood_type")}</Text>
-            <Text style={styles.value}>{normalHR()}</Text>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("emergency_contact")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("contact_name")}
-              placeholderTextColor="#888888"
-              value={profile.emergencyContactName}
-              onChangeText={(text) => setProfile({ ...profile, emergencyContactName: text })}
-            />
-            <TouchableOpacity
-              onPress={() =>
-                profile.emergencyContactPhone &&
-                Linking.openURL(`tel:${profile.emergencyContactPhone}`)
-              }
-            >
-              <TextInput
-                style={[styles.input, { color: "#e63946" }]}
-                placeholder={t("contact_phone")}
-                placeholderTextColor="#888888"
-                value={profile.emergencyContactPhone}
-                onChangeText={(text) => setProfile({ ...profile, emergencyContactPhone: text })}
-                keyboardType="phone-pad"
-              />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{t("calorie_calculator")}</Text>
-            <Text style={styles.label}>{t("estimated_daily_calories")}:</Text>
-            <Text style={styles.value}>{maintenanceCalories()} kcal</Text>
-          </View>
+      <Card style={subScreenStyles.card}>
+        <View style={[styles.vitalsRow, row]}>
+          <Ionicons name="pulse-outline" size={20} color={tokens.color.primary} />
+          <Text style={subScreenStyles.label}>{t("blood_pressure") || "Blood pressure"}</Text>
         </View>
-      </View>
-    </ScrollView>
+        <Text style={styles.metaValue}>{normalBP()}</Text>
+      </Card>
+
+      <Card style={subScreenStyles.card}>
+        <View style={[styles.vitalsRow, row]}>
+          <Ionicons name="heart-outline" size={20} color={tokens.color.danger} />
+          <Text style={subScreenStyles.label}>{t("heart_rate") || "Heart rate"}</Text>
+        </View>
+        <Text style={styles.metaValue}>{normalHR()}</Text>
+      </Card>
+
+      <Card style={subScreenStyles.card}>
+        <Text style={subScreenStyles.label}>{t("emergency_contact")}</Text>
+        <TextInput
+          style={[subScreenStyles.input, styles.field]}
+          placeholder={t("contact_name")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={profile.emergencyContactName}
+          onChangeText={(text) =>
+            setProfile({ ...profile, emergencyContactName: text })
+          }
+        />
+        <TouchableOpacity
+          onPress={() =>
+            profile.emergencyContactPhone &&
+            Linking.openURL(`tel:${profile.emergencyContactPhone}`)
+          }
+        >
+          <TextInput
+            style={[subScreenStyles.input, styles.field, styles.phoneInput]}
+            placeholder={t("contact_phone")}
+            placeholderTextColor={tokens.color.textFaint}
+            value={profile.emergencyContactPhone}
+            onChangeText={(text) =>
+              setProfile({ ...profile, emergencyContactPhone: text })
+            }
+            keyboardType="phone-pad"
+          />
+        </TouchableOpacity>
+      </Card>
+
+      <Card style={subScreenStyles.card}>
+        <Text style={subScreenStyles.label}>{t("calorie_calculator")}</Text>
+        <Text style={styles.meta}>
+          {t("estimated_daily_calories")}:{" "}
+          <Text style={styles.metaValue}>{maintenanceCalories()} kcal</Text>
+        </Text>
+      </Card>
+    </SubScreenShell>
   );
 }
 
-
-
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    padding: 20,
-    backgroundColor: "#F8F9FA",
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F8F9FA",
+    backgroundColor: tokens.color.bgPage,
+    gap: tokens.space.sm,
   },
-  header: {
-    fontSize: 26,
-    fontWeight: "bold",
-    color: "#003049",
-    marginBottom: 5,
-    textAlign: "center",
-    marginTop:40,
+  loadingText: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textSecondary,
+    fontWeight: tokens.fontWeight.medium,
   },
-  subHeader: {
-    fontSize: 15,
-    color: "#6C757D",
-    marginBottom: 20,
-    textAlign: "center",
+  field: {
+    marginBottom: tokens.space.sm,
   },
-
-  /** ⭐ MOBILE-FRIENDLY SINGLE COLUMN */
- profileRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  flexWrap: "wrap",   // ← added
-},
-
-
-  /** ⭐ Columns now full width */
-  leftColumn: { 
-  flex: 1, 
-  minWidth: "100%",   // ← added
-  marginRight: 0      // ← ensures perfect centering
-},
-
-  rightColumn: { 
-  flex: 1, 
-  minWidth: "100%",    // ← added
-  marginTop: 20        // ← spacing
-},
-
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  cardTitle: {
-    fontSize: 19,
-    fontWeight: "700",
-    marginBottom: 12,
-    color: "#003049",
-  },
-
-  /** ⭐ Input responsive for all iPhones */
-  input: {
-    width: "100%",
-    backgroundColor: "#fffbfbff",
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#adc5e9ff",
-    fontSize: 16,
-    color: "#003049",
-    marginBottom: 10,
+  multiline: {
+    minHeight: 88,
     textAlignVertical: "top",
   },
-
-  button: {
-    backgroundColor: "#D62828",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-    marginBottom: 12,
-    width: "100%",
+  phoneInput: {
+    color: tokens.color.danger,
   },
-  buttonText: {
-    color: "#553b3bff",
-    fontSize: 17,
-    fontWeight: "700",
+  actionBtn: {
+    marginBottom: tokens.space.md,
   },
-
-  logoutButton: {
-    borderWidth: 2,
-    borderColor: "#D62828",
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: "center",
-    width: "100%",
+  meta: {
+    fontSize: tokens.font.body,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textMuted,
+    marginTop: tokens.space.xs,
   },
-  logoutText: {
-    color: "#D62828",
-    fontSize: 16,
-    fontWeight: "700",
+  metaValue: {
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.bold,
+    color: tokens.color.textPrimary,
   },
-
   bmiText: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 5,
-    color: "#003049",
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.bold,
+    marginTop: tokens.space.sm,
+    color: tokens.color.textPrimary,
+  },
+  bmiCategory: {
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.bold,
+    marginBottom: tokens.space.sm,
   },
   bmiBarContainer: {
     width: "100%",
     height: 18,
-    backgroundColor: "#E4E4E4",
-    borderRadius: 10,
+    backgroundColor: tokens.color.neutralBg,
+    borderRadius: tokens.radius.sm,
     overflow: "hidden",
-    marginBottom: 8,
+    marginBottom: tokens.space.sm,
   },
   bmiBar: {
     height: "100%",
-    borderRadius: 10,
+    borderRadius: tokens.radius.sm,
   },
   bmiGuide: {
-    fontSize: 12,
-    color: "#6C757D",
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    lineHeight: 18,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#6C757D",
-    marginTop: 5,
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#003049",
+  vitalsRow: {
+    alignItems: "center",
+    gap: tokens.space.sm,
+    marginBottom: tokens.space.xs,
   },
 });

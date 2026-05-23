@@ -1,40 +1,60 @@
 /**
- * Empty / loading / error placeholder used inside sections.
- *
- * Renders a centred card with optional icon, title and subtitle. When
- * `loading` is true it shows a spinner instead of the icon — this matches
- * the pattern used in both responder dashboards ("Loading emergencies…",
- * "No active emergencies", "Failed to load…").
+ * Loading / empty / error placeholder — calm bordered card, no heavy shadow.
  */
 
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { tokens } from "../../src/ui/tokens";
 
-type Props = {
+export type EmptyStateTone = "default" | "danger" | "primary";
+
+export type EmptyStateProps = {
+  /** @deprecated Prefer ionIcon for visible UI */
   icon?: string;
+  ionIcon?: keyof typeof Ionicons.glyphMap;
   title?: string;
   subtitle?: string;
   loading?: boolean;
-  tone?: "default" | "danger";
+  tone?: EmptyStateTone;
 };
 
 export default function EmptyState({
   icon,
+  ionIcon,
   title,
   subtitle,
   loading,
   tone = "default",
-}: Props) {
+}: EmptyStateProps) {
+  const spinnerColor =
+    tone === "danger"
+      ? tokens.color.danger
+      : tone === "primary"
+        ? tokens.color.primary
+        : tokens.color.textMuted;
+
+  const iconColor =
+    tone === "danger" ? tokens.color.danger : tokens.color.primary;
+
   return (
-    <View style={styles.card}>
+    <View
+      style={[
+        styles.card,
+        tone === "danger" && styles.cardDanger,
+      ]}
+      accessibilityRole="summary"
+    >
       {loading ? (
-        <ActivityIndicator
-          color={tone === "danger" ? tokens.color.danger : tokens.color.textMuted}
-          size="small"
-        />
+        <ActivityIndicator color={spinnerColor} size="small" />
+      ) : ionIcon ? (
+        <View style={styles.iconPill}>
+          <Ionicons name={ionIcon} size={28} color={iconColor} />
+        </View>
       ) : icon ? (
-        <Text style={styles.icon}>{icon}</Text>
+        <Text style={styles.icon} accessibilityElementsHidden>
+          {icon}
+        </Text>
       ) : null}
       {title ? (
         <Text style={styles.title} numberOfLines={2}>
@@ -53,25 +73,38 @@ export default function EmptyState({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: tokens.color.bgSurface,
-    borderRadius: tokens.radius.lg,
+    borderRadius: tokens.radius.xl,
     paddingVertical: tokens.space.xl,
     paddingHorizontal: tokens.space.lg,
-    borderWidth: 1,
+    borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
     alignItems: "center",
     gap: tokens.space.sm,
   },
-  icon: { fontSize: 28 },
+  cardDanger: {
+    borderColor: tokens.color.dangerBorder,
+    backgroundColor: tokens.color.dangerSurface,
+  },
+  iconPill: {
+    width: 56,
+    height: 56,
+    borderRadius: tokens.radius.xl,
+    backgroundColor: tokens.color.primaryBg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: tokens.space.xs,
+  },
+  icon: { fontSize: 26 },
   title: {
     fontSize: tokens.font.label,
-    fontWeight: "800",
+    fontWeight: tokens.fontWeight.bold,
     color: tokens.color.textPrimary,
     textAlign: "center",
   },
   subtitle: {
     fontSize: tokens.font.body,
     color: tokens.color.textMuted,
-    fontWeight: "600",
+    fontWeight: tokens.fontWeight.medium,
     textAlign: "center",
     lineHeight: 18,
   },

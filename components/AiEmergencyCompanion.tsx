@@ -16,10 +16,11 @@
  * emergency context string and asks the AI for a routing decision.
  */
 
+import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Modal,
+  Pressable,
   ScrollView,
   Share,
   StyleSheet,
@@ -27,6 +28,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  AiOrb,
+  GlassSurface,
+  VoiceWaveform,
+} from "./ai-emergency";
+import { AI_RADIUS, aiEmergencyTheme } from "./ai-emergency/theme";
+import { tokens } from "../src/ui/tokens";
+import { useUiDirection } from "./ui/layout";
 
 import { firstAidCategories } from "../src/firstAid/categories";
 import { getGuideById } from "../src/firstAid/guides";
@@ -106,7 +115,7 @@ export default function AiEmergencyCompanion({
   translate,
   onOpenGuide,
   onOpenLibrary,
-  accentColor = "#DC2626",
+  accentColor = tokens.color.aiBlue,
 }: Props) {
   type Phase = "idle" | "loading" | "result" | "error";
   const [phase, setPhase] = useState<Phase>("idle");
@@ -300,6 +309,9 @@ export default function AiEmergencyCompanion({
     }
   }, [result, translate]);
 
+  const aiListening = phase === "loading";
+  const { row, text: dirText } = useUiDirection();
+
   return (
     <Modal
       visible={visible}
@@ -308,274 +320,310 @@ export default function AiEmergencyCompanion({
       onRequestClose={handleClose}
     >
       <View style={styles.backdrop}>
-        <View style={[styles.sheet, { borderTopColor: accentColor }]}>
-          <View style={styles.header}>
-            <Text style={styles.title} numberOfLines={1}>
-              {translate("aiTriageTitle", "AI Triage Assistant")}
+        <GlassSurface radius={AI_RADIUS.sheet} style={styles.sheet}>
+          <View style={styles.sheetInner}>
+            <View style={[styles.header, row]}>
+              <View style={[styles.headerLeft, row]}>
+                <AiOrb size={44} active={phase !== "idle"} listening={aiListening} />
+                <View style={styles.headerTitles}>
+                  <Text style={styles.title} numberOfLines={1}>
+                    {translate("aiTriageTitle", "AI Triage Assistant")}
+                  </Text>
+                  <View style={[styles.liveRow, row]}>
+                    <View style={[styles.liveDot, phase !== "idle" && styles.liveDotOn]} />
+                    <Text style={styles.liveText}>
+                      {aiListening
+                        ? translate("aiThinking", "Thinking…")
+                        : "AI Emergency OS"}
+                    </Text>
+                    {aiListening ? <VoiceWaveform active compact /> : null}
+                  </View>
+                </View>
+              </View>
+              <Pressable
+                onPress={handleClose}
+                hitSlop={12}
+                style={({ pressed }) => [styles.closeBtn, pressed && styles.closePressed]}
+                accessibilityRole="button"
+                accessibilityLabel={translate("aiClose", "Close")}
+              >
+                <Ionicons name="close" size={22} color={tokens.color.textMuted} />
+              </Pressable>
+            </View>
+
+            <Text style={styles.disclaimer}>
+              {translate(
+                "aiTriageDisclaimer",
+                "Helps route you to the right first-aid guide. Not a diagnosis.",
+              )}
             </Text>
-            <TouchableOpacity
-              onPress={handleClose}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={translate("aiClose", "Close")}
+
+            <ScrollView
+              style={styles.body}
+              contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.closeBtn}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.disclaimer}>
-            {translate(
-              "aiTriageDisclaimer",
-              "Helps route you to the right first-aid guide. Not a diagnosis.",
-            )}
-          </Text>
-
-          <ScrollView
-            style={styles.body}
-            contentContainerStyle={styles.bodyContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {phase === "idle" ? (
-              <View>
-                <Text style={styles.intro}>
-                  {translate(
-                    "aiTriageIntro",
-                    "Tap Start. The assistant will ask short questions to choose the right guide and one next action.",
-                  )}
-                </Text>
-              </View>
-            ) : null}
-
-            {phase === "loading" ? (
-              <View style={styles.loadingBlock}>
-                <ActivityIndicator color={accentColor} />
-                <Text style={styles.loadingText}>
-                  {translate("aiThinking", "Thinking…")}
-                </Text>
-              </View>
-            ) : null}
-
-            {phase === "result" && result && categoryMeta ? (
-              <View style={styles.resultBlock}>
-                {/* Category chip */}
-                <View
-                  style={[
-                    styles.categoryChip,
-                    { borderColor: categoryMeta.accent },
-                  ]}
-                >
-                  <Text style={styles.categoryIcon}>{categoryMeta.icon}</Text>
-                  <Text style={[styles.categoryLabel, { color: categoryMeta.accent }]}>
-                    {categoryMeta.label}
-                  </Text>
-                  <Text style={styles.confidenceTag}>· {confidenceLabel}</Text>
-                </View>
-
-                {/* Next action */}
-                <View style={[styles.actionCardCallout, { borderColor: accentColor }]}>
-                  <Text style={styles.actionKicker}>
-                    {translate("aiTriageNextActionLabel", "Do this now")}
-                  </Text>
-                  <Text style={styles.actionText}>{result.nextAction}</Text>
-                </View>
-
-                {/* Optional follow-up question */}
-                {result.askQuestion ? (
-                  <View style={styles.questionCard}>
-                    <Text style={styles.questionLabel}>
-                      {translate("aiTriageQuestionLabel", "Quick check")}
+              {phase === "idle" ? (
+                <GlassSurface radius={AI_RADIUS.card} style={styles.introCard}>
+                  <View style={styles.introInner}>
+                    <AiOrb size={88} active listening={false} />
+                    <Text style={[styles.intro, dirText]}>
+                      {translate(
+                        "aiTriageIntro",
+                        "Tap Start. The assistant will ask short questions to choose the right guide and one next action.",
+                      )}
                     </Text>
-                    <Text style={styles.questionText}>{result.askQuestion}</Text>
-                    <View style={styles.answerRow}>
-                      <TouchableOpacity
-                        style={[styles.answerBtn, styles.answerYes]}
-                        onPress={() => handleAnswer("yes")}
-                      >
-                        <Text style={styles.answerBtnText}>
-                          {translate("aiTriageYes", "Yes")}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.answerBtn, styles.answerNo]}
-                        onPress={() => handleAnswer("no")}
-                      >
-                        <Text style={styles.answerBtnText}>
-                          {translate("aiTriageNo", "No")}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.answerBtn, styles.answerUnknown]}
-                        onPress={() => handleAnswer("not_sure")}
-                      >
-                        <Text style={styles.answerBtnTextSecondary}>
-                          {translate("aiTriageNotSure", "Not sure")}
-                        </Text>
-                      </TouchableOpacity>
+                  </View>
+                </GlassSurface>
+              ) : null}
+
+              {phase === "loading" ? (
+                <GlassSurface radius={AI_RADIUS.card} style={styles.loadingCard}>
+                  <View style={styles.loadingBlock}>
+                    <AiOrb size={72} active listening />
+                    <VoiceWaveform active />
+                    <Text style={styles.loadingText}>
+                      {translate("aiThinking", "Thinking…")}
+                    </Text>
+                    <Text style={styles.loadingSub}>
+                      {translate("aiTriageListening", "AI is analyzing your emergency context")}
+                    </Text>
+                  </View>
+                </GlassSurface>
+              ) : null}
+
+              {phase === "result" && result && categoryMeta ? (
+                <View style={styles.resultBlock}>
+                  <GlassSurface radius={AI_RADIUS.card} style={styles.aiMsgCard}>
+                    <View style={[styles.aiMsgRow, row]}>
+                      <View style={styles.aiAvatar}>
+                        <Ionicons name="sparkles" size={18} color={aiEmergencyTheme.primary} />
+                      </View>
+                      <View style={styles.aiMsgBody}>
+                        <View
+                          style={[
+                            styles.categoryChip,
+                            row,
+                            { borderColor: categoryMeta.accent },
+                          ]}
+                        >
+                          <Text style={styles.categoryIcon}>{categoryMeta.icon}</Text>
+                          <Text style={[styles.categoryLabel, { color: categoryMeta.accent }]}>
+                            {categoryMeta.label}
+                          </Text>
+                          <Text style={styles.confidenceTag}>· {confidenceLabel}</Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                ) : null}
+                  </GlassSurface>
 
-                {/*
-                  Reassurance card — shown when the AI flags urgency = call_now.
-                  The SOS flow has already dispatched the ambulance, so the
-                  triage modal never exposes any phone-call action. We only
-                  reassure the user that help is already on its way.
-                */}
-                {result.urgency === "call_now" ? (
-                  <View
-                    style={styles.assistanceOnWayCard}
-                    accessibilityRole="alert"
-                  >
-                    <Text style={styles.assistanceOnWayIcon}>🚑</Text>
-                    <Text style={styles.assistanceOnWayText}>
-                      {translate(
-                        "aiTriageAssistanceOnWay",
-                        "Emergency services have already been notified and are on the way.",
-                      )}
+                  <GlassSurface radius={AI_RADIUS.card} style={styles.actionCardCallout}>
+                    <Text style={styles.actionKicker}>
+                      {translate("aiTriageNextActionLabel", "Do this now")}
                     </Text>
-                  </View>
-                ) : null}
+                    <Text style={styles.actionText}>{result.nextAction}</Text>
+                  </GlassSurface>
 
-                {/* Suggested guide */}
-                {result.suggestedGuideId && guidePreviewTitle ? (
-                  <TouchableOpacity
-                    style={[styles.guideBtn, { backgroundColor: accentColor }]}
-                    onPress={handleOpenGuide}
-                  >
-                    <Text style={styles.guideBtnKicker}>
-                      {translate("aiTriageOpenGuide", "Open the recommended guide")}
-                    </Text>
-                    <Text style={styles.guideBtnTitle}>{guidePreviewTitle}</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.guideBtn, { backgroundColor: "#475569" }]}
-                    onPress={handleOpenLibrary}
-                  >
-                    <Text style={styles.guideBtnKicker}>
-                      {translate(
-                        "aiTriageOpenLibrary",
-                        "Browse the first-aid library",
-                      )}
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                  {result.askQuestion ? (
+                    <GlassSurface radius={AI_RADIUS.card} style={styles.questionCard}>
+                      <Text style={styles.questionLabel}>
+                        {translate("aiTriageQuestionLabel", "Quick check")}
+                      </Text>
+                      <Text style={styles.questionText}>{result.askQuestion}</Text>
+                      <View style={[styles.answerRow, row]}>
+                        <TouchableOpacity
+                          style={[styles.answerBtn, styles.answerYes]}
+                          onPress={() => handleAnswer("yes")}
+                        >
+                          <Text style={styles.answerBtnText}>
+                            {translate("aiTriageYes", "Yes")}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.answerBtn, styles.answerNo]}
+                          onPress={() => handleAnswer("no")}
+                        >
+                          <Text style={styles.answerBtnText}>
+                            {translate("aiTriageNo", "No")}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.answerBtn, styles.answerUnknown]}
+                          onPress={() => handleAnswer("not_sure")}
+                        >
+                          <Text style={styles.answerBtnTextSecondary}>
+                            {translate("aiTriageNotSure", "Not sure")}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </GlassSurface>
+                  ) : null}
 
-                {/* Summary for medical team */}
-                {result.summary ? (
-                  <View style={styles.summaryCard}>
-                    <Text style={styles.summaryLabel}>
-                      {translate(
-                        "aiTriageSummaryLabel",
-                        "Summary for medical team",
-                      )}
-                    </Text>
-                    <Text style={styles.summaryText}>{result.summary}</Text>
-                    <TouchableOpacity
-                      style={styles.summaryShareBtn}
-                      onPress={handleShareSummary}
+                  {result.urgency === "call_now" ? (
+                    <GlassSurface
+                      radius={AI_RADIUS.card}
+                      style={styles.assistanceOnWayCard}
                     >
-                      <Text style={styles.summaryShareBtnText}>
-                        {translate("aiTriageShareSummary", "Share summary")}
+                      <View
+                        style={[styles.assistanceRow, row]}
+                        accessibilityRole="alert"
+                      >
+                        <Text style={styles.assistanceOnWayIcon}>🚑</Text>
+                        <Text style={styles.assistanceOnWayText}>
+                          {translate(
+                            "aiTriageAssistanceOnWay",
+                            "Emergency services have already been notified and are on the way.",
+                          )}
+                        </Text>
+                      </View>
+                    </GlassSurface>
+                  ) : null}
+
+                  {result.suggestedGuideId && guidePreviewTitle ? (
+                    <TouchableOpacity
+                      style={[styles.guideBtn, { backgroundColor: accentColor }]}
+                      onPress={handleOpenGuide}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.guideBtnKicker}>
+                        {translate("aiTriageOpenGuide", "Open the recommended guide")}
+                      </Text>
+                      <Text style={styles.guideBtnTitle}>{guidePreviewTitle}</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.guideBtn, styles.guideBtnMuted]}
+                      onPress={handleOpenLibrary}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.guideBtnKicker}>
+                        {translate(
+                          "aiTriageOpenLibrary",
+                          "Browse the first-aid library",
+                        )}
                       </Text>
                     </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
+                  )}
 
-            {phase === "error" && error ? (
-              <View style={styles.errorCard}>
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            ) : null}
-          </ScrollView>
+                  {result.summary ? (
+                    <GlassSurface radius={AI_RADIUS.card} style={styles.summaryCard}>
+                      <Text style={styles.summaryLabel}>
+                        {translate(
+                          "aiTriageSummaryLabel",
+                          "Summary for medical team",
+                        )}
+                      </Text>
+                      <Text style={styles.summaryText}>{result.summary}</Text>
+                      <TouchableOpacity
+                        style={styles.summaryShareBtn}
+                        onPress={handleShareSummary}
+                      >
+                        <Text style={styles.summaryShareBtnText}>
+                          {translate("aiTriageShareSummary", "Share summary")}
+                        </Text>
+                      </TouchableOpacity>
+                    </GlassSurface>
+                  ) : null}
+                </View>
+              ) : null}
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            {phase === "idle" ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.primaryBtn, { backgroundColor: accentColor }]}
-                  onPress={handleStart}
-                >
-                  <Text style={styles.primaryBtnText}>
-                    {translate("aiTriageStart", "Start triage")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.secondaryBtn}
-                  onPress={handleOpenLibrary}
-                >
-                  <Text style={styles.secondaryBtnText}>
-                    {translate("aiTriageOpenLibrary", "Browse the first-aid library")}
-                  </Text>
-                </TouchableOpacity>
-              </>
-            ) : null}
+              {phase === "error" && error ? (
+                <GlassSurface radius={AI_RADIUS.card} style={styles.errorCard}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </GlassSurface>
+              ) : null}
+            </ScrollView>
 
-            {phase === "result" ? (
-              <>
-                <TouchableOpacity
-                  style={[styles.primaryBtn, { backgroundColor: accentColor }]}
-                  onPress={handleRefine}
-                >
-                  <Text style={styles.primaryBtnText}>
-                    {translate("aiTriageRefine", "Refine answer")}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.secondaryBtn} onPress={handleClose}>
-                  <Text style={styles.secondaryBtnText}>
-                    {translate("aiDone", "Done")}
-                  </Text>
-                </TouchableOpacity>
-              </>
-            ) : null}
-
-            {phase === "error" ? (
-              <>
-                {errorIsFatal ? (
-                  <TouchableOpacity
-                    style={[styles.primaryBtn, { backgroundColor: accentColor }]}
-                    onPress={handleOpenLibrary}
-                  >
-                    <Text style={styles.primaryBtnText}>
-                      {translate(
-                        "aiTriageOpenLibrary",
-                        "Browse the first-aid library",
-                      )}
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
+            <View style={styles.footer}>
+              {phase === "idle" ? (
+                <>
                   <TouchableOpacity
                     style={[styles.primaryBtn, { backgroundColor: accentColor }]}
                     onPress={handleStart}
+                    activeOpacity={0.9}
                   >
                     <Text style={styles.primaryBtnText}>
-                      {translate("aiTriageRetry", "Try again")}
+                      {translate("aiTriageStart", "Start triage")}
                     </Text>
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.secondaryBtn} onPress={handleClose}>
+                  <TouchableOpacity
+                    style={styles.secondaryBtn}
+                    onPress={handleOpenLibrary}
+                  >
+                    <Text style={styles.secondaryBtnText}>
+                      {translate("aiTriageOpenLibrary", "Browse the first-aid library")}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
+
+              {phase === "result" ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, { backgroundColor: accentColor }]}
+                    onPress={handleRefine}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={styles.primaryBtnText}>
+                      {translate("aiTriageRefine", "Refine answer")}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.secondaryBtn} onPress={handleClose}>
+                    <Text style={styles.secondaryBtnText}>
+                      {translate("aiDone", "Done")}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
+
+              {phase === "error" ? (
+                <>
+                  {errorIsFatal ? (
+                    <TouchableOpacity
+                      style={[styles.primaryBtn, { backgroundColor: accentColor }]}
+                      onPress={handleOpenLibrary}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.primaryBtnText}>
+                        {translate(
+                          "aiTriageOpenLibrary",
+                          "Browse the first-aid library",
+                        )}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.primaryBtn, { backgroundColor: accentColor }]}
+                      onPress={handleStart}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.primaryBtnText}>
+                        {translate("aiTriageRetry", "Try again")}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity style={styles.secondaryBtn} onPress={handleClose}>
+                    <Text style={styles.secondaryBtnText}>
+                      {translate("aiDone", "Done")}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
+
+              {phase === "loading" ? (
+                <TouchableOpacity
+                  style={[styles.secondaryBtn, { opacity: 0.6 }]}
+                  disabled
+                >
                   <Text style={styles.secondaryBtnText}>
-                    {translate("aiDone", "Done")}
+                    {translate("aiThinking", "Thinking…")}
                   </Text>
                 </TouchableOpacity>
-              </>
-            ) : null}
-
-            {phase === "loading" ? (
-              <TouchableOpacity
-                style={[styles.secondaryBtn, { opacity: 0.6 }]}
-                disabled
-              >
-                <Text style={styles.secondaryBtnText}>
-                  {translate("aiThinking", "Thinking…")}
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+              ) : null}
+            </View>
           </View>
-        </View>
+        </GlassSurface>
       </View>
     </Modal>
   );
@@ -584,205 +632,291 @@ export default function AiEmergencyCompanion({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    maxHeight: "90%",
-    minHeight: 420,
-    borderTopWidth: 4,
+    maxHeight: "92%",
+    minHeight: 440,
+    borderTopLeftRadius: AI_RADIUS.sheet,
+    borderTopRightRadius: AI_RADIUS.sheet,
+    overflow: "hidden",
+  },
+  sheetInner: {
+    paddingTop: tokens.space.lg,
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xl,
   },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginTop: 4,
-    marginBottom: 6,
+    marginBottom: tokens.space.sm,
+    gap: tokens.space.md,
   },
-  title: { fontSize: 18, fontWeight: "900", color: "#003049", flex: 1 },
-  closeBtn: {
-    fontSize: 22,
-    color: "#6C757D",
-    fontWeight: "700",
-    paddingHorizontal: 6,
-  },
-  disclaimer: { fontSize: 12, color: "#6C757D", marginBottom: 12 },
-  body: { flexGrow: 0 },
-  bodyContent: { paddingBottom: 12, gap: 12 },
-  intro: { fontSize: 15, color: "#212529", lineHeight: 22 },
-  loadingBlock: {
-    flexDirection: "row",
+  headerLeft: {
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 32,
-    justifyContent: "center",
+    gap: tokens.space.md,
+    flex: 1,
   },
-  loadingText: { fontSize: 15, color: "#6C757D", fontWeight: "600" },
-
-  resultBlock: { gap: 12 },
-
+  headerTitles: { flex: 1 },
+  title: {
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+  },
+  liveRow: {
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: tokens.color.textFaint,
+  },
+  liveDotOn: { backgroundColor: aiEmergencyTheme.primary },
+  liveText: {
+    fontSize: tokens.font.caption,
+    fontWeight: tokens.fontWeight.semibold,
+    color: aiEmergencyTheme.primary,
+  },
+  closeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: aiEmergencyTheme.glassBorder,
+  },
+  closePressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+  disclaimer: {
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    marginBottom: tokens.space.md,
+    lineHeight: 18,
+  },
+  body: { flexGrow: 0 },
+  bodyContent: { paddingBottom: tokens.space.md, gap: tokens.space.md },
+  introCard: { marginBottom: tokens.space.xs },
+  introInner: {
+    alignItems: "center",
+    padding: tokens.space.xl,
+    gap: tokens.space.md,
+  },
+  intro: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textSecondary,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  loadingCard: {},
+  loadingBlock: {
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingVertical: tokens.space.xxl,
+    paddingHorizontal: tokens.space.lg,
+  },
+  loadingText: {
+    fontSize: tokens.font.label,
+    color: tokens.color.textPrimary,
+    fontWeight: tokens.fontWeight.semibold,
+  },
+  loadingSub: {
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  resultBlock: { gap: tokens.space.md },
+  aiMsgCard: {},
+  aiMsgRow: {
+    gap: tokens.space.md,
+    padding: tokens.space.lg,
+  },
+  aiAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(37, 99, 235, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(37, 99, 235, 0.2)",
+  },
+  aiMsgBody: { flex: 1 },
   categoryChip: {
-    flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
-    paddingHorizontal: 12,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: AI_RADIUS.chip,
     borderWidth: 1.5,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.6)",
     gap: 6,
   },
   categoryIcon: { fontSize: 16 },
-  categoryLabel: { fontSize: 13, fontWeight: "900" },
-  confidenceTag: { fontSize: 12, color: "#475569", fontWeight: "700" },
-
-  actionCardCallout: {
-    backgroundColor: "#FFF7F7",
-    borderRadius: 14,
-    borderWidth: 2,
-    padding: 16,
+  categoryLabel: { fontSize: 13, fontWeight: tokens.fontWeight.heavy },
+  confidenceTag: {
+    fontSize: 12,
+    color: tokens.color.textMuted,
+    fontWeight: tokens.fontWeight.semibold,
   },
+  actionCardCallout: { padding: tokens.space.lg },
   actionKicker: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#DC2626",
+    fontSize: tokens.font.overline,
+    fontWeight: tokens.fontWeight.heavy,
+    color: aiEmergencyTheme.primary,
     letterSpacing: 1.2,
     marginBottom: 6,
     textTransform: "uppercase",
   },
   actionText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#003049",
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
     lineHeight: 26,
   },
-
-  questionCard: {
-    backgroundColor: "#F1F5F9",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
+  questionCard: { padding: tokens.space.lg },
   questionLabel: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#0F172A",
+    fontSize: tokens.font.overline,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
     letterSpacing: 1.2,
     marginBottom: 6,
     textTransform: "uppercase",
   },
   questionText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0F172A",
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
     lineHeight: 22,
-    marginBottom: 12,
+    marginBottom: tokens.space.md,
   },
-  answerRow: { flexDirection: "row", gap: 8 },
+  answerRow: { gap: tokens.space.sm },
   answerBtn: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: tokens.space.md,
+    borderRadius: tokens.radius.md,
     alignItems: "center",
   },
-  answerYes: { backgroundColor: "#16A34A" },
-  answerNo: { backgroundColor: "#DC2626" },
+  answerYes: { backgroundColor: tokens.color.success },
+  answerNo: { backgroundColor: tokens.color.danger },
   answerUnknown: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.85)",
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: tokens.color.border,
   },
-  answerBtnText: { color: "#FFFFFF", fontWeight: "900", fontSize: 14 },
-  answerBtnTextSecondary: { color: "#0F172A", fontWeight: "900", fontSize: 14 },
-
-  assistanceOnWayCard: {
-    flexDirection: "row",
+  answerBtnText: {
+    color: tokens.color.textOnPrimary,
+    fontWeight: tokens.fontWeight.heavy,
+    fontSize: tokens.font.bodyLg,
+  },
+  answerBtnTextSecondary: {
+    color: tokens.color.textPrimary,
+    fontWeight: tokens.fontWeight.heavy,
+    fontSize: tokens.font.bodyLg,
+  },
+  assistanceOnWayCard: {},
+  assistanceRow: {
     alignItems: "center",
-    backgroundColor: "#FEF2F2",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderWidth: 1.5,
-    borderColor: "#FCA5A5",
-    gap: 12,
+    padding: tokens.space.lg,
+    gap: tokens.space.md,
   },
   assistanceOnWayIcon: { fontSize: 24 },
   assistanceOnWayText: {
     flex: 1,
-    color: "#7F1D1D",
-    fontSize: 14,
-    fontWeight: "800",
+    color: tokens.color.dangerDark,
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.semibold,
     lineHeight: 20,
   },
-
-  guideBtn: { borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16 },
+  guideBtn: {
+    borderRadius: AI_RADIUS.card,
+    paddingVertical: tokens.space.lg,
+    paddingHorizontal: tokens.space.lg,
+    shadowColor: aiEmergencyTheme.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  guideBtnMuted: { backgroundColor: tokens.color.slate },
   guideBtnKicker: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    fontWeight: "900",
+    color: tokens.color.textOnPrimary,
+    fontSize: tokens.font.overline,
+    fontWeight: tokens.fontWeight.heavy,
     letterSpacing: 1.2,
     textTransform: "uppercase",
     marginBottom: 4,
-    opacity: 0.9,
+    opacity: 0.92,
   },
-  guideBtnTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
-
-  summaryCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+  guideBtnTitle: {
+    color: tokens.color.textOnPrimary,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
   },
+  summaryCard: { padding: tokens.space.lg },
   summaryLabel: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: "#0F172A",
+    fontSize: tokens.font.overline,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
     letterSpacing: 1.2,
     marginBottom: 6,
     textTransform: "uppercase",
   },
   summaryText: {
-    fontSize: 14,
-    color: "#212529",
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textSecondary,
     lineHeight: 20,
-    marginBottom: 10,
+    marginBottom: tokens.space.md,
   },
   summaryShareBtn: {
     alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "#F1F5F9",
-    borderRadius: 999,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    backgroundColor: "rgba(37, 99, 235, 0.1)",
+    borderRadius: AI_RADIUS.chip,
     borderWidth: 1,
-    borderColor: "#CBD5E1",
+    borderColor: "rgba(37, 99, 235, 0.2)",
   },
-  summaryShareBtnText: { fontSize: 12, color: "#0F172A", fontWeight: "800" },
-
-  errorCard: {
-    backgroundColor: "#FEF3C7",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#FCD34D",
-    padding: 14,
+  summaryShareBtnText: {
+    fontSize: tokens.font.caption,
+    color: aiEmergencyTheme.primary,
+    fontWeight: tokens.fontWeight.semibold,
   },
-  errorText: { fontSize: 14, color: "#92400E", fontWeight: "600", lineHeight: 20 },
-
-  footer: { marginTop: 16, gap: 10 },
-  primaryBtn: { borderRadius: 12, paddingVertical: 14, alignItems: "center" },
-  primaryBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
-  secondaryBtn: {
-    borderRadius: 12,
-    paddingVertical: 12,
+  errorCard: { padding: tokens.space.lg },
+  errorText: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.warningText,
+    fontWeight: tokens.fontWeight.medium,
+    lineHeight: 20,
+  },
+  footer: { marginTop: tokens.space.lg, gap: tokens.space.sm },
+  primaryBtn: {
+    borderRadius: AI_RADIUS.card,
+    paddingVertical: tokens.space.lg,
     alignItems: "center",
-    backgroundColor: "#F1F3F5",
   },
-  secondaryBtnText: { color: "#495057", fontSize: 15, fontWeight: "700" },
+  primaryBtnText: {
+    color: tokens.color.textOnPrimary,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+  },
+  secondaryBtn: {
+    borderRadius: AI_RADIUS.card,
+    paddingVertical: tokens.space.md,
+    alignItems: "center",
+    backgroundColor: "rgba(241, 245, 249, 0.9)",
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  secondaryBtnText: {
+    color: tokens.color.textSecondary,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+  },
 });

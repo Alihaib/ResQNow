@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { collection, getDocs, limit, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,6 +12,7 @@ import StatusChip from "../../components/ui/StatusChip";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { useUiDirection } from "../../components/ui/layout";
 import { tokens } from "../../src/ui/tokens";
 import { caseIdSuffix } from "../../src/utils/formatCaseId";
 
@@ -52,6 +54,7 @@ export default function DoctorDashboard() {
   const router = useRouter();
   const { role, approved, user, loading } = useAuth();
   const { t } = useLanguage();
+  const { row } = useUiDirection();
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<Patient[]>([]);
@@ -282,7 +285,7 @@ export default function DoctorDashboard() {
     <View style={styles.container}>
       <ScreenHeader
         title={t("doctor_dashboard_title")}
-        eyebrow={`🩺 ${t("doctor_role")}`}
+        eyebrow={t("doctor_role")}
       />
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent}>
@@ -296,7 +299,7 @@ export default function DoctorDashboard() {
           <SectionHeader
             overline={t("active") || "Active"}
             title={t("activeEmergencyCases") || "Active Emergencies"}
-            accent={liveEmergencies.length > 0 ? tokens.color.danger : undefined}
+            accent={liveEmergencies.length > 0 ? tokens.color.warning : undefined}
             trailing={
               !loadingEmergencies && liveEmergencies.length > 0 ? (
                 <StatusChip
@@ -308,10 +311,10 @@ export default function DoctorDashboard() {
             }
           />
           {loadingEmergencies ? (
-            <EmptyState loading tone="danger" title={t("loading")} />
+            <EmptyState loading tone="primary" title={t("loading")} />
           ) : liveEmergencies.length === 0 ? (
             <EmptyState
-              icon="🩺"
+              ionIcon="medkit-outline"
               title={t("noActiveEmergencies")}
               subtitle={t("checkBackLater")}
             />
@@ -330,7 +333,7 @@ export default function DoctorDashboard() {
                   }
                 >
                   <Card elevated accentLeft>
-                    <View style={styles.caseTopRow}>
+                    <View style={[styles.caseTopRow, row]}>
                       <StatusChip label="ACTIVE" variant="danger" solid />
                       <Text style={styles.caseTime}>
                         {e.timestamp
@@ -355,21 +358,26 @@ export default function DoctorDashboard() {
                         : t("userNeedsHelp")}
                     </Text>
 
-                    <Text style={styles.caseLocation} numberOfLines={1}>
-                      📍{" "}
-                      {e.location?.address ||
-                        (e.location?.latitude && e.location?.longitude
-                          ? `${e.location.latitude.toFixed(4)}, ${e.location.longitude.toFixed(4)}`
-                          : t("locationNotAvailable"))}
-                    </Text>
+                    <View style={[styles.caseLocationRow, row]}>
+                      <Ionicons
+                        name="location-outline"
+                        size={14}
+                        color={tokens.color.textMuted}
+                      />
+                      <Text style={styles.caseLocation} numberOfLines={1}>
+                        {e.location?.address ||
+                          (e.location?.latitude && e.location?.longitude
+                            ? `${e.location.latitude.toFixed(4)}, ${e.location.longitude.toFixed(4)}`
+                            : t("locationNotAvailable"))}
+                      </Text>
+                    </View>
 
                     {(e.snapshotEtaMin != null || e.snapshotAmbulanceLine) && (
-                      <View style={styles.caseMetaRow}>
+                      <View style={[styles.caseMetaRow, row]}>
                         {e.snapshotEtaMin != null ? (
                           <StatusChip
                             label={`ETA ~${e.snapshotEtaMin} min`}
                             variant="info"
-                            icon="⏱"
                             size="sm"
                           />
                         ) : null}
@@ -399,14 +407,14 @@ export default function DoctorDashboard() {
         >
           <SectionHeader
             overline={t("searchPatient") || "Directory"}
-            title={`🔍 ${t("searchPatient") || "Search Patient"}`}
+            title={t("searchPatient") || "Search Patient"}
           />
           <Text style={styles.helperText}>
             {t("searchPatientNote") ||
               "Enter Israeli ID or name to access medical information"}
           </Text>
 
-          <View style={styles.searchContainer}>
+          <View style={[styles.searchContainer, row]}>
             <TextInput
               ref={searchInputRef}
               style={styles.searchInput}
@@ -428,15 +436,17 @@ export default function DoctorDashboard() {
               accessibilityRole="button"
               accessibilityLabel={t("searchPatient")}
             >
-              <Text style={styles.searchBtnText}>
-                {searching ? "…" : "🔍"}
-              </Text>
+              {searching ? (
+                <Text style={styles.searchBtnText}>…</Text>
+              ) : (
+                <Ionicons name="search-outline" size={20} color={tokens.color.textOnPrimary} />
+              )}
             </TouchableOpacity>
           </View>
 
           {/* Results list */}
           {searching ? (
-            <EmptyState loading tone="danger" title={t("loading")} />
+            <EmptyState loading tone="primary" title={t("loading")} />
           ) : results.length > 0 ? (
             <View style={styles.resultsBox}>
               {results.map((p) => (
@@ -444,6 +454,7 @@ export default function DoctorDashboard() {
                   key={p.id}
                   style={[
                     styles.resultRow,
+                    row,
                     selectedPatient?.id === p.id && styles.resultRowActive,
                   ]}
                   onPress={() => setSelectedPatient(p)}
@@ -459,7 +470,11 @@ export default function DoctorDashboard() {
                     </Text>
                   </View>
                   {selectedPatient?.id === p.id ? (
-                    <Text style={styles.resultCheck}>✓</Text>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={22}
+                      color={tokens.color.primary}
+                    />
                   ) : null}
                 </TouchableOpacity>
               ))}
@@ -468,8 +483,8 @@ export default function DoctorDashboard() {
 
           {/* Selected Patient Info Display */}
           {selectedPatient && (
-            <Card tone="danger" style={styles.patientInfoCard}>
-              <View style={styles.patientHeader}>
+            <Card tone="accent" style={styles.patientInfoCard}>
+              <View style={[styles.patientHeader, row]}>
                 <Text style={styles.patientName} numberOfLines={1}>
                   {selectedPatient.name || selectedPatient.email}
                 </Text>
@@ -480,28 +495,28 @@ export default function DoctorDashboard() {
                   accessibilityLabel="Close"
                   hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                 >
-                  <Text style={styles.iconBtnText}>✕</Text>
+                  <Ionicons name="close" size={20} color={tokens.color.textMuted} />
                 </TouchableOpacity>
               </View>
 
               {selectedPatient.israeliId && (
-                <View style={styles.kvRow}>
+                <View style={[styles.kvRow, row]}>
                   <Text style={styles.kvLabel}>{t("israeliId")}</Text>
                   <Text style={styles.kvValue}>{selectedPatient.israeliId}</Text>
                 </View>
               )}
-              <View style={styles.kvRow}>
+              <View style={[styles.kvRow, row]}>
                 <Text style={styles.kvLabel}>{t("phoneNumber")}</Text>
                 <Text style={styles.kvValue}>{selectedPatient.phoneNumber || "—"}</Text>
               </View>
               {selectedPatient.bloodType && (
-                <View style={styles.kvRow}>
+                <View style={[styles.kvRow, row]}>
                   <Text style={styles.kvLabel}>{t("blood_type")}</Text>
                   <Text style={styles.kvValue}>{selectedPatient.bloodType}</Text>
                 </View>
               )}
               {selectedPatient.age && (
-                <View style={styles.kvRow}>
+                <View style={[styles.kvRow, row]}>
                   <Text style={styles.kvLabel}>{t("age")}</Text>
                   <Text style={styles.kvValue}>{String(selectedPatient.age)}</Text>
                 </View>
@@ -557,7 +572,7 @@ export default function DoctorDashboard() {
           <SectionHeader overline={t("quickActions")} title={t("quickActions")} />
 
           <ShortcutCard
-            icon="🚨"
+            ionIcon="alert-circle-outline"
             title={t("quickViewActiveEmergencies", "View Active Emergencies")}
             subtitle={t("quickViewActiveEmergenciesSub", "Jump to live cases")}
             onPress={handleQuickViewActive}
@@ -572,13 +587,13 @@ export default function DoctorDashboard() {
             }
           />
           <ShortcutCard
-            icon="🔍"
+            ionIcon="search-outline"
             title={t("quickSearchPatient", "Search Patient")}
             subtitle={t("quickSearchPatientSub", "Find by ID, email or name")}
             onPress={handleQuickSearchPatient}
           />
           <ShortcutCard
-            icon="📋"
+            ionIcon="document-text-outline"
             title={t("quickOpenRecentCase", "Open Recent Case")}
             subtitle={t("quickOpenRecentCaseSub", "Latest active emergency")}
             onPress={handleQuickOpenRecentCase}
@@ -608,7 +623,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   caseTopRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: tokens.space.sm,
@@ -632,13 +646,17 @@ const styles = StyleSheet.create({
     color: tokens.color.textPrimary,
     marginBottom: tokens.space.xs,
   },
+  caseLocationRow: {
+    alignItems: "center",
+    gap: tokens.space.xs,
+  },
   caseLocation: {
+    flex: 1,
     fontSize: tokens.font.body,
     color: tokens.color.textSecondary,
     fontWeight: "600",
   },
   caseMetaRow: {
-    flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
     gap: tokens.space.sm,
@@ -652,7 +670,6 @@ const styles = StyleSheet.create({
     minWidth: 100,
   },
   searchContainer: {
-    flexDirection: "row",
     gap: tokens.space.sm,
     marginBottom: tokens.space.md,
   },
@@ -678,7 +695,7 @@ const styles = StyleSheet.create({
     minHeight: tokens.hitSlop,
   },
   searchBtnDisabled: { backgroundColor: tokens.color.borderStrong },
-  searchBtnText: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
+  searchBtnText: { color: tokens.color.bgSurface, fontSize: 18, fontWeight: "700" },
   resultsBox: {
     backgroundColor: tokens.color.bgSubtle,
     borderRadius: tokens.radius.md,
@@ -692,14 +709,13 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
     borderRadius: tokens.radius.sm,
-    flexDirection: "row",
     alignItems: "center",
     minHeight: tokens.hitSlop,
   },
   resultRowActive: {
-    backgroundColor: tokens.color.dangerSurface,
+    backgroundColor: tokens.color.primarySurface,
     borderWidth: tokens.hairline,
-    borderColor: tokens.color.dangerBorder,
+    borderColor: tokens.color.primaryBorder,
   },
   resultName: {
     fontSize: tokens.font.label,
@@ -714,13 +730,12 @@ const styles = StyleSheet.create({
   resultCheck: {
     fontSize: 16,
     fontWeight: "900",
-    color: tokens.color.danger,
+    color: tokens.color.primary,
   },
   patientInfoCard: {
     marginTop: tokens.space.md,
   },
   patientHeader: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: tokens.space.md,
@@ -733,7 +748,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: tokens.color.textPrimary,
     flex: 1,
-    marginRight: tokens.space.sm,
+    marginEnd: tokens.space.sm,
   },
   iconBtn: {
     width: 32,
@@ -749,7 +764,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   kvRow: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: tokens.space.sm,

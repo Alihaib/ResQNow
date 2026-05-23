@@ -1,23 +1,5 @@
 /**
- * Unified action button with a consistent visual hierarchy.
- *
- * Variants (highest → lowest visual weight):
- *  - "danger"      : red, used for the most urgent action (SOS, emergency).
- *  - "primary"     : near-black slate, used for "navigate", "open", confirms.
- *  - "secondary"   : white with a hairline border, used for non-destructive.
- *  - "ghost"       : transparent, used inside cards / overlays.
- *  - "neutralDark" : muted slate, for "I'm sure" non-destructive actions
- *                    such as End emergency.
- *
- * Sizes:
- *  - "compact" — 36pt min height, used inline (inside cards) for tertiary
- *                actions like "Navigate" on an emergency card. NOT a tap
- *                target for primary screen actions.
- *  - "md"      — 44pt min height, the default for most actions.
- *  - "lg"      — 56pt min height, used as the primary screen action.
- *
- * Loading and disabled states are mutually exclusive: when `loading` is
- * true the button is automatically disabled and shows a spinner.
+ * Unified action button — medical blue primary, red danger only for SOS/destructive.
  */
 
 import React from "react";
@@ -30,14 +12,19 @@ import {
 } from "react-native";
 import { tokens } from "../../src/ui/tokens";
 
-type Variant = "danger" | "primary" | "secondary" | "ghost" | "neutralDark";
-type Size = "compact" | "md" | "lg";
+export type ButtonVariant =
+  | "danger"
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "neutralDark";
+export type ButtonSize = "compact" | "md" | "lg";
 
-type Props = {
+export type ButtonProps = {
   label: string;
   onPress: () => void;
-  variant?: Variant;
-  size?: Size;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
   icon?: string;
@@ -57,7 +44,7 @@ export default function Button({
   fullWidth,
   style,
   accessibilityLabel,
-}: Props) {
+}: ButtonProps) {
   const isDisabled = disabled || loading;
   const sizeStyle = SIZE_STYLES[size];
   const variantStyles = VARIANT_STYLES[variant];
@@ -65,7 +52,7 @@ export default function Button({
     <TouchableOpacity
       onPress={onPress}
       disabled={isDisabled}
-      activeOpacity={0.85}
+      activeOpacity={0.98}
       accessibilityRole="button"
       accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
       accessibilityLabel={accessibilityLabel ?? label}
@@ -82,7 +69,11 @@ export default function Button({
         <ActivityIndicator color={variantStyles.label.color} size="small" />
       ) : (
         <Text
-          style={[styles.label, sizeStyle.label, variantStyles.label]}
+          style={[
+            styles.label,
+            sizeStyle.label,
+            variantStyles.label,
+          ]}
           numberOfLines={1}
         >
           {icon ? `${icon}  ` : ""}
@@ -93,8 +84,18 @@ export default function Button({
   );
 }
 
+/** Primary (medical blue) — default CTAs */
+export function PrimaryButton(props: Omit<ButtonProps, "variant">) {
+  return <Button {...props} variant="primary" />;
+}
+
+/** Danger (red) — SOS, cancel emergency, destructive */
+export function DangerButton(props: Omit<ButtonProps, "variant">) {
+  return <Button {...props} variant="danger" />;
+}
+
 const VARIANT_STYLES: Record<
-  Variant,
+  ButtonVariant,
   { container: ViewStyle; label: { color: string } }
 > = {
   danger: {
@@ -102,8 +103,8 @@ const VARIANT_STYLES: Record<
     label: { color: tokens.color.textOnDanger },
   },
   primary: {
-    container: { backgroundColor: tokens.color.primarySolid },
-    label: { color: "#FFFFFF" },
+    container: { backgroundColor: tokens.color.primary },
+    label: { color: tokens.color.textOnPrimary },
   },
   secondary: {
     container: {
@@ -119,12 +120,12 @@ const VARIANT_STYLES: Record<
   },
   neutralDark: {
     container: { backgroundColor: tokens.color.slate },
-    label: { color: "#FFFFFF" },
+    label: { color: tokens.color.textOnPrimary },
   },
 };
 
 const SIZE_STYLES: Record<
-  Size,
+  ButtonSize,
   { container: ViewStyle; label: { fontSize: number } }
 > = {
   compact: {
@@ -132,7 +133,7 @@ const SIZE_STYLES: Record<
       paddingVertical: tokens.space.sm,
       paddingHorizontal: tokens.space.md,
       minHeight: 36,
-      borderRadius: tokens.radius.sm,
+      borderRadius: tokens.radius.md,
     },
     label: { fontSize: tokens.font.body },
   },
@@ -141,7 +142,7 @@ const SIZE_STYLES: Record<
       paddingVertical: tokens.space.md,
       paddingHorizontal: tokens.space.lg,
       minHeight: tokens.hitSlop,
-      borderRadius: tokens.radius.md,
+      borderRadius: tokens.radius.lg,
     },
     label: { fontSize: tokens.font.label },
   },
@@ -150,7 +151,7 @@ const SIZE_STYLES: Record<
       paddingVertical: tokens.space.lg,
       paddingHorizontal: tokens.space.lg,
       minHeight: 56,
-      borderRadius: tokens.radius.lg,
+      borderRadius: tokens.radius.xl,
     },
     label: { fontSize: tokens.font.title },
   },
@@ -162,10 +163,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   fullWidth: { alignSelf: "stretch", width: "100%" },
-  disabled: { opacity: 0.55 },
+  disabled: { opacity: 0.5 },
   label: {
-    fontWeight: "800",
-    letterSpacing: 0.3,
+    fontWeight: tokens.fontWeight.semibold,
+    letterSpacing: 0.15,
     textAlign: "center",
   },
 });

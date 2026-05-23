@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -10,13 +11,19 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import AppPageHeader from "../../components/ui/AppPageHeader";
+import Card from "../../components/ui/Card";
 import ShortcutCard from "../../components/ui/ShortcutCard";
+import SosHeroButton from "../../components/ui/SosHeroButton";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
-import { elevatedShadow, tokens } from "../../src/ui/tokens";
+import { useUiDirection } from "../../components/ui/layout";
+import { pageStyles, tokens } from "../../src/ui/tokens";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function EmergencyScreen() {
   const { t } = useLanguage();
+  const { row, marginHorizontal } = useUiDirection();
   const router = useRouter();
   const {
     isEmergencyActive,
@@ -134,6 +141,7 @@ export default function EmergencyScreen() {
     setIsVictimSelectOpen(false);
   };
 
+  const insets = useSafeAreaInsets();
   const busy = sosBusy || startingEmergency;
   const sosLabel = isEmergencyActive
     ? t("emergencyActiveShort")
@@ -147,7 +155,13 @@ export default function EmergencyScreen() {
       : t("tapForHelp");
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={pageStyles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + 96 },
+      ]}
+    >
       {/* SOS Victim Selection Overlay */}
       <Modal
         visible={isVictimSelectOpen}
@@ -199,69 +213,53 @@ export default function EmergencyScreen() {
         </View>
       </Modal>
 
-      {/* Hero / Title — calm, low visual weight so the SOS button dominates. */}
+      <AppPageHeader
+        title={t("emergencyTitle")}
+        subtitle={t("emergencySubtitle")}
+        eyebrow={t("tab_emergency")}
+        showBrandIcon={false}
+      />
+
       <View style={styles.hero}>
-        <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeText}>
-            {t("tab_emergency", "EMERGENCY")}
-          </Text>
-        </View>
-        <Text style={styles.title}>{t("emergencyTitle")}</Text>
-        <Text style={styles.subtitle}>{t("emergencySubtitle")}</Text>
+        <SosHeroButton
+          label={String(sosLabel)}
+          sublabel={sosSubLabel}
+          onPress={handleEmergencyPress}
+          disabled={busy}
+          busy={busy}
+          activeEmergency={isEmergencyActive}
+          size="hero"
+        />
       </View>
 
-      {/* PRIMARY: huge red SOS button — the single most important action. */}
-      <TouchableOpacity
-        style={[
-          styles.sosBtn,
-          isEmergencyActive && styles.sosBtnActive,
-          busy && styles.sosBtnDisabled,
-        ]}
-        onPress={handleEmergencyPress}
-        disabled={busy}
-        activeOpacity={0.9}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: !!busy, busy: !!busy }}
-        accessibilityLabel={String(sosLabel)}
-      >
-        <View style={styles.sosRing}>
-          <Text style={styles.sosIcon}>🚨</Text>
-        </View>
-        <Text style={styles.sosLabel}>{sosLabel}</Text>
-        <Text style={styles.sosSubLabel}>{sosSubLabel}</Text>
-      </TouchableOpacity>
-
-      {/* Reassurance / Checklist — quieter card, intentionally low contrast. */}
-      <View style={styles.calmCard}>
+      <Card style={styles.calmCard}>
         <Text style={styles.calmTitle}>{t("beforeEmergency")}</Text>
-        <View style={styles.calmRow}>
-          <Text style={styles.calmIcon}>✓</Text>
-          <Text style={styles.calmText}>{t("stayCalm")}</Text>
-        </View>
-        <View style={styles.calmRow}>
-          <Text style={styles.calmIcon}>✓</Text>
-          <Text style={styles.calmText}>{t("checkLocation")}</Text>
-        </View>
-        <View style={styles.calmRow}>
-          <Text style={styles.calmIcon}>✓</Text>
-          <Text style={styles.calmText}>{t("ensureSafety")}</Text>
-        </View>
-        <View style={styles.calmRow}>
-          <Text style={styles.calmIcon}>✓</Text>
-          <Text style={styles.calmText}>{t("haveMedicalInfo")}</Text>
-        </View>
-      </View>
+        {(["stayCalm", "checkLocation", "ensureSafety", "haveMedicalInfo"] as const).map(
+          (key) => (
+            <View key={key} style={[styles.calmRow, row]}>
+              <Ionicons
+                name="checkmark-circle"
+                size={18}
+                color={tokens.color.success}
+                style={styles.calmIcon}
+              />
+              <Text style={styles.calmText}>{t(key)}</Text>
+            </View>
+          ),
+        )}
+      </Card>
 
-      {/* Secondary actions — smaller, lower visual weight than SOS button. */}
-      <Text style={styles.sectionLabel}>{t("quickActions")}</Text>
+      <Text style={[styles.sectionLabel, marginHorizontal(tokens.space.xs, 0)]}>
+        {t("quickActions")}
+      </Text>
       <ShortcutCard
-        icon="⛑"
+        ionIcon="medkit-outline"
         title={t("medical_guides")}
         subtitle={t("medical_guides_desc")}
         onPress={() => router.push("/(tabs)/firstaid")}
       />
       <ShortcutCard
-        icon="📋"
+        ionIcon="document-text-outline"
         title={t("medicalProfile")}
         subtitle={t("personal_info")}
         onPress={() => router.push("/(tabs)/profile")}
@@ -271,91 +269,14 @@ export default function EmergencyScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: tokens.color.bgPage,
-  },
   content: {
-    paddingTop: 64,
-    paddingBottom: tokens.space.xxl,
     paddingHorizontal: tokens.space.lg,
   },
   hero: {
     alignItems: "center",
     marginBottom: tokens.space.xl,
   },
-  heroBadge: {
-    backgroundColor: tokens.color.dangerBg,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.xs,
-    borderRadius: tokens.radius.pill,
-    marginBottom: tokens.space.md,
-  },
-  heroBadgeText: {
-    color: tokens.color.dangerDark,
-    fontWeight: "900",
-    fontSize: tokens.font.caption,
-    letterSpacing: 1.2,
-  },
-  title: {
-    fontSize: tokens.font.display,
-    fontWeight: "900",
-    color: tokens.color.textPrimary,
-    letterSpacing: -0.5,
-    marginBottom: tokens.space.xs,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: tokens.font.bodyLg,
-    color: tokens.color.textMuted,
-    textAlign: "center",
-    paddingHorizontal: tokens.space.lg,
-    lineHeight: 20,
-  },
-  sosBtn: {
-    backgroundColor: tokens.color.danger,
-    borderRadius: tokens.radius.xl,
-    paddingVertical: tokens.space.xxl,
-    paddingHorizontal: tokens.space.lg,
-    alignItems: "center",
-    marginBottom: tokens.space.xl,
-    ...elevatedShadow,
-    shadowColor: tokens.color.danger,
-    shadowOpacity: 0.3,
-  },
-  sosBtnActive: { backgroundColor: tokens.color.dangerDark },
-  sosBtnDisabled: { opacity: 0.75 },
-  sosRing: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255,255,255,0.16)",
-    borderWidth: 3,
-    borderColor: "rgba(255,255,255,0.3)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: tokens.space.md,
-  },
-  sosIcon: { fontSize: 52 },
-  sosLabel: {
-    color: "#FFFFFF",
-    fontSize: 30,
-    fontWeight: "900",
-    letterSpacing: 1,
-    marginBottom: tokens.space.xs,
-  },
-  sosSubLabel: {
-    color: "rgba(255,255,255,0.92)",
-    fontSize: tokens.font.bodyLg,
-    fontWeight: "700",
-    textAlign: "center",
-  },
   calmCard: {
-    backgroundColor: tokens.color.bgSurface,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.space.lg,
-    borderWidth: tokens.hairline,
-    borderColor: tokens.color.border,
     marginBottom: tokens.space.xl,
   },
   calmTitle: {
@@ -367,15 +288,11 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   calmRow: {
-    flexDirection: "row",
     alignItems: "center",
     marginBottom: tokens.space.sm,
     gap: tokens.space.sm,
   },
   calmIcon: {
-    color: tokens.color.success,
-    fontSize: tokens.font.title,
-    fontWeight: "900",
     width: 18,
   },
   calmText: {
@@ -390,7 +307,6 @@ const styles = StyleSheet.create({
     color: tokens.color.textFaint,
     letterSpacing: 0.9,
     marginBottom: tokens.space.sm,
-    marginLeft: tokens.space.xs,
     textTransform: "uppercase",
   },
   overlayContainer: {

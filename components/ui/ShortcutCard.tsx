@@ -1,41 +1,31 @@
 /**
- * Shortcut row card — icon + title + subtitle + trailing.
- *
- * This is the operational shortcut pattern used everywhere:
- *  - Doctor dashboard: "View Active Emergencies", "Search Patient"…
- *  - Ambulance dashboard: "Current Mission", "Start Navigation"…
- *  - SOS screen: "Medical Guides", "Medical Profile"…
- *  - Active emergency screen: "AI Triage Assistant", "Share Medical Profile"…
- *
- * Centralising it means every shortcut everywhere has identical touch
- * target size, padding, typography, chevron and emphasis styling.
- *
- * Visual weight is deliberately restrained — shortcuts are secondary
- * affordances, never the primary action on a screen.
+ * Secondary navigation row — icon, title, subtitle, trailing chevron or chip.
  */
 
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View, ViewStyle } from "react-native";
 import { tokens } from "../../src/ui/tokens";
+import { useUiDirection } from "./layout";
 
-type Props = {
-  /** Leading emoji / glyph (kept as text — no icon library). */
+export type ShortcutEmphasis = "default" | "primary" | "accent";
+
+export type ShortcutCardProps = {
   icon?: string;
+  ionIcon?: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle?: string;
   onPress: () => void;
-  /** Element shown at the right (chip, badge…). When absent, a chevron is rendered. */
   trailing?: React.ReactNode;
-  /** Emphasis variant: "primary" promotes the row when it represents the
-   *  user's active mission / case. Use sparingly — at most one per screen. */
-  emphasis?: "default" | "primary";
-  /** Optional override style — keep usage rare; layout is opinionated for a reason. */
+  /** primary = active mission (blue accent); use danger surfaces only via parent SOS UI */
+  emphasis?: ShortcutEmphasis;
   style?: ViewStyle | ViewStyle[];
   accessibilityLabel?: string;
 };
 
 export default function ShortcutCard({
   icon,
+  ionIcon,
   title,
   subtitle,
   onPress,
@@ -43,20 +33,33 @@ export default function ShortcutCard({
   emphasis = "default",
   style,
   accessibilityLabel,
-}: Props) {
+}: ShortcutCardProps) {
+  const { row, chevronForward } = useUiDirection();
+
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.85}
+      activeOpacity={0.98}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
       style={[
         styles.card,
-        emphasis === "primary" && styles.cardPrimary,
+        row,
+        emphasis === "primary" || emphasis === "accent"
+          ? styles.cardAccent
+          : null,
         style as ViewStyle,
       ]}
     >
-      {icon ? <Text style={styles.icon}>{icon}</Text> : null}
+      {ionIcon ? (
+        <View style={styles.iconPill}>
+          <Ionicons name={ionIcon} size={18} color={tokens.color.textMuted} />
+        </View>
+      ) : icon ? (
+        <Text style={styles.icon} accessibilityElementsHidden>
+          {icon}
+        </Text>
+      ) : null}
       <View style={styles.content}>
         <Text style={styles.title} numberOfLines={1}>
           {title}
@@ -67,47 +70,58 @@ export default function ShortcutCard({
           </Text>
         ) : null}
       </View>
-      {trailing ?? <Text style={styles.chevron}>›</Text>}
+      {trailing ?? (
+        <Text style={styles.chevron} accessibilityElementsHidden>
+          {chevronForward}
+        </Text>
+      )}
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: tokens.color.bgSurface,
-    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.color.bgSubtle,
+    borderRadius: tokens.radius.lg,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.lg,
-    flexDirection: "row",
     alignItems: "center",
     marginBottom: tokens.space.sm,
     borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
     gap: tokens.space.md,
-    minHeight: 60,
+    minHeight: 56,
   },
-  cardPrimary: {
-    backgroundColor: tokens.color.dangerSurface,
-    borderColor: tokens.color.dangerBorder,
-    borderLeftWidth: 3,
-    borderLeftColor: tokens.color.danger,
+  cardAccent: {
+    backgroundColor: tokens.color.primarySurface,
+    borderColor: tokens.color.primaryBorder,
+    borderStartWidth: 3,
+    borderStartColor: tokens.color.primary,
   },
   icon: { fontSize: 22 },
+  iconPill: {
+    width: 36,
+    height: 36,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.color.bgSurface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   content: { flex: 1 },
   title: {
-    fontSize: tokens.font.label,
-    fontWeight: "800",
-    color: tokens.color.textPrimary,
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textSecondary,
   },
   subtitle: {
     fontSize: tokens.font.caption,
     color: tokens.color.textMuted,
     marginTop: 2,
-    fontWeight: "600",
+    fontWeight: tokens.fontWeight.medium,
   },
   chevron: {
     fontSize: 22,
     color: tokens.color.textFaint,
-    fontWeight: "700",
+    fontWeight: tokens.fontWeight.semibold,
   },
 });

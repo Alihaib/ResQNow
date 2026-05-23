@@ -2,14 +2,21 @@ import { useRouter } from "expo-router";
 import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AppPageHeader from "../../components/ui/AppPageHeader";
+import Card from "../../components/ui/Card";
+import ListRow from "../../components/ui/ListRow";
+import SectionHeader from "../../components/ui/SectionHeader";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { db } from "../../src/firebase/config";
+import { pageStyles, tokens } from "../../src/ui/tokens";
 
 export default function ProfileTab() {
   const { user, role } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [sharing, setSharing] = useState(false);
   const [israeliId, setIsraeliId] = useState<string | null>(null);
 
@@ -54,28 +61,28 @@ export default function ProfileTab() {
       
       // Format medical information for sharing
       const medicalInfo = `
-⛑ ResQNow Medical Information
+${t("appName")} — ${t("shareMedicalProfile")}
 
-👤 Personal Information:
-${data.name ? `Name: ${data.name}` : ""}
-${data.age ? `Age: ${data.age}` : ""}
-${data.bloodType ? `Blood Type: ${data.bloodType}` : ""}
-${data.weight ? `Weight: ${data.weight} kg` : ""}
-${data.height ? `Height: ${data.height} cm` : ""}
+${t("personalInformation")}:
+${data.name ? `${t("name")}: ${data.name}` : ""}
+${data.age ? `${t("age")}: ${data.age}` : ""}
+${data.bloodType ? `${t("blood_type")}: ${data.bloodType}` : ""}
+${data.weight ? `${t("weight")}: ${data.weight} kg` : ""}
+${data.height ? `${t("height")}: ${data.height} cm` : ""}
 
-🏥 Medical History:
-${data.diseases ? `Diseases: ${data.diseases}` : ""}
-${data.medications ? `Medications: ${data.medications}` : ""}
-${data.allergies ? `Allergies: ${data.allergies}` : ""}
-${data.sensitiveNotes ? `Notes: ${data.sensitiveNotes}` : ""}
+${t("medicalHistory")}:
+${data.diseases ? `${t("diseases")}: ${data.diseases}` : ""}
+${data.medications ? `${t("medications")}: ${data.medications}` : ""}
+${data.allergies ? `${t("allergies")}: ${data.allergies}` : ""}
+${data.sensitiveNotes ? `${t("sensitive_notes")}: ${data.sensitiveNotes}` : ""}
 
-📞 Emergency Contacts:
+${t("emergencyContacts")}:
 ${data.emergencyContacts && data.emergencyContacts.length > 0
   ? data.emergencyContacts.map((c: any) => `${c.name}: ${c.phone}`).join("\n")
-  : "No emergency contacts"}
+  : t("noEmergencyContacts")}
 
 ---
-Shared from ResQNow App
+${t("appName")}
       `.trim();
 
       const result = await Share.share({
@@ -95,14 +102,16 @@ Shared from ResQNow App
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>👤</Text>
-        <Text style={styles.title}>{t("profileTitle")}</Text>
-      </View>
+    <ScrollView
+      style={pageStyles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + 96 },
+      ]}
+    >
+      <AppPageHeader title={t("profileTitle")} showBrandIcon={false} />
 
-      {/* User Info Card */}
-      <View style={styles.userCard}>
+      <Card style={styles.userCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
             {user?.email?.charAt(0).toUpperCase() || "U"}
@@ -121,246 +130,137 @@ Shared from ResQNow App
             </Text>
           </View>
         )}
-      </View>
+      </Card>
 
-      {/* Medical Profile Section */}
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t("medicalProfile")}</Text>
-          <TouchableOpacity
-            style={styles.shareBtn}
-            onPress={shareMedicalInfo}
-            disabled={sharing}
-          >
-            <Text style={styles.shareIcon}>📤</Text>
-            <Text style={styles.shareText}>{t("shareMedicalProfile")}</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <TouchableOpacity
-          style={styles.menuCard}
+        <SectionHeader
+          title={t("medicalProfile")}
+          trailing={
+            <TouchableOpacity
+              style={styles.shareBtn}
+              onPress={shareMedicalInfo}
+              disabled={sharing}
+            >
+              <Text style={styles.shareText}>{t("shareMedicalProfile")}</Text>
+            </TouchableOpacity>
+          }
+        />
+        <ListRow
+          icon="person-outline"
+          title={t("personalInformation")}
+          subtitle={t("nameAgeBloodType")}
           onPress={() => router.push("/(tabs)/profile/medical")}
-        >
-          <Text style={styles.menuIcon}>📋</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("personalInformation")}</Text>
-            <Text style={styles.menuSubtitle}>{t("nameAgeBloodType")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuCard}
+        />
+        <ListRow
+          icon="clipboard-outline"
+          title={t("medical_history")}
+          subtitle={t("diseasesMedicationsAllergies")}
           onPress={() => router.push("/(tabs)/profile/history")}
-        >
-          <Text style={styles.menuIcon}>📝</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("medical_history")}</Text>
-            <Text style={styles.menuSubtitle}>{t("diseasesMedicationsAllergies")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuCard}
+        />
+        <ListRow
+          icon="call-outline"
+          title={t("emergency_contact")}
+          subtitle={t("familyFriendsDoctors")}
           onPress={() => router.push("/(tabs)/profile/contacts")}
-        >
-          <Text style={styles.menuIcon}>📞</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("emergency_contact")}</Text>
-            <Text style={styles.menuSubtitle}>{t("familyFriendsDoctors")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
+        />
       </View>
 
-      {/* Records Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("medicalRecords")}</Text>
-        
-        <TouchableOpacity
-          style={styles.menuCard}
+        <SectionHeader title={t("medicalRecords")} />
+        <ListRow
+          icon="alert-circle-outline"
+          title={t("emergencyHistory")}
+          subtitle={t("pastEmergencyCalls")}
           onPress={() => router.push("/(tabs)/profile/emergency-history")}
-        >
-          <Text style={styles.menuIcon}>🚨</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("emergencyHistory")}</Text>
-            <Text style={styles.menuSubtitle}>{t("pastEmergencyCalls")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuCard}
+        />
+        <ListRow
+          icon="medical-outline"
+          title={t("medicalRecords")}
+          subtitle={t("visitsTreatmentsTests")}
           onPress={() => router.push("/(tabs)/profile/medical-records")}
-        >
-          <Text style={styles.menuIcon}>🏥</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("medicalRecords")}</Text>
-            <Text style={styles.menuSubtitle}>{t("visitsTreatmentsTests")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
+        />
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
-  },
   content: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  logo: {
-    fontSize: 60,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#003049",
+    paddingHorizontal: tokens.space.lg,
+    ...pageStyles.content,
   },
   userCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 24,
     alignItems: "center",
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: tokens.space.xl,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#D62828",
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: tokens.color.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: tokens.space.md,
   },
   avatarText: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#FFFFFF",
+    fontSize: 28,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textOnPrimary,
   },
   userName: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#003049",
-    marginBottom: 4,
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs,
   },
   userRole: {
-    fontSize: 16,
-    color: "#6C757D",
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
     textTransform: "capitalize",
-    marginBottom: 16,
+    marginBottom: tokens.space.md,
   },
   patientIdCard: {
-    marginTop: 16,
-    padding: 16,
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#D62828",
-    borderStyle: "dashed",
+    marginTop: tokens.space.md,
+    padding: tokens.space.md,
+    backgroundColor: tokens.color.primaryBg,
+    borderRadius: tokens.radius.lg,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primaryBorder,
+    alignSelf: "stretch",
   },
   patientIdLabel: {
-    fontSize: 12,
-    color: "#6C757D",
-    fontWeight: "600",
-    marginBottom: 8,
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
+    fontWeight: tokens.fontWeight.semibold,
+    marginBottom: tokens.space.sm,
     textAlign: "center",
   },
   patientIdValue: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#D62828",
+    fontSize: tokens.font.h2,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.primary,
     textAlign: "center",
-    letterSpacing: 2,
-    marginBottom: 8,
+    letterSpacing: 1,
+    marginBottom: tokens.space.sm,
   },
   patientIdNote: {
-    fontSize: 11,
-    color: "#6C757D",
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
     textAlign: "center",
-    fontStyle: "italic",
   },
   section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#003049",
+    marginBottom: tokens.space.xl,
   },
   shareBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#D62828",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    gap: 6,
-  },
-  shareIcon: {
-    fontSize: 16,
+    backgroundColor: tokens.color.primary,
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.pill,
   },
   shareText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  menuCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  menuIcon: {
-    fontSize: 32,
-    marginRight: 16,
-  },
-  menuContent: {
-    flex: 1,
-  },
-  menuTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 4,
-  },
-  menuSubtitle: {
-    fontSize: 14,
-    color: "#6C757D",
-  },
-  chevron: {
-    fontSize: 24,
-    color: "#6C757D",
+    color: tokens.color.textOnPrimary,
+    fontSize: tokens.font.caption,
+    fontWeight: tokens.fontWeight.bold,
   },
 });
 

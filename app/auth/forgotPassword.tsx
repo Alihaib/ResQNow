@@ -1,15 +1,19 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { useState } from "react";
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { PrimaryButton } from "../../components/ui/Button";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { auth } from "../../src/firebase/config";
-import { theme } from "../../src/ui/theme";
+import { pageStyles, tokens } from "../../src/ui/tokens";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const router = useRouter();
   const { t, lang, toggleLanguage } = useLanguage();
+  const insets = useSafeAreaInsets();
 
   const resetPassword = async () => {
     if (!email.trim()) {
@@ -25,106 +29,119 @@ export default function ForgotPassword() {
       } else {
         router.replace("/auth/login");
       }
-    } catch (e) {
+    } catch {
       Alert.alert(t("error"), t("reset_password_failed"));
     }
   };
 
   return (
-    <View style={styles.container}>
-
-      {/* 🌍 Language Switch Button */}
+    <View style={[pageStyles.screen, styles.container, { paddingTop: insets.top + 16 }]}>
       <TouchableOpacity style={styles.languageBtn} onPress={toggleLanguage}>
         <Text style={styles.languageText}>{lang === "he" ? "EN" : "HE"}</Text>
       </TouchableOpacity>
 
+      <View style={styles.brandBadge}>
+        <Ionicons name="lock-closed-outline" size={28} color={tokens.color.primary} />
+      </View>
       <Text style={styles.title}>{t("forgot_password")}</Text>
-      <Text style={styles.text}>{t("forgot_password_sub")}</Text>
+      <Text style={styles.subtitle}>{t("forgot_password_sub")}</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder={t("email_placeholder")}
-        placeholderTextColor="#ADB5BD"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-      />
+      <View style={styles.card}>
+        <TextInput
+          style={styles.input}
+          placeholder={t("email_placeholder")}
+          placeholderTextColor={tokens.color.textFaint}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={resetPassword}>
-        <Text style={styles.primaryText}>{t("send_reset")}</Text>
-      </TouchableOpacity>
+        <PrimaryButton
+          label={t("send_reset")}
+          onPress={resetPassword}
+          fullWidth
+          style={{ marginTop: tokens.space.xl }}
+        />
 
-      <TouchableOpacity onPress={() => router.back()}>
-        <Text style={styles.backText}>{t("back")}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>{t("back")}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-    padding: theme.spacing.xxl,
-    paddingTop: 70,
-    marginTop: 40,
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xxl,
   },
-
-  /* 🌍 Language toggle button at top-right */
   languageBtn: {
     position: "absolute",
-    top: 40,
-    right: 20,
-    backgroundColor: theme.colors.text,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    top: 56,
+    right: tokens.space.lg,
+    backgroundColor: tokens.color.primary,
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.pill,
     zIndex: 10,
   },
   languageText: {
-    color: "#FFF",
-    fontWeight: "700",
+    color: tokens.color.textOnPrimary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.font.caption,
   },
-
+  brandBadge: {
+    alignSelf: "center",
+    width: 56,
+    height: 56,
+    borderRadius: tokens.radius.xl,
+    backgroundColor: tokens.color.primaryBg,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primaryBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: tokens.space.md,
+  },
   title: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: theme.colors.text,
+    fontSize: tokens.font.h1,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: tokens.space.sm,
   },
-  text: {
+  subtitle: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
     textAlign: "center",
-    fontSize: 14,
-    color: theme.colors.textMuted,
-    marginBottom: 25,
+    marginBottom: tokens.space.xl,
+    lineHeight: 22,
+  },
+  card: {
+    backgroundColor: tokens.color.bgSurface,
+    padding: tokens.space.xl,
+    borderRadius: tokens.radius.xxl,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
   },
   input: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.sm,
-    padding: theme.spacing.md,
-    fontSize: 16,
-    marginBottom: 20,
-    borderWidth: 1.5,
-    borderColor: theme.colors.border,
+    backgroundColor: tokens.color.bgPage,
+    borderRadius: tokens.radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: tokens.space.lg,
+    fontSize: tokens.font.title,
+    color: tokens.color.textPrimary,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
   },
-  primaryBtn: {
-    backgroundColor: theme.colors.primary,
-    padding: 15,
-    borderRadius: theme.radius.sm,
+  backBtn: {
+    marginTop: tokens.space.lg,
     alignItems: "center",
-    marginBottom: 20,
-    ...theme.shadow.primary,
-  },
-  primaryText: {
-    color: theme.colors.surface,
-    fontWeight: "700",
-    fontSize: 16,
   },
   backText: {
-    textAlign: "center",
-    fontSize: 14,
-    color: theme.colors.text,
-    fontWeight: "600",
+    color: tokens.color.textMuted,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
   },
 });

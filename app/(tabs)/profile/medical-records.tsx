@@ -1,10 +1,15 @@
 import { useRouter } from "expo-router";
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import Card from "../../../components/ui/Card";
+import EmptyState from "../../../components/ui/EmptyState";
+import SubScreenShell from "../../../components/ui/SubScreenShell";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
+import { useUiDirection } from "../../../components/ui/layout";
+import { tokens } from "../../../src/ui/tokens";
 
 type MedicalRecordRow = {
   id: string;
@@ -18,6 +23,7 @@ export default function MedicalRecordsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { row, chevronForward } = useUiDirection();
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<MedicalRecordRow[]>([]);
 
@@ -39,42 +45,82 @@ export default function MedicalRecordsScreen() {
           return;
         }
 
-        const data = snap.data() as any;
+        const data = snap.data() as Record<string, unknown>;
         const notProvided = "Not provided";
 
         const contactsSummary =
-          Array.isArray(data.emergencyContacts) && data.emergencyContacts.length > 0
-            ? data.emergencyContacts
+          Array.isArray(data.emergencyContacts) &&
+          (data.emergencyContacts as unknown[]).length > 0
+            ? (data.emergencyContacts as { name?: string; phone?: string }[])
                 .slice(0, 3)
-                .map((c: any) => `${c.name || "—"}: ${c.phone || "—"}`)
+                .map((c) => `${c.name || "—"}: ${c.phone || "—"}`)
                 .join(", ")
             : "No data available";
 
         const rows: MedicalRecordRow[] = [
-          { id: "name", date: "", type: "Full Name", doctor: data.name || notProvided, notes: "" },
-          { id: "age", date: "", type: "Age", doctor: data.age ? String(data.age) : notProvided, notes: "" },
-          { id: "bloodType", date: "", type: "Blood Type", doctor: data.bloodType || notProvided, notes: "" },
-          { id: "height", date: "", type: "Height", doctor: data.height ? `${data.height} cm` : notProvided, notes: "" },
-          { id: "weight", date: "", type: "Weight", doctor: data.weight ? `${data.weight} kg` : notProvided, notes: "" },
+          {
+            id: "name",
+            date: "",
+            type: "Full Name",
+            doctor: (data.name as string) || notProvided,
+            notes: "",
+          },
+          {
+            id: "age",
+            date: "",
+            type: "Age",
+            doctor: data.age ? String(data.age) : notProvided,
+            notes: "",
+          },
+          {
+            id: "bloodType",
+            date: "",
+            type: "Blood Type",
+            doctor: (data.bloodType as string) || notProvided,
+            notes: "",
+          },
+          {
+            id: "height",
+            date: "",
+            type: "Height",
+            doctor: data.height ? `${data.height} cm` : notProvided,
+            notes: "",
+          },
+          {
+            id: "weight",
+            date: "",
+            type: "Weight",
+            doctor: data.weight ? `${data.weight} kg` : notProvided,
+            notes: "",
+          },
           {
             id: "diseases",
             date: "",
             type: "Medical Conditions",
-            doctor: data.diseases?.trim?.() ? data.diseases : notProvided,
+            doctor:
+              typeof data.diseases === "string" && data.diseases.trim()
+                ? data.diseases
+                : notProvided,
             notes: "",
           },
           {
             id: "medications",
             date: "",
             type: "Medications",
-            doctor: data.medications?.trim?.() ? data.medications : notProvided,
+            doctor:
+              typeof data.medications === "string" && data.medications.trim()
+                ? data.medications
+                : notProvided,
             notes: "",
           },
           {
             id: "allergies",
             date: "",
             type: "Allergies",
-            doctor: data.allergies?.trim?.() ? data.allergies : notProvided,
+            doctor:
+              typeof data.allergies === "string" && data.allergies.trim()
+                ? data.allergies
+                : notProvided,
             notes: "",
           },
           {
@@ -83,8 +129,9 @@ export default function MedicalRecordsScreen() {
             type: "Emergency Contacts",
             doctor: contactsSummary,
             notes:
-              Array.isArray(data.emergencyContacts) && data.emergencyContacts.length > 3
-                ? `+${data.emergencyContacts.length - 3} more`
+              Array.isArray(data.emergencyContacts) &&
+              (data.emergencyContacts as unknown[]).length > 3
+                ? `+${(data.emergencyContacts as unknown[]).length - 3} more`
                 : "",
           },
         ];
@@ -96,146 +143,95 @@ export default function MedicalRecordsScreen() {
         console.error("medical-records onSnapshot error:", err);
         setRecords([]);
         setLoading(false);
-      }
+      },
     );
 
     return () => unsub();
   }, [user?.uid]);
 
   const hasAnyData = useMemo(() => records.length > 0, [records.length]);
-
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => {
-            // Always return to Profile tab from Profile sub-screens
-            router.replace("/(tabs)/profile");
-          }} 
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>‹ {t("back")}</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>{t("medicalRecords")}</Text>
-      </View>
-
+    <SubScreenShell
+      title={t("medicalRecords")}
+      fallbackRoute="/(tabs)/profile"
+      onBack={() => router.replace("/(tabs)/profile")}
+    >
       {loading ? (
-        <View style={styles.emptyState}>
-          <ActivityIndicator size="large" color="#D62828" />
-          <Text style={[styles.emptyText, { marginTop: 16 }]}>{t("loading")}</Text>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={tokens.color.primary} />
+          <Text style={styles.loadingText}>{t("loading")}</Text>
         </View>
       ) : hasAnyData ? (
         records.map((record) => (
-          <TouchableOpacity key={record.id} style={styles.recordCard}>
-            <View style={styles.recordHeader}>
+          <Card key={record.id} style={styles.recordCard}>
+            <View style={[styles.recordHeader, row]}>
               <Text style={styles.recordType}>{record.type}</Text>
-              {!!record.date && <Text style={styles.recordDate}>{record.date}</Text>}
+              {!!record.date ? (
+                <Text style={styles.recordDate}>{record.date}</Text>
+              ) : null}
             </View>
             <Text style={styles.recordDoctor}>{record.doctor}</Text>
-            {!!record.notes && <Text style={styles.recordNotes}>{record.notes}</Text>}
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+            {!!record.notes ? (
+              <Text style={styles.recordNotes}>{record.notes}</Text>
+            ) : null}
+            <Text style={styles.chevron}>{chevronForward}</Text>
+          </Card>
         ))
       ) : (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>🏥</Text>
-          <Text style={styles.emptyText}>{t("noMedicalRecords")}</Text>
-          <Text style={styles.emptySubtext}>{t("medicalRecordsSubtext")}</Text>
-        </View>
+        <EmptyState
+          ionIcon="medical-outline"
+          title={t("noMedicalRecords")}
+          subtitle={t("medicalRecordsSubtext")}
+        />
       )}
-    </ScrollView>
+    </SubScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
+  center: {
+    alignItems: "center",
+    paddingVertical: tokens.space.xxl,
+    gap: tokens.space.md,
   },
-  content: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  backBtn: {
-    marginBottom: 16,
-  },
-  backText: {
-    fontSize: 18,
-    color: "#003049",
-    fontWeight: "700",
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: "#003049",
+  loadingText: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
+    fontWeight: tokens.fontWeight.medium,
   },
   recordCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: tokens.space.sm,
   },
   recordHeader: {
-    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: tokens.space.sm,
   },
   recordType: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#003049",
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
   },
   recordDate: {
-    fontSize: 14,
-    color: "#6C757D",
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
   },
   recordDoctor: {
-    fontSize: 16,
-    color: "#212529",
-    marginBottom: 4,
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textSecondary,
+    fontWeight: tokens.fontWeight.medium,
   },
   recordNotes: {
-    fontSize: 14,
-    color: "#6C757D",
+    marginTop: tokens.space.xs,
+    fontSize: tokens.font.caption,
+    color: tokens.color.textMuted,
   },
   chevron: {
     position: "absolute",
-    right: 20,
-    top: 20,
-    fontSize: 24,
-    color: "#6C757D",
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#6C757D",
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: "#ADB5BD",
+    end: tokens.space.lg,
+    top: tokens.space.lg,
+    fontSize: tokens.font.h3,
+    color: tokens.color.textFaint,
+    fontWeight: tokens.fontWeight.semibold,
   },
 });
-
-
-
-
-

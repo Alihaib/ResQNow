@@ -1,20 +1,26 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AppPageHeader from "../../components/ui/AppPageHeader";
+import { DangerButton } from "../../components/ui/Button";
+import ListRow from "../../components/ui/ListRow";
+import SectionHeader from "../../components/ui/SectionHeader";
 import { useAuth } from "../../src/context/AuthContext";
 import { useLanguage } from "../../src/context/LanguageContext";
+import { pageStyles, tokens } from "../../src/ui/tokens";
 
 export default function SettingsScreen() {
   const { logout, user } = useAuth();
   const { t, lang, toggleLanguage } = useLanguage();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(true);
 
   const handleLogout = async () => {
     try {
       await logout();
-      // Navigate directly to login page after logout
       router.replace("/auth/login");
     } catch (error) {
       console.error("Logout error:", error);
@@ -22,219 +28,135 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>⚙️</Text>
-        <Text style={styles.title}>{t("settingsTitle")}</Text>
-      </View>
+    <ScrollView
+      style={pageStyles.screen}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + 96 },
+      ]}
+    >
+      <AppPageHeader title={t("settingsTitle")} showBrandIcon={false} />
 
-      {/* Account Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("account")}</Text>
-        
-        <TouchableOpacity
-          style={styles.menuCard}
+        <SectionHeader title={t("account")} />
+        <ListRow
+          icon="person-outline"
+          title={t("profile")}
+          subtitle={t("manageAccount")}
           onPress={() => router.push("/(tabs)/profile")}
-        >
-          <Text style={styles.menuIcon}>👤</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("profile")}</Text>
-            <Text style={styles.menuSubtitle}>{t("manageAccount")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuCard}
+        />
+        <ListRow
+          icon="lock-closed-outline"
+          title={t("privacySecurity")}
+          subtitle={t("dataPrivacySettings")}
           onPress={() => router.push("/(tabs)/settings/privacy")}
-        >
-          <Text style={styles.menuIcon}>🔒</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("privacySecurity")}</Text>
-            <Text style={styles.menuSubtitle}>{t("dataPrivacySettings")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
+        />
       </View>
 
-      {/* Preferences Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("preferences")}</Text>
-        
-        <View style={styles.menuCard}>
-          <Text style={styles.menuIcon}>🌍</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("language")}</Text>
-            <Text style={styles.menuSubtitle}>{lang === "he" ? "עברית" : "English"}</Text>
-          </View>
-          <TouchableOpacity onPress={toggleLanguage} style={styles.toggleBtn}>
-            <Text style={styles.toggleText}>{lang === "he" ? "EN" : "HE"}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.menuCard}>
-          <Text style={styles.menuIcon}>🔔</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("notifications")}</Text>
-            <Text style={styles.menuSubtitle}>{t("emergencyAlertsUpdates")}</Text>
-          </View>
-          <Switch
-            value={notificationsEnabled}
-            onValueChange={setNotificationsEnabled}
-            trackColor={{ false: "#E9ECEF", true: "#D62828" }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-
-        <View style={styles.menuCard}>
-          <Text style={styles.menuIcon}>📍</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("locationServices")}</Text>
-            <Text style={styles.menuSubtitle}>{t("shareLocationEmergencies")}</Text>
-          </View>
-          <Switch
-            value={locationEnabled}
-            onValueChange={setLocationEnabled}
-            trackColor={{ false: "#E9ECEF", true: "#D62828" }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
+        <SectionHeader title={t("preferences")} />
+        <ListRow
+          icon="language-outline"
+          title={t("language")}
+          subtitle={lang === "he" ? "עברית" : "English"}
+          trailing={
+            <TouchableOpacity onPress={toggleLanguage} style={styles.langPill}>
+              <Text style={styles.langPillText}>{lang === "he" ? "EN" : "HE"}</Text>
+            </TouchableOpacity>
+          }
+        />
+        <ListRow
+          icon="notifications-outline"
+          title={t("notifications")}
+          subtitle={t("emergencyAlertsUpdates")}
+          trailing={
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={setNotificationsEnabled}
+              trackColor={{
+                false: tokens.color.border,
+                true: tokens.color.primary,
+              }}
+              thumbColor={tokens.color.bgSurface}
+            />
+          }
+        />
+        <ListRow
+          icon="location-outline"
+          title={t("locationServices")}
+          subtitle={t("shareLocationEmergencies")}
+          trailing={
+            <Switch
+              value={locationEnabled}
+              onValueChange={setLocationEnabled}
+              trackColor={{
+                false: tokens.color.border,
+                true: tokens.color.primary,
+              }}
+              thumbColor={tokens.color.bgSurface}
+            />
+          }
+        />
       </View>
 
-      {/* Support Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("support")}</Text>
-        
-        <TouchableOpacity
-          style={styles.menuCard}
+        <SectionHeader title={t("support")} />
+        <ListRow
+          icon="help-circle-outline"
+          title={t("helpFAQ")}
+          subtitle={t("getHelpAnswers")}
           onPress={() => router.push("/(tabs)/settings/help")}
-        >
-          <Text style={styles.menuIcon}>❓</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("helpFAQ")}</Text>
-            <Text style={styles.menuSubtitle}>{t("getHelpAnswers")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuCard}
+        />
+        <ListRow
+          icon="information-circle-outline"
+          title={t("about")}
+          subtitle={t("appVersionInfo")}
           onPress={() => router.push("/(tabs)/settings/about")}
-        >
-          <Text style={styles.menuIcon}>ℹ️</Text>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuTitle}>{t("about")}</Text>
-            <Text style={styles.menuSubtitle}>{t("appVersionInfo")}</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
+        />
       </View>
 
-      {/* Logout */}
-      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-        <Text style={styles.logoutText}>{t("logout")}</Text>
-      </TouchableOpacity>
+      <DangerButton
+        label={t("logout")}
+        onPress={handleLogout}
+        fullWidth
+        style={styles.logout}
+      />
+      {user?.email ? (
+        <Text style={styles.signedIn}>{user.email}</Text>
+      ) : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
-  },
   content: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  logo: {
-    fontSize: 60,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#003049",
+    paddingHorizontal: tokens.space.lg,
+    ...pageStyles.content,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: tokens.space.xl,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#003049",
-    marginBottom: 16,
+  langPill: {
+    backgroundColor: tokens.color.primaryBg,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primaryBorder,
+    paddingVertical: tokens.space.xs,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.pill,
   },
-  menuCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  langPillText: {
+    color: tokens.color.primary,
+    fontSize: tokens.font.caption,
+    fontWeight: tokens.fontWeight.bold,
   },
-  menuIcon: {
-    fontSize: 32,
-    marginRight: 16,
+  logout: {
+    marginTop: tokens.space.xl,
   },
-  menuContent: {
-    flex: 1,
-  },
-  menuTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#003049",
-    marginBottom: 4,
-  },
-  menuSubtitle: {
-    fontSize: 14,
-    color: "#6C757D",
-  },
-  chevron: {
-    fontSize: 24,
-    color: "#6C757D",
-  },
-  toggleBtn: {
-    backgroundColor: "#003049",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  toggleText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  logoutBtn: {
-    backgroundColor: "#DC2626",
-    paddingVertical: 18,
-    borderRadius: 14,
-    alignItems: "center",
-    marginTop: 20,
-    shadowColor: "#DC2626",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  logoutText: {
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
+  signedIn: {
+    marginTop: tokens.space.md,
+    textAlign: "center",
+    fontSize: tokens.font.caption,
+    color: tokens.color.textFaint,
+    fontWeight: tokens.fontWeight.medium,
   },
 });
-
-
-
-
-

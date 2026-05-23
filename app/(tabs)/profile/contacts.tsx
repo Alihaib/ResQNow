@@ -1,11 +1,18 @@
 import { useRouter } from "expo-router";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Alert, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import Card from "../../../components/ui/Card";
+import EmptyState from "../../../components/ui/EmptyState";
+import { PrimaryButton } from "../../../components/ui/Button";
+import { useUiDirection } from "../../../components/ui/layout";
+import SubScreenShell from "../../../components/ui/SubScreenShell";
+import { subScreenStyles } from "../../../components/ui/subScreenStyles";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useLanguage } from "../../../src/context/LanguageContext";
 import { db } from "../../../src/firebase/config";
-import { theme } from "../../../src/ui/theme";
+import { cardShadow, tokens } from "../../../src/ui/tokens";
 
 interface Contact {
   id: string;
@@ -18,6 +25,7 @@ export default function EmergencyContactsScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { row, marginHorizontal } = useUiDirection();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -187,61 +195,64 @@ export default function EmergencyContactsScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
-        <Text style={styles.loadingText}>{t("loading")}</Text>
-      </View>
+      <SubScreenShell
+        title={t("emergency_contact")}
+        onBack={() => router.replace("/(tabs)/profile")}
+        fallbackRoute="/(tabs)/profile"
+      >
+        <EmptyState loading tone="primary" title={t("loading")} />
+      </SubScreenShell>
     );
   }
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => {
-            // Always return to Profile tab from Profile sub-screens
-            router.replace("/(tabs)/profile");
-          }} 
-          style={styles.backBtn}
-        >
-          <Text style={styles.backText}>‹ {t("back")}</Text>
-        </TouchableOpacity>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>{t("emergency_contact")}</Text>
-          <TouchableOpacity 
-            style={styles.addBtn} 
-            onPress={() => setShowAddForm(!showAddForm)}
-          >
-            <Text style={styles.addBtnText}>+ {t("add")}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  const goProfile = () => router.replace("/(tabs)/profile");
 
-      {/* Add Contact Form */}
-      {showAddForm && (
-        <View style={styles.addForm}>
-          <Text style={styles.formTitle}>{t("add")} {t("emergency_contact")}</Text>
+  return (
+    <SubScreenShell
+      title={t("emergency_contact")}
+      onBack={goProfile}
+      fallbackRoute="/(tabs)/profile"
+      trailing={
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => setShowAddForm(!showAddForm)}
+        >
+          <Text style={styles.addBtnText}>+ {t("add")}</Text>
+        </TouchableOpacity>
+      }
+    >
+      {showAddForm ? (
+        <Card style={styles.addForm}>
+          <Text style={styles.formTitle}>
+            {t("add")} {t("emergency_contact")}
+          </Text>
           <TextInput
-            style={styles.formInput}
+            style={subScreenStyles.input}
             placeholder={t("contact_name")}
+            placeholderTextColor={tokens.color.textFaint}
             value={newContact.name}
             onChangeText={(text) => setNewContact({ ...newContact, name: text })}
           />
           <TextInput
-            style={styles.formInput}
+            style={subScreenStyles.input}
             placeholder={t("contact_phone")}
+            placeholderTextColor={tokens.color.textFaint}
             value={newContact.phone}
             onChangeText={(text) => setNewContact({ ...newContact, phone: text })}
             keyboardType="phone-pad"
           />
           <TextInput
-            style={styles.formInput}
+            style={subScreenStyles.input}
             placeholder={t("relationshipOptional")}
+            placeholderTextColor={tokens.color.textFaint}
             value={newContact.relationship}
-            onChangeText={(text) => setNewContact({ ...newContact, relationship: text })}
+            onChangeText={(text) =>
+              setNewContact({ ...newContact, relationship: text })
+            }
           />
-          <View style={styles.formButtons}>
-            <TouchableOpacity 
-              style={styles.cancelBtn} 
+          <View style={[styles.formButtons, row]}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
               onPress={() => {
                 setShowAddForm(false);
                 setNewContact({ name: "", phone: "", relationship: "" });
@@ -249,20 +260,20 @@ export default function EmergencyContactsScreen() {
             >
               <Text style={styles.cancelBtnText}>{t("cancel")}</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.saveFormBtn} 
+            <PrimaryButton
+              label={t("add")}
               onPress={addContact}
               disabled={saving}
-            >
-              <Text style={styles.saveFormBtnText}>{t("add")}</Text>
-            </TouchableOpacity>
+              loading={saving}
+              style={styles.saveFormBtn}
+            />
           </View>
-        </View>
-      )}
+        </Card>
+      ) : null}
 
       {contacts.map((contact) => (
-        <View key={contact.id} style={styles.contactCard}>
-          <View style={styles.contactAvatar}>
+        <Card key={contact.id} style={[styles.contactCard, row]}>
+          <View style={[styles.contactAvatar, marginHorizontal(0, tokens.space.lg)]}>
             <Text style={styles.contactAvatarText}>
               {contact.name.charAt(0).toUpperCase()}
             </Text>
@@ -272,141 +283,102 @@ export default function EmergencyContactsScreen() {
             <Text style={styles.contactRelationship}>{contact.relationship}</Text>
             <Text style={styles.contactPhone}>{contact.phone}</Text>
           </View>
-          <View style={styles.contactActions}>
-            <TouchableOpacity 
-              style={styles.deleteBtn}
+          <View style={[styles.contactActions, row]}>
+            <TouchableOpacity
+              style={styles.iconAction}
               onPress={() => deleteContact(contact.id)}
+              accessibilityLabel={t("delete")}
             >
-              <Text style={styles.deleteBtnText}>🗑️</Text>
+              <Ionicons
+                name="trash-outline"
+                size={22}
+                color={tokens.color.danger}
+              />
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.callBtn}
+            <TouchableOpacity
+              style={styles.iconAction}
               onPress={() => makePhoneCall(contact.phone)}
+              accessibilityLabel={t("call")}
             >
-              <Text style={styles.callBtnText}>📞</Text>
+              <Ionicons
+                name="call-outline"
+                size={22}
+                color={tokens.color.primary}
+              />
             </TouchableOpacity>
           </View>
-        </View>
+        </Card>
       ))}
 
-      {contacts.length === 0 && (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>📞</Text>
-          <Text style={styles.emptyText}>{t("noEmergencyContacts")}</Text>
-          <Text style={styles.emptySubtext}>{t("addContactsToCall")}</Text>
-        </View>
-      )}
-    </ScrollView>
+      {contacts.length === 0 && !showAddForm ? (
+        <EmptyState
+          ionIcon="call-outline"
+          title={t("noEmergencyContacts")}
+          subtitle={t("addContactsToCall")}
+        />
+      ) : null}
+    </SubScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.bg,
-  },
-  content: {
-    paddingTop: 60,
-    paddingBottom: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.lg,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  backBtn: {
-    marginBottom: 16,
-  },
-  backText: {
-    fontSize: 18,
-    color: theme.colors.text,
-    fontWeight: "700",
-  },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: theme.colors.text,
-  },
   addBtn: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    backgroundColor: tokens.color.primary,
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.lg,
+    borderRadius: tokens.radius.pill,
   },
   addBtnText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
+    color: tokens.color.textOnPrimary,
+    fontSize: tokens.font.caption,
+    fontWeight: tokens.fontWeight.bold,
   },
   contactCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    flexDirection: "row",
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.xl,
+    padding: tokens.space.lg,
     alignItems: "center",
-    marginBottom: 12,
-    ...theme.shadow.card,
+    marginBottom: tokens.space.sm,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
+    ...cardShadow,
   },
   contactAvatar: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: tokens.color.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 16,
   },
   contactAvatarText: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: "#FFFFFF",
+    fontSize: tokens.font.h3,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textOnPrimary,
   },
   contactInfo: {
     flex: 1,
   },
   contactName: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: theme.colors.text,
-    marginBottom: 4,
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    marginBottom: tokens.space.xs,
   },
   contactRelationship: {
-    fontSize: 14,
-    color: theme.colors.textMuted,
-    marginBottom: 4,
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
+    marginBottom: tokens.space.xs,
   },
   contactPhone: {
-    fontSize: 16,
-    color: theme.colors.text,
-    fontWeight: "600",
+    fontSize: tokens.font.title,
+    color: tokens.color.textPrimary,
+    fontWeight: tokens.fontWeight.semibold,
   },
-  callBtn: {
-    padding: 12,
-  },
-  callBtnText: {
-    fontSize: 24,
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 60,
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#6C757D",
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 16,
-    color: "#ADB5BD",
+  iconAction: {
+    padding: tokens.space.sm,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.color.bgSubtle,
   },
   center: {
     flex: 1,
@@ -415,73 +387,40 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 18,
-    color: "#6C757D",
+    color: tokens.color.textMuted,
   },
   addForm: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: tokens.space.lg,
+    gap: tokens.space.sm,
   },
   formTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#003049",
+    color: tokens.color.textPrimary,
     marginBottom: 16,
   },
-  formInput: {
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    marginBottom: 12,
-    borderWidth: 1.5,
-    borderColor: "#E9ECEF",
-  },
   formButtons: {
-    flexDirection: "row",
     gap: 12,
     marginTop: 8,
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: "#E9ECEF",
+    backgroundColor: tokens.color.border,
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: "center",
   },
   cancelBtnText: {
-    color: "#6C757D",
+    color: tokens.color.textMuted,
     fontSize: 16,
     fontWeight: "700",
   },
   saveFormBtn: {
     flex: 1,
-    backgroundColor: "#D62828",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  saveFormBtnText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
   },
   contactActions: {
-    flexDirection: "row",
     alignItems: "center",
     gap: 8,
-  },
-  deleteBtn: {
-    padding: 8,
-  },
-  deleteBtnText: {
-    fontSize: 20,
   },
 });
 
