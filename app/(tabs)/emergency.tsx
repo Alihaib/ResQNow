@@ -28,14 +28,70 @@ import {
 } from "../../src/utils/locationWithTimeout";
 import { messageForStartEmergencyReason } from "../../src/utils/firestoreErrors";
 import { hapticLight, hapticSosPress } from "../../src/utils/haptics";
-import { pageStyles, tokens } from "../../src/ui/tokens";
+import { elevatedShadow, pageStyles, tokens } from "../../src/ui/tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type SosBusyPhase = "locating" | "starting" | null;
 
+type VictimChoiceCardProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  description: string;
+  onPress: () => void;
+  disabled?: boolean;
+  rowStyle: { flexDirection: "row" | "row-reverse" };
+  textAlign: "left" | "right" | "center" | "auto";
+  chevronName: keyof typeof Ionicons.glyphMap;
+  accessibilityLabel: string;
+};
+
+function VictimChoiceCard({
+  icon,
+  iconBg,
+  iconColor,
+  title,
+  description,
+  onPress,
+  disabled,
+  rowStyle,
+  textAlign,
+  chevronName,
+  accessibilityLabel,
+}: VictimChoiceCardProps) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        victimCardStyles.card,
+        pressed && !disabled && victimCardStyles.cardPressed,
+        disabled && victimCardStyles.cardDisabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={description}
+    >
+      <View style={[victimCardStyles.cardInner, rowStyle]}>
+        <View style={[victimCardStyles.iconWrap, { backgroundColor: iconBg }]}>
+          <Ionicons name={icon} size={28} color={iconColor} />
+        </View>
+        <View style={victimCardStyles.cardCopy}>
+          <Text style={[victimCardStyles.cardTitle, { textAlign }]}>{title}</Text>
+          <Text style={[victimCardStyles.cardDesc, { textAlign }]}>{description}</Text>
+        </View>
+        <Ionicons name={chevronName} size={22} color={tokens.color.textFaint} />
+      </View>
+    </Pressable>
+  );
+}
+
+const VICTIM_CARD_MIN_HEIGHT = 96;
+
 export default function EmergencyScreen() {
   const { t } = useLanguage();
-  const { row, marginHorizontal } = useUiDirection();
+  const { row, marginHorizontal, textAlign, chevronForward } = useUiDirection();
   const router = useRouter();
   const {
     isEmergencyActive,
@@ -282,75 +338,95 @@ export default function EmergencyScreen() {
     >
       <Modal
         visible={isVictimSelectOpen}
-        transparent={false}
+        transparent
         animationType="fade"
         statusBarTranslucent
         onRequestClose={cancelEmergency}
       >
-        <Animated.View
-          style={[
-            styles.overlayContainer,
-            { opacity: modalOpacity, transform: [{ scale: modalScale }] },
-          ]}
-        >
-          <View style={styles.overlayBadge}>
-            <Text style={styles.overlayBadgeText}>SOS</Text>
-          </View>
-          <Text style={styles.overlayQuestion}>{t("sosWhoNeedsHelp")}</Text>
-          <Text style={styles.overlayHint}>
-            {t("sosVictimHint", "Tap an option to send your SOS.")}
-          </Text>
+        <View style={styles.victimScreen}>
+          <View style={styles.victimGlowTop} pointerEvents="none" />
+          <View style={styles.victimGlowMid} pointerEvents="none" />
+          <View style={styles.victimGlowBottom} pointerEvents="none" />
 
-          {startingEmergency ? (
-            <View style={styles.overlayLoading}>
-              <ActivityIndicator color="#FFFFFF" size="large" />
-              <Text style={styles.overlayLoadingText}>
-                {t("preparingEmergencyRequest", "Preparing emergency request…")}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.buttonsContainer}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.overlayPrimaryBtn,
-                  pressed && styles.overlayBtnPressed,
-                ]}
-                onPress={() => proceedToActiveEmergency("me")}
-                accessibilityRole="button"
-                accessibilityLabel={t("sosMe")}
-              >
-                <Text style={styles.overlayPrimaryText}>{t("sosMe")}</Text>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.overlaySecondaryBtn,
-                  pressed && styles.overlayBtnPressed,
-                ]}
-                onPress={() => proceedToActiveEmergency("other")}
-                accessibilityRole="button"
-                accessibilityLabel={t("sosSomeoneElse")}
-              >
-                <Text style={styles.overlaySecondaryText}>
-                  {t("sosSomeoneElse")}
-                </Text>
-              </Pressable>
-            </View>
-          )}
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.cancelOverlayBtn,
-              pressed && styles.overlayBtnPressed,
+          <Animated.View
+            style={[
+              styles.victimContent,
+              {
+                paddingTop: insets.top + tokens.space.xl,
+                paddingBottom: insets.bottom + tokens.space.xl,
+                opacity: modalOpacity,
+                transform: [{ scale: modalScale }],
+              },
             ]}
-            onPress={cancelEmergency}
-            disabled={startingEmergency}
-            accessibilityRole="button"
-            accessibilityLabel={t("cancel")}
           >
-            <Text style={styles.cancelOverlayText}>{t("cancel")}</Text>
-          </Pressable>
-        </Animated.View>
+            <View style={[styles.victimBadgeRow, row]}>
+              <View style={[styles.victimSosBadge, row]}>
+                <Ionicons name="alert-circle" size={16} color={tokens.color.danger} />
+                <Text style={styles.victimSosBadgeText}>SOS</Text>
+              </View>
+            </View>
+
+            <Text style={[styles.victimTitle, { textAlign }]}>
+              {t("sosWhoNeedsHelp")}
+            </Text>
+            <Text style={[styles.victimSubtitle, { textAlign }]}>
+              {t(
+                "sosVictimSelectSub",
+                "Choose one option. Emergency services will be sent to your current location.",
+              )}
+            </Text>
+
+            {startingEmergency ? (
+              <View style={styles.victimLoading}>
+                <ActivityIndicator color={tokens.color.primary} size="large" />
+                <Text style={[styles.victimLoadingText, { textAlign }]}>
+                  {t("preparingEmergencyRequest", "Preparing emergency request…")}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.victimCards}>
+                <VictimChoiceCard
+                  icon="person"
+                  iconBg={tokens.color.primaryBg}
+                  iconColor={tokens.color.primary}
+                  title={t("sosMe")}
+                  description={t("sosMeDescription", "I need immediate help")}
+                  onPress={() => proceedToActiveEmergency("me")}
+                  rowStyle={row}
+                  textAlign={textAlign}
+                  chevronName={chevronForward}
+                  accessibilityLabel={t("sosMe")}
+                />
+                <VictimChoiceCard
+                  icon="people"
+                  iconBg={tokens.color.infoBg}
+                  iconColor={tokens.color.primaryDark}
+                  title={t("sosSomeoneElse")}
+                  description={t("sosOtherDescription", "Someone else is in danger")}
+                  onPress={() => proceedToActiveEmergency("other")}
+                  rowStyle={row}
+                  textAlign={textAlign}
+                  chevronName={chevronForward}
+                  accessibilityLabel={t("sosSomeoneElse")}
+                />
+              </View>
+            )}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.victimCancelBtn,
+                pressed && styles.victimCancelPressed,
+              ]}
+              onPress={cancelEmergency}
+              disabled={startingEmergency}
+              accessibilityRole="button"
+              accessibilityLabel={t("cancel")}
+              hitSlop={12}
+            >
+              <Text style={styles.victimCancelText}>{t("cancel")}</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
       </Modal>
 
       <FadeInView>
@@ -412,7 +488,53 @@ export default function EmergencyScreen() {
   );
 }
 
-const OVERLAY_BTN_MIN_HEIGHT = 56;
+const victimCardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.xl,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
+    minHeight: VICTIM_CARD_MIN_HEIGHT,
+    ...elevatedShadow,
+  },
+  cardPressed: {
+    borderColor: tokens.color.primaryBorder,
+    backgroundColor: tokens.color.primarySurface,
+    transform: [{ scale: 0.985 }],
+  },
+  cardDisabled: {
+    opacity: 0.55,
+  },
+  cardInner: {
+    alignItems: "center",
+    paddingVertical: tokens.space.lg,
+    paddingHorizontal: tokens.space.lg,
+    gap: tokens.space.md,
+  },
+  iconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: tokens.radius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardCopy: {
+    flex: 1,
+    gap: tokens.space.xs,
+  },
+  cardTitle: {
+    fontSize: tokens.font.h2,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.2,
+  },
+  cardDesc: {
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textSecondary,
+    lineHeight: 20,
+  },
+});
 
 const styles = StyleSheet.create({
   content: {
@@ -455,108 +577,121 @@ const styles = StyleSheet.create({
     marginBottom: tokens.space.sm,
     textTransform: "uppercase",
   },
-  overlayContainer: {
+  victimScreen: {
     flex: 1,
-    backgroundColor: tokens.color.danger,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
+    backgroundColor: tokens.color.aiBgSoft,
   },
-  overlayBadge: {
-    backgroundColor: "rgba(255,255,255,0.16)",
-    paddingHorizontal: tokens.space.lg,
+  victimGlowTop: {
+    position: "absolute",
+    top: -72,
+    right: -48,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: tokens.color.aiGlow,
+    opacity: 0.4,
+  },
+  victimGlowMid: {
+    position: "absolute",
+    top: "38%",
+    left: -64,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "rgba(29, 78, 216, 0.1)",
+  },
+  victimGlowBottom: {
+    position: "absolute",
+    bottom: 48,
+    right: -32,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(96, 165, 250, 0.14)",
+  },
+  victimContent: {
+    flex: 1,
+    paddingHorizontal: tokens.space.xl,
+    justifyContent: "center",
+  },
+  victimBadgeRow: {
+    marginBottom: tokens.space.lg,
+    justifyContent: "center",
+  },
+  victimSosBadge: {
+    alignItems: "center",
+    gap: tokens.space.xs,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.xs,
     borderRadius: tokens.radius.pill,
-    marginBottom: tokens.space.lg,
+    backgroundColor: tokens.color.dangerBg,
     borderWidth: tokens.hairline,
-    borderColor: "rgba(255,255,255,0.32)",
+    borderColor: tokens.color.dangerBorder,
   },
-  overlayBadgeText: {
-    color: "#FFFFFF",
-    fontWeight: "900",
-    fontSize: tokens.font.bodyLg,
-    letterSpacing: 2,
+  victimSosBadgeText: {
+    fontSize: tokens.font.overline,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.danger,
+    letterSpacing: 1.6,
   },
-  overlayQuestion: {
-    fontSize: tokens.font.h1,
-    fontWeight: "900",
-    color: "#FFFFFF",
+  victimTitle: {
+    fontSize: tokens.font.display,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.4,
     marginBottom: tokens.space.sm,
-    textAlign: "center",
-    letterSpacing: -0.3,
+    lineHeight: 34,
   },
-  overlayHint: {
-    fontSize: tokens.font.bodyLg,
-    color: "rgba(255,255,255,0.88)",
-    marginBottom: tokens.space.xl,
-    textAlign: "center",
+  victimSubtitle: {
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textSecondary,
     lineHeight: 22,
+    marginBottom: tokens.space.xxl,
   },
-  overlayLoading: {
+  victimCards: {
+    width: "100%",
+    gap: tokens.space.lg,
+    marginBottom: tokens.space.xxl,
+  },
+  victimLoading: {
     alignItems: "center",
     gap: tokens.space.md,
     marginBottom: tokens.space.xxl,
-    minHeight: OVERLAY_BTN_MIN_HEIGHT * 2 + tokens.space.md,
+    minHeight: VICTIM_CARD_MIN_HEIGHT * 2 + tokens.space.lg,
     justifyContent: "center",
-  },
-  overlayLoadingText: {
-    color: "rgba(255,255,255,0.92)",
-    fontSize: tokens.font.bodyLg,
-    fontWeight: tokens.fontWeight.semibold,
-    textAlign: "center",
-  },
-  buttonsContainer: {
-    width: "100%",
-    marginBottom: tokens.space.xl,
-    gap: tokens.space.md,
-  },
-  overlayPrimaryBtn: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: tokens.radius.lg,
-    paddingVertical: tokens.space.lg,
-    paddingHorizontal: tokens.space.lg,
-    alignItems: "center",
-    minHeight: OVERLAY_BTN_MIN_HEIGHT,
-    justifyContent: "center",
-  },
-  overlayPrimaryText: {
-    color: tokens.color.danger,
-    fontSize: tokens.font.h2,
-    fontWeight: "900",
-    letterSpacing: 0.3,
-  },
-  overlaySecondaryBtn: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: tokens.radius.lg,
-    paddingVertical: tokens.space.lg,
-    paddingHorizontal: tokens.space.lg,
-    alignItems: "center",
+    paddingVertical: tokens.space.xl,
+    backgroundColor: tokens.color.bgSurface,
+    borderRadius: tokens.radius.xl,
     borderWidth: tokens.hairline,
-    borderColor: "rgba(255,255,255,0.4)",
-    minHeight: OVERLAY_BTN_MIN_HEIGHT,
-    justifyContent: "center",
+    borderColor: tokens.color.border,
   },
-  overlaySecondaryText: {
-    color: "#FFFFFF",
-    fontSize: tokens.font.h2,
-    fontWeight: "900",
-    letterSpacing: 0.3,
-  },
-  overlayBtnPressed: {
-    transform: [{ scale: 0.98 }],
-    opacity: 0.92,
-  },
-  cancelOverlayBtn: {
-    backgroundColor: "rgba(0,0,0,0.25)",
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.xxl,
-    borderRadius: tokens.radius.md,
-    minHeight: tokens.hitSlop,
-    justifyContent: "center",
-  },
-  cancelOverlayText: {
-    color: "#FFFFFF",
+  victimLoadingText: {
+    color: tokens.color.textPrimary,
     fontSize: tokens.font.title,
-    fontWeight: "800",
+    fontWeight: tokens.fontWeight.semibold,
+    paddingHorizontal: tokens.space.lg,
+  },
+  victimCancelBtn: {
+    alignSelf: "center",
+    minHeight: tokens.hitSlop,
+    minWidth: 120,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.xl,
+    borderRadius: tokens.radius.lg,
+    backgroundColor: tokens.color.bgSurface,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  victimCancelPressed: {
+    opacity: 0.88,
+    backgroundColor: tokens.color.bgSubtle,
+  },
+  victimCancelText: {
+    color: tokens.color.textSecondary,
+    fontSize: tokens.font.title,
+    fontWeight: tokens.fontWeight.bold,
   },
 });

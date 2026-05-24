@@ -276,6 +276,10 @@ export default {
   sos: "SOS",
   sosMe: "Me",
   sosSomeoneElse: "Someone else",
+  sosMeDescription: "I need immediate help",
+  sosOtherDescription: "Someone else is in danger",
+  sosVictimSelectSub:
+    "Choose one option. Emergency services will be sent to your current location.",
   victimReceivingHelp: "You are receiving help",
   victimHelpingOther: "Helping someone else",
   openInMaps: "Open in Maps",
