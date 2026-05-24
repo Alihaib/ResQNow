@@ -21,7 +21,8 @@ import ShortcutCard from "../../../components/ui/ShortcutCard";
 import {
   ActivityIndicator,
   Alert,
-  Linking, Platform, ScrollView,
+  Platform,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -36,6 +37,7 @@ import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 import { SosSmartFirstAid } from "../../../src/firstAid/SosSmartFirstAid";
 import { tokens } from "../../../src/ui/tokens";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
+import { safeOpenURL } from "../../../src/utils/safeLinking";
 import { isOpenAiConfigured } from "../../../src/services/openaiEmergency";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUiDirection } from "../../../components/ui/layout";
@@ -53,6 +55,16 @@ interface Contact {
   name: string;
   phone: string;
   relationship: string;
+}
+
+function isValidMapCoord(
+  c: { latitude: number; longitude: number } | null | undefined,
+): c is { latitude: number; longitude: number } {
+  return (
+    c != null &&
+    Number.isFinite(c.latitude) &&
+    Number.isFinite(c.longitude)
+  );
 }
 
 export default function ActiveEmergencyScreen() {
@@ -203,26 +215,32 @@ export default function ActiveEmergencyScreen() {
     } else if (!phoneNumber.startsWith("+")) {
       phoneNumber = `+${phoneNumber}`;
     }
-    Linking.openURL(`tel:${phoneNumber}`).catch(() => scrollToChatSection());
+    safeOpenURL(`tel:${phoneNumber}`).then((ok) => {
+      if (!ok) scrollToChatSection();
+    });
   }, [victimType, emergencyContacts, scrollToChatSection]);
 
   /** Refit viewport when Firestore pushes new patient or ambulance coordinates (same source as markers). */
   useEffect(() => {
-    if (!mapPatientAnchor || !mapRef.current) return;
+    if (!isValidMapCoord(mapPatientAnchor) || !mapRef.current) return;
     const coords: { latitude: number; longitude: number }[] = [
       { latitude: mapPatientAnchor.latitude, longitude: mapPatientAnchor.longitude },
     ];
-    if (ambulanceCoordsLive) {
+    if (isValidMapCoord(ambulanceCoordsLive)) {
       coords.push({
         latitude: ambulanceCoordsLive.latitude,
         longitude: ambulanceCoordsLive.longitude,
       });
     }
     const timer = setTimeout(() => {
-      mapRef.current?.fitToCoordinates(coords, {
-        edgePadding: { top: 56, right: 56, bottom: 56, left: 56 },
-        animated: true,
-      });
+      try {
+        mapRef.current?.fitToCoordinates(coords, {
+          edgePadding: { top: 56, right: 56, bottom: 56, left: 56 },
+          animated: true,
+        });
+      } catch (e) {
+        console.warn("[ActiveEmergency] fitToCoordinates failed:", e);
+      }
     }, 280);
     return () => clearTimeout(timer);
   }, [
@@ -520,26 +538,16 @@ ${translate("appName")}
           }
           
           // Check if SMS URL can be opened
-          const canOpen = await Linking.canOpenURL(smsUrl);
-          if (canOpen) {
-            await Linking.openURL(smsUrl);
+          let opened = await safeOpenURL(smsUrl);
+          if (!opened && Platform.OS === "ios") {
+            const smsUrlIOS = `sms:${phoneNumber}&body=${encodeURIComponent(locationMessage)}`;
+            opened = await safeOpenURL(smsUrlIOS);
+          }
+          if (opened) {
             successCount++;
             contactNames.push(contact.name);
           } else {
-            // Try alternative format for iOS
-            if (Platform.OS === "ios") {
-              const smsUrlIOS = `sms:${phoneNumber}&body=${encodeURIComponent(locationMessage)}`;
-              const canOpenIOS = await Linking.canOpenURL(smsUrlIOS);
-              if (canOpenIOS) {
-                await Linking.openURL(smsUrlIOS);
-                successCount++;
-                contactNames.push(contact.name);
-              } else {
-                console.warn(`Cannot open SMS for ${contact.name}`);
-              }
-            } else {
-              console.warn(`Cannot open SMS for ${contact.name}`);
-            }
+            console.warn(`Cannot open SMS for ${contact.name}`);
           }
         } catch (error) {
           console.error(`Error opening SMS for ${contact.name}:`, error);
@@ -1002,7 +1010,7 @@ ${translate("appName")}
           aiListening={aiCompanionVisible}
         />
 
-        {mapPatientAnchor ? (
+        {isValidMapCoord(mapPatientAnchor) ? (
           <GlassSurface radius={AI_RADIUS.card} style={styles.mapGlass}>
             <MapPanel height={168} style={styles.mapPanel}>
               <MapView
@@ -1019,7 +1027,7 @@ ${translate("appName")}
                 pitchEnabled={false}
                 rotateEnabled={false}
               >
-                {ambulanceCoordsLive ? (
+                {isValidMapCoord(ambulanceCoordsLive) ? (
                   <Polyline
                     coordinates={[ambulanceCoordsLive, mapPatientAnchor]}
                     strokeColor={tokens.color.aiBlue}
@@ -1028,7 +1036,7 @@ ${translate("appName")}
                   />
                 ) : null}
                 <Marker coordinate={mapPatientAnchor} pinColor={tokens.color.danger} />
-                {ambulanceCoordsLive ? (
+                {isValidMapCoord(ambulanceCoordsLive) ? (
                   <Marker coordinate={ambulanceCoordsLive} pinColor={tokens.color.aiBlue} />
                 ) : null}
               </MapView>

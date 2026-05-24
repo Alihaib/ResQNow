@@ -12,6 +12,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+import { getFirestoreUserMessage, isFirestoreIndexError } from "../utils/firestoreErrors";
 import { useAuth } from "./AuthContext";
 import { normalizeLifecycleStatus, type SessionStatus } from "../emergency/stateMachine";
 import { snapshotFromFirestore } from "../emergency/patientSnapshot";
@@ -26,6 +27,7 @@ export type StartEmergencyErrorReason =
   | "invalid_payload"
   | "firestore_permission_denied"
   | "network_error"
+  | "firestore_index"
   | "unknown_error";
 
 type EmergencyContextType = {
@@ -104,28 +106,31 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
   const lastUserIdRef = useRef<string | null>(null);
   const [activeEmergencyHydrated, setActiveEmergencyHydrated] = useState(false);
 
-  const stopListening = () => {
+  const stopListening = useCallback(() => {
     if (unsubscribeRef.current) {
       unsubscribeRef.current();
       unsubscribeRef.current = null;
     }
-  };
+  }, []);
 
-  const setCurrentEmergency: EmergencyContextType["setCurrentEmergency"] = async (emergency) => {
-    if (!emergency) {
-      stopListening();
-      setSubscribedEmergencyId(null);
-      setLiveEmergency(null);
-      if (user?.uid) {
-        await SecureStore.deleteItemAsync(storageKeyForUser(user.uid)).catch(() => {});
+  const setCurrentEmergency = useCallback<EmergencyContextType["setCurrentEmergency"]>(
+    async (emergency) => {
+      if (!emergency) {
+        stopListening();
+        setSubscribedEmergencyId(null);
+        setLiveEmergency(null);
+        if (user?.uid) {
+          await SecureStore.deleteItemAsync(storageKeyForUser(user.uid)).catch(() => {});
+        }
+        return;
       }
-      return;
-    }
-    setSubscribedEmergencyId(emergency.id);
-    if (user?.uid) {
-      await SecureStore.setItemAsync(storageKeyForUser(user.uid), emergency.id).catch(() => {});
-    }
-  };
+      setSubscribedEmergencyId(emergency.id);
+      if (user?.uid) {
+        await SecureStore.setItemAsync(storageKeyForUser(user.uid), emergency.id).catch(() => {});
+      }
+    },
+    [user?.uid, stopListening],
+  );
 
   /**
    * Single source of truth: query Firestore for active emergency, subscribe by id.
@@ -175,14 +180,18 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         setLiveEmergency(mapSnapToLive(id, chosen.data() as Record<string, unknown>));
         await SecureStore.setItemAsync(storageKeyForUser(user.uid), id).catch(() => {});
       } catch (e) {
-        console.error("[EmergencyContext] refreshActiveEmergencyFromFirestore:", reason, e);
+        if (isFirestoreIndexError(e)) {
+          console.warn("[EmergencyContext] Firestore index not ready:", reason, e);
+        } else {
+          console.error("[EmergencyContext] refreshActiveEmergencyFromFirestore:", reason, e);
+        }
       } finally {
         if (user?.uid) {
           setActiveEmergencyHydrated(true);
         }
       }
     },
-    [user?.uid]
+    [user?.uid, stopListening],
   );
 
   // Doc listener — only Firestore drives liveEmergency body
@@ -232,11 +241,11 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
   const isEmergencyActive = liveEmergency?.sessionStatus === "active";
 
-  const navigateToActiveEmergency = () => {
+  const navigateToActiveEmergency = useCallback(() => {
     router.push("/(tabs)/emergency/active");
-  };
+  }, [router]);
 
-  const startEmergency: EmergencyContextType["startEmergency"] = async ({
+  const startEmergency = useCallback<EmergencyContextType["startEmergency"]>(async ({
     victimType,
     location,
     timestamp,
@@ -308,27 +317,49 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
       try {
         await setDoc(doc(db, "emergencies", id), payload);
-      } catch (e: any) {
-        const code = String(e?.code || "").toLowerCase();
+      } catch (e: unknown) {
+        if (isFirestoreIndexError(e)) {
+          return {
+            ok: false,
+            reason: "firestore_index",
+            message: getFirestoreUserMessage(e),
+          };
+        }
+        const code = String((e as { code?: string })?.code || "").toLowerCase();
         if (code.includes("permission-denied") || code.includes("permission_denied")) {
           return { ok: false, reason: "firestore_permission_denied", message: "FIRESTORE_PERMISSION_DENIED" };
         }
         if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
           return { ok: false, reason: "network_error", message: "NETWORK_ERROR" };
         }
-        return { ok: false, reason: "unknown_error", message: e?.message || "UNKNOWN_ERROR" };
+        return {
+          ok: false,
+          reason: "unknown_error",
+          message: getFirestoreUserMessage(e, "UNKNOWN_ERROR"),
+        };
       }
 
       await refreshActiveEmergencyFromFirestore("post_create");
       return { ok: true, id };
     } catch (e) {
       console.error("[EmergencyContext] startEmergency:", e);
-      return { ok: false, reason: "unknown_error", message: "Unexpected error" };
+      if (isFirestoreIndexError(e)) {
+        return {
+          ok: false,
+          reason: "firestore_index",
+          message: getFirestoreUserMessage(e),
+        };
+      }
+      return {
+        ok: false,
+        reason: "unknown_error",
+        message: getFirestoreUserMessage(e, "Unexpected error"),
+      };
     } finally {
       startingRef.current = false;
       setStartingEmergency(false);
     }
-  };
+  }, [user?.uid, refreshActiveEmergencyFromFirestore]);
 
   // Bootstrap: SecureStore hint → validate with Firestore query
   useEffect(() => {
@@ -394,10 +425,11 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       setCurrentEmergency,
       isEmergencyActive,
       startingEmergency,
+      navigateToActiveEmergency,
       startEmergency,
       refreshActiveEmergencyFromFirestore,
       activeEmergencyHydrated,
-    ]
+    ],
   );
 
   return <EmergencyContext.Provider value={value}>{children}</EmergencyContext.Provider>;

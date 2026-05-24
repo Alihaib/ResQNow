@@ -71,6 +71,16 @@ export default function EmergencyScreen() {
         navigateToActiveEmergency();
         return;
       }
+      if (result.reason === "firestore_index") {
+        Alert.alert(
+          t("error"),
+          t(
+            "firestoreIndexError",
+            "Emergency data could not be loaded. Please try again in a moment.",
+          ),
+        );
+        return;
+      }
       Alert.alert(t("error"), result.message || t("failedToStartEmergency"));
     } catch {
       Alert.alert(t("error"), t("failedToStartEmergency"));
@@ -84,7 +94,10 @@ export default function EmergencyScreen() {
     }
     if (isVictimSelectOpen || sosBusy || startingEmergency) return;
     locationDataRef.current = null;
+    permissionStatusRef.current = null;
     setSosBusy(true);
+
+    let locationReady = false;
 
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -92,46 +105,70 @@ export default function EmergencyScreen() {
       permissionStatusRef.current = status;
       if (status !== "granted") {
         Alert.alert(t("error"), t("locationPermissionDenied"));
-      } else {
-        const location = await Location.getCurrentPositionAsync({
+        return;
+      }
+
+      let position: Location.LocationObject;
+      try {
+        position = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
         });
-        console.log("[SOS][UI] location fix:", {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          accuracy: location.coords.accuracy,
+      } catch (gpsError) {
+        console.error("[SOS][UI] getCurrentPosition failed:", gpsError);
+        Alert.alert(t("error"), t("locationNotAvailable"));
+        return;
+      }
+
+      console.log("[SOS][UI] location fix:", {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      });
+
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        Alert.alert(t("error"), t("locationNotAvailable"));
+        return;
+      }
+
+      try {
+        const [address] = await Location.reverseGeocodeAsync({
+          latitude: lat,
+          longitude: lng,
         });
 
-        try {
-          const [address] = await Location.reverseGeocodeAsync({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          });
-
-          locationDataRef.current = {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            accuracy: location.coords.accuracy,
-            address: address
-              ? `${address.street || ""} ${address.streetNumber || ""}, ${address.city || ""}, ${address.country || ""}`.trim()
-              : null,
-            timestamp: new Date().toISOString(),
-          };
-        } catch (geocodeError) {
-          console.warn("[SOS][UI] reverseGeocode failed:", geocodeError);
-          locationDataRef.current = {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            accuracy: location.coords.accuracy,
-            address: null,
-            timestamp: new Date().toISOString(),
-          };
-        }
+        locationDataRef.current = {
+          latitude: lat,
+          longitude: lng,
+          accuracy: position.coords.accuracy,
+          address: address
+            ? `${address.street || ""} ${address.streetNumber || ""}, ${address.city || ""}, ${address.country || ""}`.trim()
+            : null,
+          timestamp: new Date().toISOString(),
+        };
+      } catch (geocodeError) {
+        console.warn("[SOS][UI] reverseGeocode failed:", geocodeError);
+        locationDataRef.current = {
+          latitude: lat,
+          longitude: lng,
+          accuracy: position.coords.accuracy,
+          address: null,
+          timestamp: new Date().toISOString(),
+        };
       }
+      locationReady = true;
     } catch (error) {
       console.error("Error getting location:", error);
+      Alert.alert(t("error"), t("locationNotAvailable"));
+      return;
     } finally {
       setSosBusy(false);
+    }
+
+    if (!locationReady || !locationDataRef.current?.latitude || !locationDataRef.current?.longitude) {
+      Alert.alert(t("error"), t("locationNotAvailable"));
+      return;
     }
 
     setIsVictimSelectOpen(true);

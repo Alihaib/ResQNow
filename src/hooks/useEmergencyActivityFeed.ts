@@ -36,6 +36,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../firebase/config";
+import { isFirestoreIndexError } from "../utils/firestoreErrors";
 
 export type ActivityFeedItem = {
   /** Stable key for FlatList / map renders. */
@@ -199,9 +200,14 @@ export function useEmergencyActivityFeed(
         }
       },
       (err) => {
-        console.error("[useEmergencyActivityFeed] listener error:", err);
+        if (isFirestoreIndexError(err)) {
+          console.warn("[useEmergencyActivityFeed] Firestore index not ready:", err);
+          setError("firestore_index");
+        } else {
+          console.error("[useEmergencyActivityFeed] listener error:", err);
+          setError((err as { message?: string })?.message || "listener_failed");
+        }
         setGroups([]);
-        setError(err?.message || "listener_failed");
         setLoading(false);
       },
     );

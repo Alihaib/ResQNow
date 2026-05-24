@@ -6,7 +6,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { View, type ViewStyle } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { tokens } from "../ui/tokens";
 import * as SecureStore from "expo-secure-store";
 import i18n from "../i18n/i18n";
 import {
@@ -114,7 +115,14 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
     [lang, directionVersion, setLang, toggleLanguage, t],
   );
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <View style={bootStyles.container}>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+        <Text style={bootStyles.label}>Loading...</Text>
+      </View>
+    );
+  }
 
   const rootDirection: ViewStyle = {
     flex: 1,
@@ -129,3 +137,18 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
 };
 
 export const useLanguage = () => useContext(LanguageContext);
+
+const bootStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: tokens.color.bgPage,
+    gap: tokens.space.md,
+  },
+  label: {
+    fontSize: tokens.font.bodyLg,
+    color: tokens.color.textMuted,
+    fontWeight: tokens.fontWeight.semibold,
+  },
+});

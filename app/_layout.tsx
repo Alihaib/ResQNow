@@ -1,6 +1,7 @@
 // app/_layout.tsx
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import AuthGuard from "../components/AuthGuard";
 import { AuthProvider } from "../src/context/AuthContext";
 import { EmergencyProvider } from "../src/context/EmergencyContext";
 import { LanguageProvider } from "../src/context/LanguageContext";
@@ -11,7 +12,9 @@ export default function RootLayout() {
       <LanguageProvider>
         <AuthProvider>
           <EmergencyProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <AuthGuard>
+              <Stack screenOptions={{ headerShown: false }} />
+            </AuthGuard>
           </EmergencyProvider>
         </AuthProvider>
       </LanguageProvider>

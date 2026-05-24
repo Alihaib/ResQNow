@@ -280,7 +280,14 @@ export default function HomeTab() {
           <EmptyState
             ionIcon="alert-circle-outline"
             title={t("activityLoadError", "Could not load activity.")}
-            subtitle={t("activitySubtext")}
+            subtitle={
+              error === "firestore_index"
+                ? t(
+                    "firestoreIndexError",
+                    "Activity feed is temporarily unavailable. Please try again.",
+                  )
+                : t("activitySubtext")
+            }
             tone="danger"
           />
         ) : groups.length === 0 ? (
