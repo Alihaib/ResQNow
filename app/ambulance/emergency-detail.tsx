@@ -34,6 +34,7 @@ import { caseIdSuffix } from "../../src/utils/formatCaseId";
 import {
   canTransitionLifecycle,
   normalizeLifecycleStatus,
+  shouldMarkEnRouteOnPatientScreenOpen,
   type LifecycleStatus,
 } from "../../src/emergency/stateMachine";
 import { useAmbulanceGps } from "../../src/hooks/useAmbulanceGps";
@@ -43,6 +44,7 @@ import {
 } from "../../src/services/ambulanceGpsService";
 import {
   claimEmergencyTransaction,
+  markEnRouteToSceneTransaction,
   releaseEmergencyTransaction,
   updateLifecycleTransaction,
 } from "../../src/services/emergencyAssignment";
@@ -99,6 +101,8 @@ export default function EmergencyDetailScreen() {
   const emergencyRef = useRef<Emergency | null>(null);
   const userUidRef = useRef<string | null>(null);
   const mapRef = useRef<MapView | null>(null);
+  /** One en_route_to_scene write per emergency id (accept + patient screen). */
+  const enRouteSyncRef = useRef<string | null>(null);
 
   const [snapCondition, setSnapCondition] = useState<ConditionLevel>("moderate");
   const [snapSymptoms, setSnapSymptoms] = useState("");
@@ -228,6 +232,30 @@ export default function EmergencyDetailScreen() {
     if (!emergency?.assignedAmbulanceId) return false;
     return emergency.assignedAmbulanceId === user.uid;
   }, [user?.uid, emergency?.assignedAmbulanceId]);
+
+  /** En route only when this screen opens — not on Accept from dashboard. */
+  useEffect(() => {
+    if (loading) return;
+    const id = emergency?.id;
+    const uid = user?.uid;
+    if (!id || !uid || !emergency || !isAssignedToMe) return;
+    if (enRouteSyncRef.current === id) return;
+
+    const lc = normalizeLifecycleStatus(String(emergency.status ?? "dispatched"));
+    if (lc === "enRoute" || lc === "arrived" || lc === "completed" || lc === "cancelled") {
+      enRouteSyncRef.current = id;
+      return;
+    }
+
+    if (!shouldMarkEnRouteOnPatientScreenOpen(emergency.status)) return;
+
+    enRouteSyncRef.current = id;
+    void markEnRouteToSceneTransaction(id, uid).then((res) => {
+      if (!res.ok && res.reason !== "status_not_eligible") {
+        console.warn("[AmbulanceEmergencyDetail] en_route_to_scene:", res);
+      }
+    });
+  }, [loading, emergency, emergency?.id, emergency?.status, isAssignedToMe, user?.uid]);
 
   const ambulanceLocation = useMemo(() => {
     if (trackingThisMission && ambulanceGps.lastCoords) return ambulanceGps.lastCoords;
@@ -599,7 +627,7 @@ export default function EmergencyDetailScreen() {
     lifecycle === "arrived" || lifecycle === "completed"
       ? "success"
       : lifecycle === "enRoute"
-        ? "info"
+        ? "warning"
         : lifecycle === "cancelled"
           ? "danger"
           : "warning";

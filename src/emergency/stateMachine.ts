@@ -14,13 +14,52 @@ const LEGACY_MAP: Record<string, LifecycleStatus> = {
   completed: "completed",
   cancelled: "cancelled",
   en_route: "enRoute",
+  en_route_to_scene: "enRoute",
   arrived_patient: "arrived",
   patient_picked: "arrived",
   en_route_hospital: "enRoute",
   assigned: "dispatched",
   unassigned: "dispatched",
   assigned_ambulance: "dispatched",
+  accepted: "dispatched",
+  ambulance_accepted: "dispatched",
 };
+
+/** Firestore `status` string for lifecycle writes (legacy snake_case where needed). */
+export function lifecycleStatusToFirestore(lc: LifecycleStatus): string {
+  if (lc === "enRoute") return "en_route_to_scene";
+  return lc;
+}
+
+/** True when ambulance may auto-set en_route_to_scene (does not override terminal / en-route states). */
+export function rawStatusAllowsEnRouteToScene(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  const trimmed = raw.trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower === "arrived" ||
+    lower === "completed" ||
+    lower === "cancelled" ||
+    lower === "enroute" ||
+    lower === "en_route" ||
+    lower === "en_route_to_scene" ||
+    lower === "en_route_hospital" ||
+    lower === "arrived_patient"
+  ) {
+    return false;
+  }
+  if (lower === "dispatched" || lower === "accepted" || lower === "ambulance_accepted") {
+    return true;
+  }
+  return normalizeLifecycleStatus(trimmed) === "dispatched";
+}
+
+/** Patient screen may promote to en_route_to_scene only from post-accept states. */
+export function shouldMarkEnRouteOnPatientScreenOpen(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  const lower = raw.trim().toLowerCase();
+  return lower === "accepted" || lower === "ambulance_accepted" || lower === "dispatched";
+}
 
 /** Normalize stored Firestore status (supports legacy snake_case values). */
 export function normalizeLifecycleStatus(raw: unknown): LifecycleStatus {

@@ -84,6 +84,14 @@ describe("normalizeLifecycleStatus — legacy aliases", () => {
   test("'en_route_hospital' maps to 'enRoute'", () => {
     expect(normalizeLifecycleStatus("en_route_hospital")).toBe("enRoute");
   });
+
+  test("'en_route_to_scene' maps to 'enRoute'", () => {
+    expect(normalizeLifecycleStatus("en_route_to_scene")).toBe("enRoute");
+  });
+
+  test("'accepted' maps to 'dispatched'", () => {
+    expect(normalizeLifecycleStatus("accepted")).toBe("dispatched");
+  });
 });
 
 // ─── sessionStatusForLifecycle ────────────────────────────────────────────────

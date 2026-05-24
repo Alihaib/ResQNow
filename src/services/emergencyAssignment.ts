@@ -1,4 +1,4 @@
-import { arrayUnion, doc, runTransaction } from "firebase/firestore";
+import { arrayUnion, doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase/config";
 import {
   ambulanceStatusLabel,
@@ -7,7 +7,9 @@ import {
 } from "../emergency/patientSnapshot";
 import {
   canTransitionLifecycle,
+  lifecycleStatusToFirestore,
   normalizeLifecycleStatus,
+  rawStatusAllowsEnRouteToScene,
   sessionStatusForLifecycle,
   type LifecycleStatus,
 } from "../emergency/stateMachine";
@@ -57,7 +59,7 @@ export async function claimEmergencyTransaction(emergencyId: string, ambulanceUi
       lc,
     );
 
-    tx.update(emergencyRef, {
+    const claimPatch: Record<string, unknown> = {
       assignedAmbulanceId: ambulanceUid,
       assignedAt: nowIso,
       updatedAt: nowIso,
@@ -67,7 +69,12 @@ export async function claimEmergencyTransaction(emergencyId: string, ambulanceUi
         ambulanceId: ambulanceUid,
         timestamp: nowIso,
       }),
-    });
+    };
+    if (rawStatusAllowsEnRouteToScene(data.status)) {
+      claimPatch.status = "accepted";
+    }
+
+    tx.update(emergencyRef, claimPatch);
 
     return { ok: true as const, assignedAmbulanceId: ambulanceUid };
   });
@@ -179,7 +186,7 @@ export async function updateLifecycleTransaction(
     );
 
     const patch: Record<string, unknown> = {
-      status: nextStatus,
+      status: lifecycleStatusToFirestore(nextStatus),
       sessionStatus: nextSession,
       updatedAt: nowIso,
       currentSnapshot: snapshotPayloadForLifecycle(nextStatus, snapshot),
@@ -191,6 +198,77 @@ export async function updateLifecycleTransaction(
     };
 
     tx.update(emergencyRef, patch);
+    return { ok: true as const };
+  });
+}
+
+/**
+ * After accept / opening patient screen: mark crew en route to scene.
+ * Idempotent if already en route. Never downgrades arrived / completed / cancelled.
+ */
+export async function markEnRouteToSceneTransaction(
+  emergencyId: string,
+  ambulanceUid: string,
+) {
+  const emergencyRef = doc(db, "emergencies", emergencyId);
+  const nowIso = new Date().toISOString();
+
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(emergencyRef);
+    if (!snap.exists()) {
+      return { ok: false as const, reason: "missing_emergency" as const };
+    }
+    const data = snap.data() as Record<string, unknown>;
+    if (data.sessionStatus !== "active") {
+      return { ok: false as const, reason: "session_not_active" as const };
+    }
+
+    const assigned = data.assignedAmbulanceId as string | null | undefined;
+    if (!assigned || assigned !== ambulanceUid) {
+      return { ok: false as const, reason: "not_assigned_ambulance" as const };
+    }
+
+    const currentLc = normalizeLifecycleStatus(data.status);
+    if (currentLc === "enRoute") {
+      return { ok: true as const, skipped: true as const };
+    }
+    if (currentLc === "arrived" || currentLc === "completed" || currentLc === "cancelled") {
+      return {
+        ok: false as const,
+        reason: "status_not_eligible" as const,
+        current: currentLc,
+      };
+    }
+
+    if (!rawStatusAllowsEnRouteToScene(data.status)) {
+      return {
+        ok: false as const,
+        reason: "status_not_eligible" as const,
+        current: currentLc,
+      };
+    }
+
+    const nextLc: LifecycleStatus = "enRoute";
+    const snapshot = mergePatientSnapshot(
+      data.currentSnapshot as Record<string, unknown> | undefined,
+      {
+        ambulanceStatus: ambulanceStatusLabel(nextLc),
+      },
+      nextLc,
+    );
+
+    tx.update(emergencyRef, {
+      status: lifecycleStatusToFirestore(nextLc),
+      sessionStatus: "active",
+      updatedAt: serverTimestamp(),
+      currentSnapshot: snapshotPayloadForLifecycle(nextLc, snapshot),
+      timeline: arrayUnion({
+        status: "en_route_to_scene",
+        ambulanceId: ambulanceUid,
+        timestamp: nowIso,
+      }),
+    });
+
     return { ok: true as const };
   });
 }
