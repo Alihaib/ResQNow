@@ -13,7 +13,7 @@ import { useLanguage } from "../../../../src/context/LanguageContext";
 import { firstAidCategories } from "../../../../src/firstAid/categories";
 import { guidesInCategory } from "../../../../src/firstAid/guides";
 import { pick } from "../../../../src/firstAid/types";
-import { tokens } from "../../../../src/ui/tokens";
+import { pageStyles, tokens } from "../../../../src/ui/tokens";
 
 const CATEGORY_ION: Record<string, keyof typeof Ionicons.glyphMap> = {
   bleeding: "water-outline",
@@ -124,7 +124,7 @@ export default function FirstAidCategoryGuidesScreen() {
 
 const styles = StyleSheet.create({
   shellContent: {
-    backgroundColor: firstAidTheme.bg,
+    ...pageStyles.scrollContent,
     paddingTop: tokens.space.md,
   },
   heroCard: {

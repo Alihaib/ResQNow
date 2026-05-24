@@ -173,9 +173,11 @@ export default function HomeTab() {
   };
 
   return (
+    <View style={pageStyles.screen}>
     <ScrollView
       style={pageStyles.screen}
       contentContainerStyle={[
+        pageStyles.scrollContent,
         styles.content,
         { paddingBottom: insets.bottom + 96 },
       ]}
@@ -301,6 +303,7 @@ export default function HomeTab() {
         )}
       </View>
     </ScrollView>
+    </View>
   );
 }
 

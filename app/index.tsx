@@ -59,7 +59,7 @@ export default function HomePage() {
   // ⏳ Loading state
   if (loading)
     return (
-      <View style={styles.center}>
+      <View style={[pageStyles.screen, styles.center]}>
         <Text style={styles.loading}>{t("loading")}</Text>
       </View>
     );
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: "transparent",
   },
   loading: {
     fontSize: tokens.font.h3,

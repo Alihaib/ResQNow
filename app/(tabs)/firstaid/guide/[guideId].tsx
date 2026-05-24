@@ -20,7 +20,7 @@ import { useLanguage } from "../../../../src/context/LanguageContext";
 import { firstAidCategories } from "../../../../src/firstAid/categories";
 import { getGuideById } from "../../../../src/firstAid/guides";
 import { pick, type Lang } from "../../../../src/firstAid/types";
-import { tokens } from "../../../../src/ui/tokens";
+import { pageStyles, tokens } from "../../../../src/ui/tokens";
 
 function speechLocale(lang: Lang) {
   return lang === "he" ? "he-IL" : "en-US";
@@ -273,8 +273,7 @@ export default function FirstAidGuideDetailScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: firstAidTheme.bg,
+    ...pageStyles.screen,
     overflow: "hidden",
   },
   body: {

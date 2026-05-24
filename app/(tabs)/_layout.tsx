@@ -3,7 +3,7 @@ import { Tabs } from "expo-router";
 import { Platform, StyleSheet, View } from "react-native";
 import TabBarIcon from "../../components/ui/TabBarIcon";
 import { useLanguage } from "../../src/context/LanguageContext";
-import { tokens } from "../../src/ui/tokens";
+import { tabsSceneDefaults, tokens, transparentScreenContent } from "../../src/ui/tokens";
 
 function TabBarBackground() {
   if (Platform.OS === "android") {
@@ -27,8 +27,10 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      sceneContainerStyle={transparentScreenContent}
       screenOptions={{
         headerShown: false,
+        ...tabsSceneDefaults,
         tabBarActiveTintColor: tokens.color.primary,
         tabBarInactiveTintColor: tokens.color.textMuted,
         tabBarBackground: () => <TabBarBackground />,

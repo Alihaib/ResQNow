@@ -13,6 +13,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { AppScreen } from "../../components/ui/AiBackground";
 import AppPageHeader from "../../components/ui/AppPageHeader";
 import Card from "../../components/ui/Card";
 import FadeInView from "../../components/ui/FadeInView";
@@ -329,9 +330,11 @@ export default function EmergencyScreen() {
         : t("tapForHelp");
 
   return (
+    <View style={pageStyles.screen}>
     <ScrollView
       style={pageStyles.screen}
       contentContainerStyle={[
+        pageStyles.scrollContent,
         styles.content,
         { paddingBottom: insets.bottom + 96 },
       ]}
@@ -343,90 +346,101 @@ export default function EmergencyScreen() {
         statusBarTranslucent
         onRequestClose={cancelEmergency}
       >
-        <View style={styles.victimScreen}>
-          <View style={styles.victimGlowTop} pointerEvents="none" />
-          <View style={styles.victimGlowMid} pointerEvents="none" />
-          <View style={styles.victimGlowBottom} pointerEvents="none" />
-
-          <Animated.View
+        <AppScreen overlay>
+          <View
+            style={styles.victimScrim}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          />
+          <View
             style={[
-              styles.victimContent,
+              styles.victimModalFrame,
               {
-                paddingTop: insets.top + tokens.space.xl,
-                paddingBottom: insets.bottom + tokens.space.xl,
-                opacity: modalOpacity,
-                transform: [{ scale: modalScale }],
+                paddingTop: insets.top + tokens.space.lg,
+                paddingBottom: insets.bottom + tokens.space.lg,
               },
             ]}
+            pointerEvents="box-none"
           >
-            <View style={[styles.victimBadgeRow, row]}>
-              <View style={[styles.victimSosBadge, row]}>
-                <Ionicons name="alert-circle" size={16} color={tokens.color.danger} />
-                <Text style={styles.victimSosBadgeText}>SOS</Text>
-              </View>
-            </View>
-
-            <Text style={[styles.victimTitle, { textAlign }]}>
-              {t("sosWhoNeedsHelp")}
-            </Text>
-            <Text style={[styles.victimSubtitle, { textAlign }]}>
-              {t(
-                "sosVictimSelectSub",
-                "Choose one option. Emergency services will be sent to your current location.",
-              )}
-            </Text>
-
-            {startingEmergency ? (
-              <View style={styles.victimLoading}>
-                <ActivityIndicator color={tokens.color.primary} size="large" />
-                <Text style={[styles.victimLoadingText, { textAlign }]}>
-                  {t("preparingEmergencyRequest", "Preparing emergency request…")}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.victimCards}>
-                <VictimChoiceCard
-                  icon="person"
-                  iconBg={tokens.color.primaryBg}
-                  iconColor={tokens.color.primary}
-                  title={t("sosMe")}
-                  description={t("sosMeDescription", "I need immediate help")}
-                  onPress={() => proceedToActiveEmergency("me")}
-                  rowStyle={row}
-                  textAlign={textAlign}
-                  chevronName={chevronForward}
-                  accessibilityLabel={t("sosMe")}
-                />
-                <VictimChoiceCard
-                  icon="people"
-                  iconBg={tokens.color.infoBg}
-                  iconColor={tokens.color.primaryDark}
-                  title={t("sosSomeoneElse")}
-                  description={t("sosOtherDescription", "Someone else is in danger")}
-                  onPress={() => proceedToActiveEmergency("other")}
-                  rowStyle={row}
-                  textAlign={textAlign}
-                  chevronName={chevronForward}
-                  accessibilityLabel={t("sosSomeoneElse")}
-                />
-              </View>
-            )}
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.victimCancelBtn,
-                pressed && styles.victimCancelPressed,
+            <Animated.View
+              style={[
+                styles.victimCard,
+                {
+                  opacity: modalOpacity,
+                  transform: [{ scale: modalScale }],
+                },
               ]}
-              onPress={cancelEmergency}
-              disabled={startingEmergency}
-              accessibilityRole="button"
-              accessibilityLabel={t("cancel")}
-              hitSlop={12}
+              accessibilityViewIsModal
             >
-              <Text style={styles.victimCancelText}>{t("cancel")}</Text>
-            </Pressable>
-          </Animated.View>
-        </View>
+              <View style={[styles.victimBadgeRow, row]}>
+                <View style={[styles.victimSosBadge, row]}>
+                  <Ionicons name="alert-circle" size={16} color={tokens.color.danger} />
+                  <Text style={styles.victimSosBadgeText}>SOS</Text>
+                </View>
+              </View>
+
+              <Text style={[styles.victimTitle, { textAlign }]}>
+                {t("sosWhoNeedsHelp")}
+              </Text>
+              <Text style={[styles.victimSubtitle, { textAlign }]}>
+                {t(
+                  "sosVictimSelectSub",
+                  "Choose one option. Emergency services will be sent to your current location.",
+                )}
+              </Text>
+
+              {startingEmergency ? (
+                <View style={styles.victimLoading}>
+                  <ActivityIndicator color={tokens.color.primary} size="large" />
+                  <Text style={[styles.victimLoadingText, { textAlign }]}>
+                    {t("preparingEmergencyRequest", "Preparing emergency request…")}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.victimCards}>
+                  <VictimChoiceCard
+                    icon="person"
+                    iconBg={tokens.color.primaryBg}
+                    iconColor={tokens.color.primary}
+                    title={t("sosMe")}
+                    description={t("sosMeDescription", "I need immediate help")}
+                    onPress={() => proceedToActiveEmergency("me")}
+                    rowStyle={row}
+                    textAlign={textAlign}
+                    chevronName={chevronForward}
+                    accessibilityLabel={t("sosMe")}
+                  />
+                  <VictimChoiceCard
+                    icon="people"
+                    iconBg={tokens.color.infoBg}
+                    iconColor={tokens.color.primaryDark}
+                    title={t("sosSomeoneElse")}
+                    description={t("sosOtherDescription", "Someone else is in danger")}
+                    onPress={() => proceedToActiveEmergency("other")}
+                    rowStyle={row}
+                    textAlign={textAlign}
+                    chevronName={chevronForward}
+                    accessibilityLabel={t("sosSomeoneElse")}
+                  />
+                </View>
+              )}
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.victimCancelBtn,
+                  pressed && styles.victimCancelPressed,
+                ]}
+                onPress={cancelEmergency}
+                disabled={startingEmergency}
+                accessibilityRole="button"
+                accessibilityLabel={t("cancel")}
+                hitSlop={12}
+              >
+                <Text style={styles.victimCancelText}>{t("cancel")}</Text>
+              </Pressable>
+            </Animated.View>
+          </View>
+        </AppScreen>
       </Modal>
 
       <FadeInView>
@@ -485,6 +499,7 @@ export default function EmergencyScreen() {
         onPress={() => router.push("/(tabs)/profile")}
       />
     </ScrollView>
+    </View>
   );
 }
 
@@ -577,42 +592,28 @@ const styles = StyleSheet.create({
     marginBottom: tokens.space.sm,
     textTransform: "uppercase",
   },
-  victimScreen: {
-    flex: 1,
-    backgroundColor: tokens.color.aiBgSoft,
+  victimScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.38)",
   },
-  victimGlowTop: {
-    position: "absolute",
-    top: -72,
-    right: -48,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: tokens.color.aiGlow,
-    opacity: 0.4,
-  },
-  victimGlowMid: {
-    position: "absolute",
-    top: "38%",
-    left: -64,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "rgba(29, 78, 216, 0.1)",
-  },
-  victimGlowBottom: {
-    position: "absolute",
-    bottom: 48,
-    right: -32,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: "rgba(96, 165, 250, 0.14)",
-  },
-  victimContent: {
-    flex: 1,
-    paddingHorizontal: tokens.space.xl,
+  victimModalFrame: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
+    paddingHorizontal: tokens.space.lg,
+  },
+  victimCard: {
+    width: "100%",
+    maxWidth: 420,
+    alignSelf: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.97)",
+    borderRadius: tokens.radius.xxl,
+    paddingHorizontal: tokens.space.xl,
+    paddingVertical: tokens.space.xxl,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.primaryBorder,
+    ...elevatedShadow,
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
   },
   victimBadgeRow: {
     marginBottom: tokens.space.lg,
@@ -661,10 +662,10 @@ const styles = StyleSheet.create({
     minHeight: VICTIM_CARD_MIN_HEIGHT * 2 + tokens.space.lg,
     justifyContent: "center",
     paddingVertical: tokens.space.xl,
-    backgroundColor: tokens.color.bgSurface,
+    backgroundColor: tokens.color.primarySurface,
     borderRadius: tokens.radius.xl,
     borderWidth: tokens.hairline,
-    borderColor: tokens.color.border,
+    borderColor: tokens.color.primaryBorder,
   },
   victimLoadingText: {
     color: tokens.color.textPrimary,
@@ -679,7 +680,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.xl,
     borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.color.bgSurface,
+    backgroundColor: tokens.color.bgSubtle,
     borderWidth: tokens.hairline,
     borderColor: tokens.color.border,
     justifyContent: "center",

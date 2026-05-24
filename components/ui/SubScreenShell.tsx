@@ -36,6 +36,7 @@ export default function SubScreenShell({
         trailing={trailing}
       />
       <ScrollView
+        style={subScreenStyles.screen}
         contentContainerStyle={[subScreenStyles.scroll, contentStyle]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}

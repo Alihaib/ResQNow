@@ -18,7 +18,7 @@ import { firstAidCategories } from "../../../src/firstAid/categories";
 import { pick } from "../../../src/firstAid/types";
 import { useUiDirection } from "../../../components/ui/layout";
 import { useLanguage } from "../../../src/context/LanguageContext";
-import { tokens } from "../../../src/ui/tokens";
+import { pageStyles, tokens } from "../../../src/ui/tokens";
 
 type SmartCase = "not_breathing" | "unconscious" | "bleeding" | "choking" | "burn" | "general";
 
@@ -199,11 +199,12 @@ export default function FirstAidIndexScreen() {
   const isSosMode = openMode === "sos";
 
   return (
-    <View style={styles.screen}>
+    <View style={pageStyles.screen}>
       <ScrollView
         ref={scrollRef}
-        style={styles.scroll}
+        style={pageStyles.screen}
         contentContainerStyle={[
+          pageStyles.scrollContent,
           styles.content,
           { paddingBottom: insets.bottom + 108 },
         ]}
@@ -345,11 +346,6 @@ const GUTTER = tokens.space.md;
 const CELL_WIDTH = "48.5%";
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: firstAidTheme.bg,
-  },
-  scroll: { flex: 1 },
   content: {
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.sm,

@@ -102,9 +102,11 @@ ${t("appName")}
   };
 
   return (
+    <View style={pageStyles.screen}>
     <ScrollView
       style={pageStyles.screen}
       contentContainerStyle={[
+        pageStyles.scrollContent,
         styles.content,
         { paddingBottom: insets.bottom + 96 },
       ]}
@@ -181,6 +183,7 @@ ${t("appName")}
         />
       </View>
     </ScrollView>
+    </View>
   );
 }
 

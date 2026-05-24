@@ -8,6 +8,7 @@ import { pageStyles, tokens } from "../../src/ui/tokens";
 export const subScreenStyles = StyleSheet.create({
   screen: pageStyles.screen,
   scroll: {
+    ...pageStyles.scrollContent,
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.xxl,

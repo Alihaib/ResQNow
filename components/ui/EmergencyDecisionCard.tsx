@@ -77,7 +77,7 @@ export default function EmergencyDecisionCard({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: "transparent",
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.huge,
     justifyContent: "center",

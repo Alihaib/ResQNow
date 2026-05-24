@@ -28,9 +28,11 @@ export default function SettingsScreen() {
   };
 
   return (
+    <View style={pageStyles.screen}>
     <ScrollView
       style={pageStyles.screen}
       contentContainerStyle={[
+        pageStyles.scrollContent,
         styles.content,
         { paddingBottom: insets.bottom + 96 },
       ]}
@@ -125,6 +127,7 @@ export default function SettingsScreen() {
         <Text style={styles.signedIn}>{user.email}</Text>
       ) : null}
     </ScrollView>
+    </View>
   );
 }
 

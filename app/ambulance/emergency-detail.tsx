@@ -861,7 +861,7 @@ export default function EmergencyDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: tokens.color.bgPage },
+  container: { flex: 1, backgroundColor: "transparent" },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: tokens.space.xl },
   loadingText: { color: tokens.color.textMuted, fontWeight: tokens.fontWeight.semibold },
   errorText: { color: tokens.color.danger, fontWeight: tokens.fontWeight.bold },

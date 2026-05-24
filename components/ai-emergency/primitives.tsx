@@ -214,12 +214,7 @@ export function AmbientMapBackground({
   style?: ViewStyle;
 }) {
   if (!isValidCoord(patientAnchor)) {
-    return (
-      <View style={[styles.ambientFallback, style]}>
-        <View style={styles.ambientGlowA} />
-        <View style={styles.ambientGlowB} />
-      </View>
-    );
+    return <View style={[StyleSheet.absoluteFillObject, style]} pointerEvents="none" />;
   }
 
   return (
@@ -240,8 +235,6 @@ export function AmbientMapBackground({
       />
       <View style={styles.ambientMapBlur} />
       <View style={styles.ambientMapVeil} />
-      <View style={styles.ambientGlowA} />
-      <View style={styles.ambientGlowB} />
     </View>
   );
 }
@@ -338,10 +331,6 @@ const styles = StyleSheet.create({
     minHeight: 4,
   },
 
-  ambientFallback: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: aiEmergencyTheme.bg,
-  },
   ambientMapWrap: {
     ...StyleSheet.absoluteFillObject,
     overflow: "hidden",
@@ -353,23 +342,5 @@ const styles = StyleSheet.create({
   ambientMapVeil: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(244, 248, 255, 0.82)",
-  },
-  ambientGlowA: {
-    position: "absolute",
-    top: -80,
-    right: -40,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: "rgba(96, 165, 250, 0.18)",
-  },
-  ambientGlowB: {
-    position: "absolute",
-    bottom: 120,
-    left: -60,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "rgba(37, 99, 235, 0.1)",
   },
 });

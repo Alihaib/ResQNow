@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: "transparent",
     gap: tokens.space.sm,
   },
   loadingText: {

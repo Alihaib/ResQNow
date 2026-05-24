@@ -4,7 +4,8 @@ import { elevatedShadow, tokens } from "../../src/ui/tokens";
 export { AI_RADIUS, aiEmergencyTheme };
 
 export const firstAidTheme = {
-  bg: tokens.color.aiBgSoft,
+  /** Transparent — global AiBackground provides the page backdrop */
+  bg: "transparent" as const,
   primary: tokens.color.aiBlue,
   surface: tokens.color.bgSurface,
   glass: tokens.color.aiGlass,

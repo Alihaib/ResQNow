@@ -290,7 +290,7 @@ export default function PatientViewScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: "transparent",
   },
   content: {
     paddingTop: 60,

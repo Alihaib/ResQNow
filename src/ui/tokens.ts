@@ -5,6 +5,7 @@
  * medical blue for primary actions, red reserved for SOS / destructive only.
  */
 
+import { DefaultTheme, type Theme } from "@react-navigation/native";
 import { type TextStyle, type ViewStyle } from "react-native";
 
 export const tokens = {
@@ -193,17 +194,48 @@ export const textStyles = {
   },
 } satisfies Record<string, TextStyle>;
 
-/** Standard page background + horizontal padding for scroll screens */
+/** Standard page shell — transparent so global AiBackground shows through */
 export const pageStyles = {
   screen: {
     flex: 1,
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: "transparent",
+  } satisfies ViewStyle,
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: "transparent",
   } satisfies ViewStyle,
   content: {
     paddingBottom: tokens.space.xxl,
+    backgroundColor: "transparent",
   } satisfies ViewStyle,
   /** Vertical rhythm between major blocks on mission / emergency screens */
   sectionGap: {
     marginBottom: tokens.space.xl,
   } satisfies ViewStyle,
 } as const;
+
+/** Navigation stacks / tabs — keep scene content transparent for global backdrop */
+export const transparentScreenContent = {
+  backgroundColor: "transparent",
+} satisfies ViewStyle;
+
+export const stackScreenDefaults = {
+  headerShown: false,
+  contentStyle: transparentScreenContent,
+  cardStyle: transparentScreenContent,
+} as const;
+
+export const tabsSceneDefaults = {
+  sceneContainerStyle: transparentScreenContent,
+  sceneStyle: transparentScreenContent,
+} as const;
+
+/** React Navigation default theme paints opaque white — override for global AiBackground */
+export const navigationTheme: Theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: "transparent",
+    card: "transparent",
+  },
+};

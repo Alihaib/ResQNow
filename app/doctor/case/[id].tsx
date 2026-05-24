@@ -612,7 +612,7 @@ export default function DoctorCaseDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: tokens.color.bgPage },
+  container: { flex: 1, backgroundColor: "transparent" },
   content: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.xxl },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: tokens.space.xl },
   loadingText: { marginTop: tokens.space.md, color: tokens.color.textMuted, fontWeight: tokens.fontWeight.semibold },

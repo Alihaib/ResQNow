@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     marginTop: tokens.space.xs,
   },
   input: {
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: tokens.color.bgSurface,
     borderRadius: tokens.radius.lg,
     paddingVertical: 14,
     paddingHorizontal: tokens.space.lg,

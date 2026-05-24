@@ -607,7 +607,7 @@ export default function DoctorDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: "transparent",
   },
   scrollContent: {
     paddingHorizontal: tokens.space.lg,

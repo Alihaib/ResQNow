@@ -1,5 +1,6 @@
 import { Stack } from "expo-router";
+import { stackScreenDefaults } from "../../../src/ui/tokens";
 
 export default function FirstAidLayout() {
-  return <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }} />;
+  return <Stack screenOptions={{ ...stackScreenDefaults, animation: "slide_from_right" }} />;
 }

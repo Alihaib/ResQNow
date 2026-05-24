@@ -1320,7 +1320,7 @@ ${translate("appName")}
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: tokens.color.aiBgSoft,
+    backgroundColor: "transparent",
   },
   content: {
     paddingHorizontal: tokens.space.lg,
@@ -1332,7 +1332,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: tokens.space.xl,
     gap: tokens.space.md,
-    backgroundColor: tokens.color.aiBgSoft,
+    backgroundColor: "transparent",
   },
   bootText: {
     fontSize: tokens.font.body,

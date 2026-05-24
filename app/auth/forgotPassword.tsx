@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     borderColor: tokens.color.border,
   },
   input: {
-    backgroundColor: tokens.color.bgPage,
+    backgroundColor: tokens.color.bgSurface,
     borderRadius: tokens.radius.lg,
     paddingVertical: 14,
     paddingHorizontal: tokens.space.lg,
