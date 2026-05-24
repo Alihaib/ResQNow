@@ -1,5 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useRef } from "react";
 import {
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,6 +30,7 @@ export default function AiHeroSection({
   responderLine,
   chips,
   aiListening,
+  highlightUpdate,
   style,
 }: {
   statusLine: string;
@@ -38,9 +41,29 @@ export default function AiHeroSection({
   responderLine?: string | null;
   chips: HeroChip[];
   aiListening?: boolean;
+  /** Brief visual pulse when status or ETA updates from Firestore */
+  highlightUpdate?: boolean;
   style?: ViewStyle;
 }) {
   const { row } = useUiDirection();
+  const etaPulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!highlightUpdate) return;
+    etaPulse.setValue(1);
+    Animated.sequence([
+      Animated.timing(etaPulse, {
+        toValue: 0.94,
+        duration: tokens.motion.fast,
+        useNativeDriver: true,
+      }),
+      Animated.spring(etaPulse, {
+        toValue: 1,
+        friction: 6,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [highlightUpdate, etaPulse]);
 
   return (
     <GlassSurface style={[styles.wrap, style]} radius={AI_RADIUS.sheet}>
@@ -57,7 +80,13 @@ export default function AiHeroSection({
         ) : null}
 
         {etaMinutes != null ? (
-          <View style={styles.etaCard}>
+          <Animated.View
+            style={[
+              styles.etaCard,
+              highlightUpdate && styles.etaCardHighlight,
+              { transform: [{ scale: etaPulse }] },
+            ]}
+          >
             <Text style={styles.etaKicker}>{etaLabel}</Text>
             <View style={[styles.etaRow, row]}>
               <Text style={styles.etaValue}>{Math.max(0, Math.round(etaMinutes))}</Text>
@@ -68,7 +97,7 @@ export default function AiHeroSection({
                 {responderLine}
               </Text>
             ) : null}
-          </View>
+          </Animated.View>
         ) : responderLine ? (
           <View style={[styles.responderOnly, row]}>
             <Ionicons name="medkit-outline" size={18} color={aiEmergencyTheme.primary} />
@@ -118,11 +147,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: tokens.space.sm,
     fontSize: tokens.font.h2,
+    fontWeight: tokens.fontWeight.heavy,
+    color: tokens.color.textPrimary,
   },
   statusSub: {
     ...textStyles.body,
     textAlign: "center",
-    fontSize: tokens.font.bodyLg,
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
     paddingHorizontal: tokens.space.md,
   },
   etaCard: {
@@ -134,6 +166,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(37, 99, 235, 0.15)",
     alignItems: "center",
+  },
+  etaCardHighlight: {
+    backgroundColor: "rgba(37, 99, 235, 0.14)",
+    borderColor: "rgba(37, 99, 235, 0.28)",
   },
   etaKicker: {
     fontSize: tokens.font.overline,

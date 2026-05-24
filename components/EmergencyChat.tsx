@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useLanguage } from "../src/context/LanguageContext";
 import { db } from "../src/firebase/config";
+import { isFirestoreNetworkError } from "../src/utils/firestoreErrors";
 import { tokens } from "../src/ui/tokens";
 import { getChatBubbleRadius } from "../src/utils/rtl";
 import { useUiDirection } from "./ui/layout";
@@ -54,35 +55,60 @@ export default function EmergencyChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  const [chatUnavailable, setChatUnavailable] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const premium = variant === "premium";
 
   useEffect(() => {
+    if (!emergencyId) return;
+
+    setChatUnavailable(false);
     const q = query(
       collection(db, "emergencies", emergencyId, "messages"),
       orderBy("timestamp", "asc")
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(
-        snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            senderId: data.senderId as string,
-            senderRole: data.senderRole as "doctor" | "ambulance",
-            text: data.text as string,
-            timestamp: data.timestamp as string,
-          };
-        })
-      );
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setChatUnavailable(false);
+        setMessages(
+          snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              senderId: data.senderId as string,
+              senderRole: data.senderRole as "doctor" | "ambulance" | "user",
+              text: data.text as string,
+              timestamp: data.timestamp as string,
+            };
+          }),
+        );
+      },
+      (err) => {
+        console.warn("[EmergencyChat] listener error:", err);
+        setChatUnavailable(true);
+        if (!isFirestoreNetworkError(err)) {
+          console.error("[EmergencyChat] non-network listener error:", err);
+        }
+      },
+    );
     return () => unsub();
   }, [emergencyId]);
 
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      scrollTimerRef.current = setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     }
+    return () => {
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = null;
+      }
+    };
   }, [messages.length]);
 
   const sendMessage = async () => {
@@ -120,7 +146,14 @@ export default function EmergencyChat({
       ]}
       nestedScrollEnabled
     >
-      {messages.length === 0 ? (
+      {chatUnavailable ? (
+        <View style={premium ? styles.emptyPremium : undefined}>
+          <Text style={premium ? styles.emptyPremiumText : styles.emptyText}>
+            Messages unavailable — reconnecting
+          </Text>
+          {premium ? <VoiceWaveform active={false} compact /> : null}
+        </View>
+      ) : messages.length === 0 ? (
         <View style={premium ? styles.emptyPremium : undefined}>
           {premium ? (
             <>

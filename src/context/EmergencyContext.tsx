@@ -5,14 +5,20 @@ import { AppState } from "react-native";
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
-  setDoc,
+  runTransaction,
   where,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
-import { getFirestoreUserMessage, isFirestoreIndexError } from "../utils/firestoreErrors";
+import { liveEmergencyFingerprint } from "../utils/emergencyGuards";
+import {
+  getFirestoreUserMessage,
+  isFirestoreIndexError,
+  isFirestoreNetworkError,
+} from "../utils/firestoreErrors";
 import { useAuth } from "./AuthContext";
 import { normalizeLifecycleStatus, type SessionStatus } from "../emergency/stateMachine";
 import { snapshotFromFirestore } from "../emergency/patientSnapshot";
@@ -55,6 +61,10 @@ type EmergencyContextType = {
    * Prevents SOS UI from treating a transient null `liveEmergency` as “no emergency” during hydration.
    */
   activeEmergencyHydrated: boolean;
+  /** True when realtime sync is offline — UI may show last-known snapshot */
+  emergencySyncOffline: boolean;
+  /** True while attempting to reconnect after offline / foreground */
+  emergencySyncReconnecting: boolean;
 };
 
 const EmergencyContext = createContext<EmergencyContextType>({
@@ -67,9 +77,26 @@ const EmergencyContext = createContext<EmergencyContextType>({
   startEmergency: async () => ({ ok: false, reason: "not_logged_in", message: "Not logged in" }),
   refreshActiveEmergencyFromFirestore: async () => {},
   activeEmergencyHydrated: false,
+  emergencySyncOffline: false,
+  emergencySyncReconnecting: false,
 });
 
 const STORAGE_KEY_PREFIX = "emergency_";
+
+/** Per-user slot doc — transactional create target to reduce duplicate active sessions */
+function activeSlotDocId(uid: string) {
+  return `${uid}_live`;
+}
+
+class SlotActiveError extends Error {
+  constructor(
+    readonly existingId: string,
+    readonly existingData: Record<string, unknown>,
+  ) {
+    super("ACTIVE_SLOT_OCCUPIED");
+    this.name = "SlotActiveError";
+  }
+}
 
 function storageKeyForUser(uid: string) {
   return `${STORAGE_KEY_PREFIX}${uid}`;
@@ -99,12 +126,60 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [liveEmergency, setLiveEmergency] = useState<LiveEmergency | null>(null);
   const [subscribedEmergencyId, setSubscribedEmergencyId] = useState<string | null>(null);
+  const subscribedEmergencyIdRef = useRef<string | null>(null);
   const unsubscribeRef = useRef<null | (() => void)>(null);
   const startingRef = useRef(false);
   const [startingEmergency, setStartingEmergency] = useState(false);
   const lastSyncAtRef = useRef<number>(0);
   const lastUserIdRef = useRef<string | null>(null);
+  const liveFingerprintRef = useRef<string>("");
   const [activeEmergencyHydrated, setActiveEmergencyHydrated] = useState(false);
+  const [emergencySyncOffline, setEmergencySyncOffline] = useState(false);
+  const [emergencySyncReconnecting, setEmergencySyncReconnecting] = useState(false);
+  const emergencySyncOfflineRef = useRef(false);
+
+  const applyLiveEmergency = useCallback((next: LiveEmergency | null) => {
+    const fp = liveEmergencyFingerprint(next);
+    if (fp === liveFingerprintRef.current) return;
+    liveFingerprintRef.current = fp;
+    setLiveEmergency(next);
+  }, []);
+
+  useEffect(() => {
+    subscribedEmergencyIdRef.current = subscribedEmergencyId;
+  }, [subscribedEmergencyId]);
+
+  useEffect(() => {
+    emergencySyncOfflineRef.current = emergencySyncOffline;
+  }, [emergencySyncOffline]);
+
+  const attachEmergencySession = useCallback(
+    async (id: string, data: Record<string, unknown>) => {
+      setSubscribedEmergencyId(id);
+      subscribedEmergencyIdRef.current = id;
+      applyLiveEmergency(mapSnapToLive(id, data));
+      setEmergencySyncOffline(false);
+      setEmergencySyncReconnecting(false);
+      emergencySyncOfflineRef.current = false;
+      if (user?.uid) {
+        await SecureStore.setItemAsync(storageKeyForUser(user.uid), id).catch(() => {});
+      }
+    },
+    [user?.uid, applyLiveEmergency],
+  );
+
+  const pickNewestActiveDoc = useCallback(
+    (docs: { id: string; data: () => Record<string, unknown> }[]) => {
+      const sorted = [...docs].sort((a, b) => {
+        const ta = String(a.data().timestamp ?? "");
+        const tb = String(b.data().timestamp ?? "");
+        return tb.localeCompare(ta);
+      });
+      const chosen = sorted[0];
+      return { id: chosen.id, data: chosen.data() as Record<string, unknown> };
+    },
+    [],
+  );
 
   const stopListening = useCallback(() => {
     if (unsubscribeRef.current) {
@@ -118,7 +193,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       if (!emergency) {
         stopListening();
         setSubscribedEmergencyId(null);
-        setLiveEmergency(null);
+        applyLiveEmergency(null);
         if (user?.uid) {
           await SecureStore.deleteItemAsync(storageKeyForUser(user.uid)).catch(() => {});
         }
@@ -129,7 +204,7 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         await SecureStore.setItemAsync(storageKeyForUser(user.uid), emergency.id).catch(() => {});
       }
     },
-    [user?.uid, stopListening],
+    [user?.uid, stopListening, applyLiveEmergency],
   );
 
   /**
@@ -139,6 +214,10 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     async (reason: string) => {
       try {
         if (!user?.uid) return;
+
+        if (liveFingerprintRef.current && emergencySyncOfflineRef.current) {
+          setEmergencySyncReconnecting(true);
+        }
 
         const now = Date.now();
         const skipDebounce =
@@ -157,9 +236,29 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         const snap = await getDocs(q);
 
         if (snap.empty) {
+          const subscribedId = subscribedEmergencyIdRef.current;
+          if (subscribedId) {
+            try {
+              const direct = await getDoc(doc(db, "emergencies", subscribedId));
+              if (direct.exists()) {
+                const data = direct.data() as Record<string, unknown>;
+                if (data.sessionStatus === "active") {
+                  await attachEmergencySession(direct.id, data);
+                  return;
+                }
+              }
+            } catch (directErr) {
+              if (isFirestoreNetworkError(directErr)) {
+                console.warn("[EmergencyContext] refresh skipped clear (offline):", reason);
+                if (liveFingerprintRef.current) setEmergencySyncOffline(true);
+                return;
+              }
+            }
+          }
           stopListening();
           setSubscribedEmergencyId(null);
-          setLiveEmergency(null);
+          applyLiveEmergency(null);
+          liveFingerprintRef.current = "";
           await SecureStore.deleteItemAsync(storageKeyForUser(user.uid)).catch(() => {});
           return;
         }
@@ -168,30 +267,32 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
           console.warn("[EmergencyContext] multiple active emergencies for user — using newest timestamp");
         }
 
-        const sorted = [...snap.docs].sort((a, b) => {
-          const ta = String((a.data() as any).timestamp ?? "");
-          const tb = String((b.data() as any).timestamp ?? "");
-          return tb.localeCompare(ta);
-        });
-        const chosen = sorted[0];
-        const id = chosen.id;
-
-        setSubscribedEmergencyId(id);
-        setLiveEmergency(mapSnapToLive(id, chosen.data() as Record<string, unknown>));
-        await SecureStore.setItemAsync(storageKeyForUser(user.uid), id).catch(() => {});
+        const { id, data } = pickNewestActiveDoc(snap.docs);
+        await attachEmergencySession(id, data);
       } catch (e) {
         if (isFirestoreIndexError(e)) {
           console.warn("[EmergencyContext] Firestore index not ready:", reason, e);
+        } else if (isFirestoreNetworkError(e)) {
+          console.warn("[EmergencyContext] refresh failed (network), keeping last state:", reason);
+          if (liveFingerprintRef.current) {
+            setEmergencySyncOffline(true);
+            emergencySyncOfflineRef.current = true;
+          }
         } else {
           console.error("[EmergencyContext] refreshActiveEmergencyFromFirestore:", reason, e);
+          if (liveFingerprintRef.current) {
+            setEmergencySyncOffline(true);
+            emergencySyncOfflineRef.current = true;
+          }
         }
       } finally {
+        setEmergencySyncReconnecting(false);
         if (user?.uid) {
           setActiveEmergencyHydrated(true);
         }
       }
     },
-    [user?.uid, stopListening],
+    [user?.uid, stopListening, applyLiveEmergency, attachEmergencySession, pickNewestActiveDoc],
   );
 
   // Doc listener — only Firestore drives liveEmergency body
@@ -212,34 +313,53 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         }
         const data = snap.data() as Record<string, unknown>;
         const mapped = mapSnapToLive(snap.id, data);
-        setLiveEmergency(mapped);
+        applyLiveEmergency(mapped);
+        setEmergencySyncOffline(false);
+        setEmergencySyncReconnecting(false);
+        emergencySyncOfflineRef.current = false;
 
         if (mapped.sessionStatus === "cancelled" || mapped.sessionStatus === "resolved") {
           stopListening();
           setSubscribedEmergencyId(null);
-          setLiveEmergency(null);
+          applyLiveEmergency(null);
+          liveFingerprintRef.current = "";
           if (user?.uid) {
             await SecureStore.deleteItemAsync(storageKeyForUser(user.uid)).catch(() => {});
           }
         }
       },
-      (err) => console.error("[EmergencyContext] emergency listener error:", err)
+      (err) => {
+        if (isFirestoreNetworkError(err)) {
+          console.warn("[EmergencyContext] listener offline, retaining last snapshot");
+          setEmergencySyncOffline(true);
+          emergencySyncOfflineRef.current = true;
+          setEmergencySyncReconnecting(false);
+          return;
+        }
+        console.error("[EmergencyContext] emergency listener error:", err);
+        setEmergencySyncOffline(true);
+        emergencySyncOfflineRef.current = true;
+        setEmergencySyncReconnecting(false);
+      },
     );
 
     return () => stopListening();
-  }, [subscribedEmergencyId, user?.uid, refreshActiveEmergencyFromFirestore]);
+  }, [subscribedEmergencyId, user?.uid, refreshActiveEmergencyFromFirestore, applyLiveEmergency]);
 
   const currentEmergency = useMemo((): CurrentEmergency | null => {
-    if (!liveEmergency) return null;
+    if (!liveEmergency?.id) return null;
     return {
       id: liveEmergency.id,
-      sessionStatus: liveEmergency.sessionStatus,
-      victimType: liveEmergency.victimType,
+      sessionStatus: liveEmergency.sessionStatus ?? "active",
+      victimType: liveEmergency.victimType === "other" ? "other" : "me",
       status: liveEmergency.status,
     };
   }, [liveEmergency]);
 
-  const isEmergencyActive = liveEmergency?.sessionStatus === "active";
+  const isEmergencyActive = useMemo(
+    () => liveEmergency?.sessionStatus === "active",
+    [liveEmergency?.sessionStatus],
+  );
 
   const navigateToActiveEmergency = useCallback(() => {
     router.push("/(tabs)/emergency/active");
@@ -264,18 +384,48 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         where("userId", "==", user.uid),
         where("sessionStatus", "==", "active")
       );
-      const existingSnap = await getDocs(activeQ);
+      let existingSnap;
+      try {
+        existingSnap = await getDocs(activeQ);
+      } catch (queryErr) {
+        if (isFirestoreIndexError(queryErr)) {
+          return {
+            ok: false,
+            reason: "firestore_index",
+            message: getFirestoreUserMessage(queryErr),
+          };
+        }
+        if (isFirestoreNetworkError(queryErr)) {
+          return { ok: false, reason: "network_error", message: "NETWORK_ERROR" };
+        }
+        throw queryErr;
+      }
       if (!existingSnap.empty) {
-        const sorted = [...existingSnap.docs].sort((a, b) => {
-          const ta = String((a.data() as any).timestamp ?? "");
-          const tb = String((b.data() as any).timestamp ?? "");
-          return tb.localeCompare(ta);
-        });
-        const existing = sorted[0];
-        const id = existing.id;
-        setSubscribedEmergencyId(id);
-        setLiveEmergency(mapSnapToLive(id, existing.data() as Record<string, unknown>));
-        await SecureStore.setItemAsync(storageKeyForUser(user.uid), id).catch(() => {});
+        const { id, data } = pickNewestActiveDoc(existingSnap.docs);
+        await attachEmergencySession(id, data);
+        return { ok: true, id };
+      }
+
+      // Second query — narrow race window before transactional create
+      let confirmSnap;
+      try {
+        confirmSnap = await getDocs(activeQ);
+      } catch (queryErr) {
+        if (isFirestoreIndexError(queryErr)) {
+          return {
+            ok: false,
+            reason: "firestore_index",
+            message: getFirestoreUserMessage(queryErr),
+          };
+        }
+        if (isFirestoreNetworkError(queryErr)) {
+          return { ok: false, reason: "network_error", message: "NETWORK_ERROR" };
+        }
+        throw queryErr;
+      }
+      if (!confirmSnap.empty) {
+        const { id, data } = pickNewestActiveDoc(confirmSnap.docs);
+        await attachEmergencySession(id, data);
         return { ok: true, id };
       }
 
@@ -293,9 +443,9 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, reason: "location_not_available", message: "LOCATION_NOT_AVAILABLE" };
       }
 
-      const id = `${user.uid}_${Date.now()}`;
+      const id = activeSlotDocId(user.uid);
       const ts = timestamp ?? new Date().toISOString();
-      const payload = {
+      const payload: Record<string, unknown> = {
         userId: user.uid,
         victimType,
         location: {
@@ -315,9 +465,24 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         timeline: [{ status: "dispatched", timestamp: ts }],
       };
 
+      const slotRef = doc(db, "emergencies", id);
+
       try {
-        await setDoc(doc(db, "emergencies", id), payload);
+        await runTransaction(db, async (transaction) => {
+          const slotSnap = await transaction.get(slotRef);
+          if (slotSnap.exists()) {
+            const data = slotSnap.data() as Record<string, unknown>;
+            if (data.sessionStatus === "active") {
+              throw new SlotActiveError(slotSnap.id, data);
+            }
+          }
+          transaction.set(slotRef, payload);
+        });
       } catch (e: unknown) {
+        if (e instanceof SlotActiveError) {
+          await attachEmergencySession(e.existingId, e.existingData);
+          return { ok: true, id: e.existingId };
+        }
         if (isFirestoreIndexError(e)) {
           return {
             ok: false,
@@ -332,6 +497,9 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         if (code.includes("unavailable") || code.includes("network") || code.includes("deadline-exceeded")) {
           return { ok: false, reason: "network_error", message: "NETWORK_ERROR" };
         }
+        if (isFirestoreNetworkError(e)) {
+          return { ok: false, reason: "network_error", message: "NETWORK_ERROR" };
+        }
         return {
           ok: false,
           reason: "unknown_error",
@@ -339,7 +507,35 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
         };
       }
 
-      await refreshActiveEmergencyFromFirestore("post_create");
+      // Attach immediately — do not rely on refresh alone
+      await attachEmergencySession(id, payload);
+      setActiveEmergencyHydrated(true);
+
+      try {
+        const verifySnap = await getDocs(activeQ);
+        if (!verifySnap.empty) {
+          const { id: newestId, data } = pickNewestActiveDoc(verifySnap.docs);
+          if (newestId !== id) {
+            console.warn(
+              "[EmergencyContext] multiple active emergencies after create — using newest",
+            );
+            await attachEmergencySession(newestId, data);
+            return { ok: true, id: newestId };
+          }
+        }
+      } catch (verifyErr) {
+        console.warn("[EmergencyContext] post_create verify skipped:", verifyErr);
+      }
+
+      try {
+        await refreshActiveEmergencyFromFirestore("post_create");
+      } catch (refreshErr) {
+        console.warn("[EmergencyContext] post_create refresh failed; local session attached:", refreshErr);
+        if (isFirestoreNetworkError(refreshErr)) {
+          setEmergencySyncOffline(true);
+        }
+      }
+
       return { ok: true, id };
     } catch (e) {
       console.error("[EmergencyContext] startEmergency:", e);
@@ -350,6 +546,9 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
           message: getFirestoreUserMessage(e),
         };
       }
+      if (isFirestoreNetworkError(e)) {
+        return { ok: false, reason: "network_error", message: "NETWORK_ERROR" };
+      }
       return {
         ok: false,
         reason: "unknown_error",
@@ -359,19 +558,26 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       startingRef.current = false;
       setStartingEmergency(false);
     }
-  }, [user?.uid, refreshActiveEmergencyFromFirestore]);
+  }, [user?.uid, refreshActiveEmergencyFromFirestore, applyLiveEmergency, attachEmergencySession, pickNewestActiveDoc]);
 
   // Bootstrap: SecureStore hint → validate with Firestore query
   useEffect(() => {
     if (!user?.uid) {
       stopListening();
       setSubscribedEmergencyId(null);
-      setLiveEmergency(null);
+      applyLiveEmergency(null);
+      liveFingerprintRef.current = "";
       setActiveEmergencyHydrated(false);
+      setEmergencySyncOffline(false);
+      setEmergencySyncReconnecting(false);
+      emergencySyncOfflineRef.current = false;
       return;
     }
 
     setActiveEmergencyHydrated(false);
+    setEmergencySyncOffline(false);
+    setEmergencySyncReconnecting(false);
+    emergencySyncOfflineRef.current = false;
     (async () => {
       await refreshActiveEmergencyFromFirestore("bootstrap");
     })();
@@ -385,7 +591,8 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
     stopListening();
     setSubscribedEmergencyId(null);
-    setLiveEmergency(null);
+    applyLiveEmergency(null);
+    liveFingerprintRef.current = "";
     startingRef.current = false;
 
     if (prevUid) {
@@ -394,6 +601,9 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
 
     lastUserIdRef.current = nextUid;
     setActiveEmergencyHydrated(false);
+    setEmergencySyncOffline(false);
+    setEmergencySyncReconnecting(false);
+    emergencySyncOfflineRef.current = false;
   }, [user?.uid]);
 
   // Foreground refresh
@@ -401,6 +611,9 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
     if (!user?.uid) return;
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
+        if (liveFingerprintRef.current && emergencySyncOfflineRef.current) {
+          setEmergencySyncReconnecting(true);
+        }
         refreshActiveEmergencyFromFirestore("app_foreground");
       }
     });
@@ -418,6 +631,8 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       startEmergency,
       refreshActiveEmergencyFromFirestore,
       activeEmergencyHydrated,
+      emergencySyncOffline,
+      emergencySyncReconnecting,
     }),
     [
       currentEmergency,
@@ -429,6 +644,8 @@ export function EmergencyProvider({ children }: { children: React.ReactNode }) {
       startEmergency,
       refreshActiveEmergencyFromFirestore,
       activeEmergencyHydrated,
+      emergencySyncOffline,
+      emergencySyncReconnecting,
     ],
   );
 

@@ -5,9 +5,9 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   ViewStyle,
 } from "react-native";
 import { tokens } from "../../src/ui/tokens";
@@ -49,19 +49,19 @@ export default function Button({
   const sizeStyle = SIZE_STYLES[size];
   const variantStyles = VARIANT_STYLES[variant];
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      activeOpacity={0.98}
       accessibilityRole="button"
       accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
       accessibilityLabel={accessibilityLabel ?? label}
-      style={[
+      style={({ pressed }) => [
         styles.base,
         sizeStyle.container,
         variantStyles.container,
         fullWidth && styles.fullWidth,
         isDisabled && styles.disabled,
+        pressed && !isDisabled && styles.pressed,
         style as ViewStyle,
       ]}
     >
@@ -80,7 +80,7 @@ export default function Button({
           {label}
         </Text>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -161,6 +161,10 @@ const styles = StyleSheet.create({
   base: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  pressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.94,
   },
   fullWidth: { alignSelf: "stretch", width: "100%" },
   disabled: { opacity: 0.5 },

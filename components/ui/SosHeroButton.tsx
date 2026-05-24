@@ -118,17 +118,17 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: tokens.font.h2,
-    fontWeight: tokens.fontWeight.semibold,
+    fontWeight: tokens.fontWeight.heavy,
     color: tokens.color.textPrimary,
     letterSpacing: -0.3,
     textAlign: "center",
   },
   sublabel: {
-    fontSize: tokens.font.bodyLg,
+    fontSize: tokens.font.body,
     fontWeight: tokens.fontWeight.medium,
     color: tokens.color.textMuted,
     textAlign: "center",
     maxWidth: 280,
-    lineHeight: 20,
+    lineHeight: 18,
   },
 });

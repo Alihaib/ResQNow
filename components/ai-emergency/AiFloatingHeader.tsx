@@ -94,8 +94,9 @@ const styles = StyleSheet.create({
   brandSub: {
     fontSize: tokens.font.caption,
     fontWeight: tokens.fontWeight.medium,
-    color: tokens.color.textMuted,
-    marginTop: 1,
+    color: tokens.color.textFaint,
+    marginTop: 2,
+    lineHeight: 16,
   },
   statusCol: {
     alignItems: "flex-end",

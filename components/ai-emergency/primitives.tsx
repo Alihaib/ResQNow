@@ -11,6 +11,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useUiDirection } from "../ui/layout";
+import { isValidCoord } from "../../src/utils/emergencyGuards";
 import { tokens } from "../../src/ui/tokens";
 import { AI_RADIUS, aiEmergencyTheme, glassCardShadow } from "./theme";
 
@@ -212,7 +213,7 @@ export function AmbientMapBackground({
   patientAnchor: MapAnchor | null;
   style?: ViewStyle;
 }) {
-  if (!patientAnchor) {
+  if (!isValidCoord(patientAnchor)) {
     return (
       <View style={[styles.ambientFallback, style]}>
         <View style={styles.ambientGlowA} />

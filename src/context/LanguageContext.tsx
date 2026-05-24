@@ -119,7 +119,9 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
     return (
       <View style={bootStyles.container}>
         <ActivityIndicator size="large" color={tokens.color.primary} />
-        <Text style={bootStyles.label}>Loading...</Text>
+        <Text style={bootStyles.label} accessibilityRole="text">
+          {i18n.t("loading", { defaultValue: "Loading…" })}
+        </Text>
       </View>
     );
   }

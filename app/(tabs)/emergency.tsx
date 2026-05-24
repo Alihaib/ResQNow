@@ -1,25 +1,37 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Animated,
   Modal,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import AppPageHeader from "../../components/ui/AppPageHeader";
 import Card from "../../components/ui/Card";
+import FadeInView from "../../components/ui/FadeInView";
 import ShortcutCard from "../../components/ui/ShortcutCard";
 import SosHeroButton from "../../components/ui/SosHeroButton";
 import { useEmergency } from "../../src/context/EmergencyContext";
 import { useLanguage } from "../../src/context/LanguageContext";
 import { useUiDirection } from "../../components/ui/layout";
+import { isValidLatLng } from "../../src/utils/emergencyGuards";
+import {
+  getCurrentPositionWithTimeout,
+  isLocationTimeoutError,
+} from "../../src/utils/locationWithTimeout";
+import { messageForStartEmergencyReason } from "../../src/utils/firestoreErrors";
+import { hapticLight, hapticSosPress } from "../../src/utils/haptics";
 import { pageStyles, tokens } from "../../src/ui/tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+type SosBusyPhase = "locating" | "starting" | null;
 
 export default function EmergencyScreen() {
   const { t } = useLanguage();
@@ -33,25 +45,74 @@ export default function EmergencyScreen() {
   } = useEmergency();
   const [sosBusy, setSosBusy] = useState(false);
 
-  // SOS victim selection overlay state
   const [isVictimSelectOpen, setIsVictimSelectOpen] = useState(false);
+  const modalOpacity = useRef(new Animated.Value(0)).current;
+  const modalScale = useRef(new Animated.Value(0.94)).current;
 
-  const locationDataRef = useRef<any>(null);
+  const locationDataRef = useRef<{
+    latitude: number;
+    longitude: number;
+    accuracy: number | null;
+    address: string | null;
+    timestamp: string;
+  } | null>(null);
   const permissionStatusRef = useRef<string | null>(null);
+  const sosInFlightRef = useRef(false);
+  const submitInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!isVictimSelectOpen) {
+      modalOpacity.setValue(0);
+      modalScale.setValue(0.94);
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(modalOpacity, {
+        toValue: 1,
+        duration: tokens.motion.normal,
+        useNativeDriver: true,
+      }),
+      Animated.spring(modalScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isVictimSelectOpen, modalOpacity, modalScale]);
+
+  const showStartEmergencyError = (reason: string, message?: string) => {
+    Alert.alert(
+      t("error"),
+      messageForStartEmergencyReason(
+        reason,
+        message || t("failedToStartEmergency"),
+      ),
+    );
+  };
 
   const proceedToActiveEmergency = async (type: "me" | "other") => {
-    setIsVictimSelectOpen(false);
+    hapticLight();
+    if (startingEmergency || submitInFlightRef.current) return;
+
     if (isEmergencyActive) {
+      setIsVictimSelectOpen(false);
       navigateToActiveEmergency();
       return;
     }
 
     const loc = locationDataRef.current;
-    if (!loc?.latitude || !loc?.longitude) {
+    if (!loc || !isValidLatLng(loc.latitude, loc.longitude)) {
       Alert.alert(t("error"), t("locationNotAvailable"));
       return;
     }
 
+    if (permissionStatusRef.current !== "granted") {
+      Alert.alert(t("error"), t("locationPermissionDenied"));
+      return;
+    }
+
+    submitInFlightRef.current = true;
     try {
       const result = await startEmergency({
         victimType: type,
@@ -61,38 +122,36 @@ export default function EmergencyScreen() {
           address: loc.address ?? null,
         },
         timestamp: loc.timestamp,
-        locationPermissionStatus: permissionStatusRef.current ?? "unknown",
+        locationPermissionStatus: "granted",
       });
       if (result.ok) {
+        setIsVictimSelectOpen(false);
         navigateToActiveEmergency();
         return;
       }
       if (result.reason === "already_active") {
+        setIsVictimSelectOpen(false);
         navigateToActiveEmergency();
         return;
       }
-      if (result.reason === "firestore_index") {
-        Alert.alert(
-          t("error"),
-          t(
-            "firestoreIndexError",
-            "Emergency data could not be loaded. Please try again in a moment.",
-          ),
-        );
-        return;
-      }
-      Alert.alert(t("error"), result.message || t("failedToStartEmergency"));
+      showStartEmergencyError(result.reason, result.message);
     } catch {
       Alert.alert(t("error"), t("failedToStartEmergency"));
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
   const handleEmergencyPress = async () => {
     if (isEmergencyActive) {
+      hapticLight();
       navigateToActiveEmergency();
       return;
     }
-    if (isVictimSelectOpen || sosBusy || startingEmergency) return;
+    if (isVictimSelectOpen || sosBusy || startingEmergency || sosInFlightRef.current) return;
+
+    hapticSosPress();
+    sosInFlightRef.current = true;
     locationDataRef.current = null;
     permissionStatusRef.current = null;
     setSosBusy(true);
@@ -101,7 +160,6 @@ export default function EmergencyScreen() {
 
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      console.log("[SOS][UI] location permission status:", status);
       permissionStatusRef.current = status;
       if (status !== "granted") {
         Alert.alert(t("error"), t("locationPermissionDenied"));
@@ -110,20 +168,24 @@ export default function EmergencyScreen() {
 
       let position: Location.LocationObject;
       try {
-        position = await Location.getCurrentPositionAsync({
+        position = await getCurrentPositionWithTimeout({
           accuracy: Location.Accuracy.High,
         });
       } catch (gpsError) {
         console.error("[SOS][UI] getCurrentPosition failed:", gpsError);
-        Alert.alert(t("error"), t("locationNotAvailable"));
+        if (isLocationTimeoutError(gpsError)) {
+          Alert.alert(
+            t("error"),
+            t(
+              "locationTimeout",
+              "Could not get your location in time. Please check GPS and try again.",
+            ),
+          );
+        } else {
+          Alert.alert(t("error"), t("locationNotAvailable"));
+        }
         return;
       }
-
-      console.log("[SOS][UI] location fix:", {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-      });
 
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
@@ -164,32 +226,51 @@ export default function EmergencyScreen() {
       return;
     } finally {
       setSosBusy(false);
+      sosInFlightRef.current = false;
     }
 
-    if (!locationReady || !locationDataRef.current?.latitude || !locationDataRef.current?.longitude) {
+    const captured = locationDataRef.current;
+    if (
+      !locationReady ||
+      !captured ||
+      !isValidLatLng(captured.latitude, captured.longitude)
+    ) {
       Alert.alert(t("error"), t("locationNotAvailable"));
       return;
     }
 
+    permissionStatusRef.current = "granted";
     setIsVictimSelectOpen(true);
   };
 
   const cancelEmergency = () => {
+    hapticLight();
     setIsVictimSelectOpen(false);
   };
 
   const insets = useSafeAreaInsets();
-  const busy = sosBusy || startingEmergency;
+  const busyPhase: SosBusyPhase = startingEmergency
+    ? "starting"
+    : sosBusy
+      ? "locating"
+      : null;
+  const busy = busyPhase !== null;
+
   const sosLabel = isEmergencyActive
     ? t("emergencyActiveShort")
-    : busy
-      ? t("loading", "Preparing…")
-      : t("sos");
+    : busyPhase === "starting"
+      ? t("preparingEmergencyRequest", "Preparing emergency request…")
+      : busyPhase === "locating"
+        ? t("gettingLocation", "Getting your location…")
+        : t("sos");
+
   const sosSubLabel = isEmergencyActive
     ? t("tapToViewActiveEmergency")
-    : busy
-      ? t("gettingLocation", "Getting your location…")
-      : t("tapForHelp");
+    : busyPhase === "starting"
+      ? t("sosSendingHelp", "Sending your SOS to responders…")
+      : busyPhase === "locating"
+        ? t("sosLocatingHint", "Please wait — we need your location to dispatch help.")
+        : t("tapForHelp");
 
   return (
     <ScrollView
@@ -199,63 +280,87 @@ export default function EmergencyScreen() {
         { paddingBottom: insets.bottom + 96 },
       ]}
     >
-      {/* SOS Victim Selection Overlay */}
       <Modal
         visible={isVictimSelectOpen}
         transparent={false}
         animationType="fade"
         statusBarTranslucent
+        onRequestClose={cancelEmergency}
       >
-        <View style={styles.overlayContainer}>
+        <Animated.View
+          style={[
+            styles.overlayContainer,
+            { opacity: modalOpacity, transform: [{ scale: modalScale }] },
+          ]}
+        >
           <View style={styles.overlayBadge}>
             <Text style={styles.overlayBadgeText}>SOS</Text>
           </View>
           <Text style={styles.overlayQuestion}>{t("sosWhoNeedsHelp")}</Text>
           <Text style={styles.overlayHint}>
-            {t("tapForHelp", "Tap an option to send your SOS.")}
+            {t("sosVictimHint", "Tap an option to send your SOS.")}
           </Text>
 
-          <View style={styles.buttonsContainer}>
-            <TouchableOpacity
-              style={styles.overlayPrimaryBtn}
-              onPress={() => proceedToActiveEmergency("me")}
-              activeOpacity={0.9}
-              accessibilityRole="button"
-              accessibilityLabel={t("sosMe")}
-            >
-              <Text style={styles.overlayPrimaryText}>{t("sosMe")}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.overlaySecondaryBtn}
-              onPress={() => proceedToActiveEmergency("other")}
-              activeOpacity={0.9}
-              accessibilityRole="button"
-              accessibilityLabel={t("sosSomeoneElse")}
-            >
-              <Text style={styles.overlaySecondaryText}>
-                {t("sosSomeoneElse")}
+          {startingEmergency ? (
+            <View style={styles.overlayLoading}>
+              <ActivityIndicator color="#FFFFFF" size="large" />
+              <Text style={styles.overlayLoadingText}>
+                {t("preparingEmergencyRequest", "Preparing emergency request…")}
               </Text>
-            </TouchableOpacity>
-          </View>
+            </View>
+          ) : (
+            <View style={styles.buttonsContainer}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.overlayPrimaryBtn,
+                  pressed && styles.overlayBtnPressed,
+                ]}
+                onPress={() => proceedToActiveEmergency("me")}
+                accessibilityRole="button"
+                accessibilityLabel={t("sosMe")}
+              >
+                <Text style={styles.overlayPrimaryText}>{t("sosMe")}</Text>
+              </Pressable>
 
-          <TouchableOpacity
-            style={styles.cancelOverlayBtn}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.overlaySecondaryBtn,
+                  pressed && styles.overlayBtnPressed,
+                ]}
+                onPress={() => proceedToActiveEmergency("other")}
+                accessibilityRole="button"
+                accessibilityLabel={t("sosSomeoneElse")}
+              >
+                <Text style={styles.overlaySecondaryText}>
+                  {t("sosSomeoneElse")}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.cancelOverlayBtn,
+              pressed && styles.overlayBtnPressed,
+            ]}
             onPress={cancelEmergency}
+            disabled={startingEmergency}
             accessibilityRole="button"
             accessibilityLabel={t("cancel")}
           >
             <Text style={styles.cancelOverlayText}>{t("cancel")}</Text>
-          </TouchableOpacity>
-        </View>
+          </Pressable>
+        </Animated.View>
       </Modal>
 
-      <AppPageHeader
-        title={t("emergencyTitle")}
-        subtitle={t("emergencySubtitle")}
-        eyebrow={t("tab_emergency")}
-        showBrandIcon={false}
-      />
+      <FadeInView>
+        <AppPageHeader
+          title={t("emergencyTitle")}
+          subtitle={t("emergencySubtitle")}
+          eyebrow={t("tab_emergency")}
+          showBrandIcon={false}
+        />
+      </FadeInView>
 
       <View style={styles.hero}>
         <SosHeroButton
@@ -269,22 +374,24 @@ export default function EmergencyScreen() {
         />
       </View>
 
-      <Card style={styles.calmCard}>
-        <Text style={styles.calmTitle}>{t("beforeEmergency")}</Text>
-        {(["stayCalm", "checkLocation", "ensureSafety", "haveMedicalInfo"] as const).map(
-          (key) => (
-            <View key={key} style={[styles.calmRow, row]}>
-              <Ionicons
-                name="checkmark-circle"
-                size={18}
-                color={tokens.color.success}
-                style={styles.calmIcon}
-              />
-              <Text style={styles.calmText}>{t(key)}</Text>
-            </View>
-          ),
-        )}
-      </Card>
+      <FadeInView delay={40}>
+        <Card style={styles.calmCard}>
+          <Text style={styles.calmTitle}>{t("beforeEmergency")}</Text>
+          {(["stayCalm", "checkLocation", "ensureSafety", "haveMedicalInfo"] as const).map(
+            (key) => (
+              <View key={key} style={[styles.calmRow, row]}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={tokens.color.success}
+                  style={styles.calmIcon}
+                />
+                <Text style={styles.calmText}>{t(key)}</Text>
+              </View>
+            ),
+          )}
+        </Card>
+      </FadeInView>
 
       <Text style={[styles.sectionLabel, marginHorizontal(tokens.space.xs, 0)]}>
         {t("quickActions")}
@@ -305,16 +412,18 @@ export default function EmergencyScreen() {
   );
 }
 
+const OVERLAY_BTN_MIN_HEIGHT = 56;
+
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: tokens.space.lg,
   },
   hero: {
     alignItems: "center",
-    marginBottom: tokens.space.xl,
+    marginBottom: tokens.space.lg,
   },
   calmCard: {
-    marginBottom: tokens.space.xl,
+    marginBottom: tokens.space.lg,
   },
   calmTitle: {
     fontSize: tokens.font.overline,
@@ -378,13 +487,27 @@ const styles = StyleSheet.create({
   },
   overlayHint: {
     fontSize: tokens.font.bodyLg,
-    color: "rgba(255,255,255,0.85)",
+    color: "rgba(255,255,255,0.88)",
+    marginBottom: tokens.space.xl,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  overlayLoading: {
+    alignItems: "center",
+    gap: tokens.space.md,
     marginBottom: tokens.space.xxl,
+    minHeight: OVERLAY_BTN_MIN_HEIGHT * 2 + tokens.space.md,
+    justifyContent: "center",
+  },
+  overlayLoadingText: {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: tokens.font.bodyLg,
+    fontWeight: tokens.fontWeight.semibold,
     textAlign: "center",
   },
   buttonsContainer: {
     width: "100%",
-    marginBottom: tokens.space.xxl,
+    marginBottom: tokens.space.xl,
     gap: tokens.space.md,
   },
   overlayPrimaryBtn: {
@@ -393,7 +516,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.lg,
     paddingHorizontal: tokens.space.lg,
     alignItems: "center",
-    minHeight: 56,
+    minHeight: OVERLAY_BTN_MIN_HEIGHT,
     justifyContent: "center",
   },
   overlayPrimaryText: {
@@ -410,14 +533,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: tokens.hairline,
     borderColor: "rgba(255,255,255,0.4)",
-    minHeight: 56,
+    minHeight: OVERLAY_BTN_MIN_HEIGHT,
     justifyContent: "center",
   },
   overlaySecondaryText: {
     color: "#FFFFFF",
-    fontSize: 20,
+    fontSize: tokens.font.h2,
     fontWeight: "900",
     letterSpacing: 0.3,
+  },
+  overlayBtnPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.92,
   },
   cancelOverlayBtn: {
     backgroundColor: "rgba(0,0,0,0.25)",

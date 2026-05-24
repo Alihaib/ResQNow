@@ -16,6 +16,7 @@ import EmergencyChat from "../../../components/EmergencyChat";
 import AiEmergencyCompanion from "../../../components/AiEmergencyCompanion";
 import Button from "../../../components/ui/Button";
 import CollapsibleSection from "../../../components/ui/CollapsibleSection";
+import FadeInView from "../../../components/ui/FadeInView";
 import MapPanel from "../../../components/ui/MapPanel";
 import ShortcutCard from "../../../components/ui/ShortcutCard";
 import {
@@ -36,7 +37,9 @@ import { db } from "../../../src/firebase/config";
 import { normalizeLifecycleStatus } from "../../../src/emergency/stateMachine";
 import { SosSmartFirstAid } from "../../../src/firstAid/SosSmartFirstAid";
 import { tokens } from "../../../src/ui/tokens";
+import { isValidCoord } from "../../../src/utils/emergencyGuards";
 import { parseLatLng } from "../../../src/utils/emergencyMapCoords";
+import { hapticNotice } from "../../../src/utils/haptics";
 import { safeOpenURL } from "../../../src/utils/safeLinking";
 import { isOpenAiConfigured } from "../../../src/services/openaiEmergency";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -57,19 +60,15 @@ interface Contact {
   relationship: string;
 }
 
-function isValidMapCoord(
-  c: { latitude: number; longitude: number } | null | undefined,
-): c is { latitude: number; longitude: number } {
-  return (
-    c != null &&
-    Number.isFinite(c.latitude) &&
-    Number.isFinite(c.longitude)
-  );
-}
-
 export default function ActiveEmergencyScreen() {
   const { user } = useAuth();
-  const { currentEmergency, liveEmergency, activeEmergencyHydrated } = useEmergency();
+  const {
+    currentEmergency,
+    liveEmergency,
+    activeEmergencyHydrated,
+    emergencySyncOffline,
+    emergencySyncReconnecting,
+  } = useEmergency();
   const { t: translate, lang } = useLanguage();
   const { row } = useUiDirection();
   const router = useRouter();
@@ -88,23 +87,16 @@ export default function ActiveEmergencyScreen() {
   /** Crew position — parsed from `liveEmergency.ambulanceLocation` (Firestore via EmergencyContext onSnapshot). */
   const ambulanceCoordsLive = useMemo(
     () => parseLatLng(liveEmergency?.ambulanceLocation),
-    [liveEmergency?.ambulanceLocation, liveEmergency?.updatedAt],
+    [liveEmergency?.ambulanceLocation],
   );
 
   /** Patient scene coords — Firestore `patientLocation` ?? `location` (real-time via EmergencyContext onSnapshot). */
   const patientCoordsLive = useMemo(() => {
-    const live = liveEmergency;
-    if (!live) return null;
-    const pl = live.patientLocation ?? live.location;
-    if (
-      pl?.latitude != null &&
-      pl?.longitude != null &&
-      typeof pl.latitude === "number" &&
-      typeof pl.longitude === "number"
-    ) {
-      return { latitude: pl.latitude, longitude: pl.longitude };
-    }
-    return null;
+    if (!liveEmergency) return null;
+    return (
+      parseLatLng(liveEmergency.patientLocation) ??
+      parseLatLng(liveEmergency.location)
+    );
   }, [liveEmergency]);
 
   /** Prefer live Firestore patient pin; fall back to locally captured coords from SOS flow. */
@@ -163,8 +155,29 @@ export default function ActiveEmergencyScreen() {
   const mainScrollRef = useRef<ScrollView>(null);
   const chatSectionYRef = useRef(0);
   const firstAidSectionYRef = useRef(0);
+  const lastMapFitKeyRef = useRef<string | null>(null);
+  const prevLifecycleRef = useRef<string | null>(null);
+  const prevEtaRef = useRef<number | null>(null);
+  const lastSeenEmergencyAtRef = useRef(0);
+  const hadEmergencyRef = useRef(false);
+  const navExitingRef = useRef(false);
+  const lastLocationKeyRef = useRef<string>("");
   const insets = useSafeAreaInsets();
   const [moreHelpOpen, setMoreHelpOpen] = useState(false);
+  const [statusHighlight, setStatusHighlight] = useState(false);
+
+  const mapFitKey = useMemo(() => {
+    if (!isValidCoord(mapPatientAnchor)) return null;
+    const pLat = mapPatientAnchor.latitude.toFixed(4);
+    const pLng = mapPatientAnchor.longitude.toFixed(4);
+    const aLat = isValidCoord(ambulanceCoordsLive)
+      ? ambulanceCoordsLive.latitude.toFixed(4)
+      : "";
+    const aLng = isValidCoord(ambulanceCoordsLive)
+      ? ambulanceCoordsLive.longitude.toFixed(4)
+      : "";
+    return `${pLat},${pLng}|${aLat},${aLng}`;
+  }, [mapPatientAnchor, ambulanceCoordsLive]);
 
   const scrollToFirstAidSection = useCallback(() => {
     setMoreHelpOpen(true);
@@ -220,13 +233,16 @@ export default function ActiveEmergencyScreen() {
     });
   }, [victimType, emergencyContacts, scrollToChatSection]);
 
-  /** Refit viewport when Firestore pushes new patient or ambulance coordinates (same source as markers). */
+  /** Refit viewport only when patient/ambulance coords change — not on every Firestore tick. */
   useEffect(() => {
-    if (!isValidMapCoord(mapPatientAnchor) || !mapRef.current) return;
+    if (!mapFitKey || !isValidCoord(mapPatientAnchor) || !mapRef.current) return;
+    if (lastMapFitKeyRef.current === mapFitKey) return;
+    lastMapFitKeyRef.current = mapFitKey;
+
     const coords: { latitude: number; longitude: number }[] = [
       { latitude: mapPatientAnchor.latitude, longitude: mapPatientAnchor.longitude },
     ];
-    if (isValidMapCoord(ambulanceCoordsLive)) {
+    if (isValidCoord(ambulanceCoordsLive)) {
       coords.push({
         latitude: ambulanceCoordsLive.latitude,
         longitude: ambulanceCoordsLive.longitude,
@@ -241,54 +257,145 @@ export default function ActiveEmergencyScreen() {
       } catch (e) {
         console.warn("[ActiveEmergency] fitToCoordinates failed:", e);
       }
-    }, 280);
+    }, 320);
     return () => clearTimeout(timer);
-  }, [
-    mapPatientAnchor?.latitude,
-    mapPatientAnchor?.longitude,
-    ambulanceCoordsLive?.latitude,
-    ambulanceCoordsLive?.longitude,
-    liveEmergency?.updatedAt,
-  ]);
+  }, [mapFitKey, mapPatientAnchor, ambulanceCoordsLive]);
+
+  /** Subtle feedback when ambulance status or ETA updates from Firestore. */
+  useEffect(() => {
+    const statusKey = lifecycleStatus ?? "";
+    const etaKey = crewEtaMinutes ?? -1;
+    const statusChanged =
+      prevLifecycleRef.current !== null && prevLifecycleRef.current !== statusKey;
+    const etaChanged =
+      prevEtaRef.current !== null && prevEtaRef.current !== etaKey;
+    if (statusChanged || etaChanged) {
+      setStatusHighlight(true);
+      if (statusChanged) hapticNotice();
+      const t = setTimeout(() => setStatusHighlight(false), 700);
+      prevLifecycleRef.current = statusKey;
+      prevEtaRef.current = etaKey;
+      return () => clearTimeout(t);
+    }
+    prevLifecycleRef.current = statusKey;
+    prevEtaRef.current = etaKey;
+  }, [lifecycleStatus, crewEtaMinutes]);
 
   // Keep on-screen address text aligned with Firestore patient location when it streams in.
   useEffect(() => {
-    if (!patientCoordsLive) return;
+    if (!isValidCoord(patientCoordsLive)) return;
+    const locKey = `${patientCoordsLive.latitude.toFixed(5)},${patientCoordsLive.longitude.toFixed(5)}`;
     const addr =
       liveEmergency?.patientLocation?.address ?? liveEmergency?.location?.address ?? null;
+    const displayKey = `${locKey}|${addr ?? ""}`;
+    if (displayKey === lastLocationKeyRef.current) return;
+    lastLocationKeyRef.current = displayKey;
+
     setLocationDisplay(
       addr ?? `${patientCoordsLive.latitude.toFixed(6)}, ${patientCoordsLive.longitude.toFixed(6)}`,
     );
-    setLocation((prev) => ({
-      latitude: patientCoordsLive.latitude,
-      longitude: patientCoordsLive.longitude,
-      accuracy: prev?.accuracy ?? null,
-      address: addr ?? prev?.address ?? null,
-      timestamp: liveEmergency?.updatedAt ?? prev?.timestamp ?? new Date().toISOString(),
-    }));
+    setLocation((prev) => {
+      if (
+        prev?.latitude === patientCoordsLive.latitude &&
+        prev?.longitude === patientCoordsLive.longitude &&
+        prev?.address === (addr ?? prev?.address)
+      ) {
+        return prev;
+      }
+      return {
+        latitude: patientCoordsLive.latitude,
+        longitude: patientCoordsLive.longitude,
+        accuracy: prev?.accuracy ?? null,
+        address: addr ?? prev?.address ?? null,
+        timestamp: liveEmergency?.updatedAt ?? prev?.timestamp ?? new Date().toISOString(),
+      };
+    });
   }, [
-    patientCoordsLive?.latitude,
-    patientCoordsLive?.longitude,
+    patientCoordsLive,
     liveEmergency?.updatedAt,
     liveEmergency?.patientLocation?.address,
     liveEmergency?.location?.address,
   ]);
 
+  useEffect(() => {
+    const id = currentEmergency?.id ?? liveEmergency?.id;
+    if (id) {
+      hadEmergencyRef.current = true;
+      lastSeenEmergencyAtRef.current = Date.now();
+      navExitingRef.current = false;
+    }
+  }, [currentEmergency?.id, liveEmergency?.id]);
+
+  const emergencyId = currentEmergency?.id ?? liveEmergency?.id ?? null;
+  const msSinceSeenEmergency = Date.now() - lastSeenEmergencyAtRef.current;
+  const withinEmergencyGrace =
+    hadEmergencyRef.current && msSinceSeenEmergency < 5000;
+  const canRenderActiveUi =
+    activeEmergencyHydrated && (Boolean(emergencyId) || withinEmergencyGrace);
+
+  const syncBannerText = useMemo(() => {
+    if (emergencySyncReconnecting) {
+      return translate(
+        "emergencyReconnectingBanner",
+        "Reconnecting — your last known status is still shown.",
+      );
+    }
+    if (!emergencySyncOffline) return null;
+    let text = translate(
+      "emergencyOfflineBanner",
+      "Connection lost — showing last known status. Updates resume when you are back online.",
+    );
+    if (liveEmergency?.updatedAt) {
+      try {
+        const at = new Date(liveEmergency.updatedAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        text += ` (${translate("lastKnownUpdate", "Last update")}: ${at})`;
+      } catch {
+        /* keep base banner */
+      }
+    }
+    return text;
+  }, [
+    emergencySyncReconnecting,
+    emergencySyncOffline,
+    liveEmergency?.updatedAt,
+    translate,
+  ]);
+
   // Firestore is the source of truth: if the emergency ends in Firestore and
   // the context clears, navigate away from this screen.
-  // Wait until at least one sync — otherwise transient null during hydration navigates away incorrectly.
+  // Wait until hydrated; grace window avoids exit on transient offline/null snapshots.
   useEffect(() => {
     if (!activeEmergencyHydrated) return;
-    if (!currentEmergency) {
+
+    const sessionStatus =
+      currentEmergency?.sessionStatus ?? liveEmergency?.sessionStatus ?? null;
+
+    if (!emergencyId) {
+      if (withinEmergencyGrace) return;
+      if (navExitingRef.current) return;
+      navExitingRef.current = true;
       if (router.canGoBack()) router.back();
       else router.replace("/(tabs)/emergency");
       return;
     }
-    if (currentEmergency.sessionStatus !== "active") {
+
+    if (sessionStatus && sessionStatus !== "active") {
+      if (navExitingRef.current) return;
+      navExitingRef.current = true;
       if (router.canGoBack()) router.back();
       else router.replace("/(tabs)/emergency");
     }
-  }, [activeEmergencyHydrated, currentEmergency?.id, currentEmergency?.sessionStatus, router]);
+  }, [
+    activeEmergencyHydrated,
+    emergencyId,
+    withinEmergencyGrace,
+    currentEmergency?.sessionStatus,
+    liveEmergency?.sessionStatus,
+    router,
+  ]);
 
   /** Clear "Ending…" if context drops the doc (cancel confirmed) or after safety timeout. */
   useEffect(() => {
@@ -976,9 +1083,24 @@ ${translate("appName")}
     [quickActions, victimType],
   );
 
+  if (!canRenderActiveUi) {
+    return (
+      <View style={[styles.container, styles.bootScreen]}>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+        <Text style={styles.bootText}>
+          {activeEmergencyHydrated
+            ? translate("loading", "Loading…")
+            : translate("connectingEmergency", "Connecting to your emergency…")}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <AmbientMapBackground patientAnchor={mapPatientAnchor} />
+      <AmbientMapBackground
+        patientAnchor={isValidCoord(mapPatientAnchor) ? mapPatientAnchor : null}
+      />
 
       <ScrollView
         ref={mainScrollRef}
@@ -992,57 +1114,82 @@ ${translate("appName")}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <AiFloatingHeader
-          statusLabel={lifecycleLabel}
-          chipVariant={statusChipVariant}
-          aiActive={aiCompanionVisible || aiAvailable}
-          subtitle={statusSubtitle}
-        />
+        <FadeInView>
+          <AiFloatingHeader
+            statusLabel={lifecycleLabel}
+            chipVariant={statusChipVariant}
+            aiActive={aiCompanionVisible || aiAvailable}
+            subtitle={statusSubtitle}
+          />
+        </FadeInView>
 
-        <AiHeroSection
-          statusLine={aiHeroStatusLine}
-          subtitle={translate("helpOnTheWay")}
-          etaMinutes={!isAmbulanceArrived ? crewEtaMinutes : null}
-          etaLabel={translate("etaLabel")}
-          etaUnit={translate("etaMinutesUnit")}
-          responderLine={responderHeroLine}
-          chips={heroChips}
-          aiListening={aiCompanionVisible}
-        />
-
-        {isValidMapCoord(mapPatientAnchor) ? (
-          <GlassSurface radius={AI_RADIUS.card} style={styles.mapGlass}>
-            <MapPanel height={168} style={styles.mapPanel}>
-              <MapView
-                ref={mapRef}
-                style={styles.mapFill}
-                initialRegion={{
-                  latitude: mapPatientAnchor.latitude,
-                  longitude: mapPatientAnchor.longitude,
-                  latitudeDelta: 0.014,
-                  longitudeDelta: 0.014,
-                }}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                pitchEnabled={false}
-                rotateEnabled={false}
-              >
-                {isValidMapCoord(ambulanceCoordsLive) ? (
-                  <Polyline
-                    coordinates={[ambulanceCoordsLive, mapPatientAnchor]}
-                    strokeColor={tokens.color.aiBlue}
-                    strokeWidth={3}
-                    lineCap="round"
-                  />
-                ) : null}
-                <Marker coordinate={mapPatientAnchor} pinColor={tokens.color.danger} />
-                {isValidMapCoord(ambulanceCoordsLive) ? (
-                  <Marker coordinate={ambulanceCoordsLive} pinColor={tokens.color.aiBlue} />
-                ) : null}
-              </MapView>
-            </MapPanel>
-          </GlassSurface>
+        {syncBannerText ? (
+          <View style={[styles.offlineBanner, row]} accessibilityRole="alert">
+            <Text style={styles.offlineBannerText}>{syncBannerText}</Text>
+          </View>
         ) : null}
+
+        <FadeInView delay={30}>
+          <AiHeroSection
+            statusLine={aiHeroStatusLine}
+            subtitle={translate("helpOnTheWay")}
+            etaMinutes={!isAmbulanceArrived ? crewEtaMinutes : null}
+            etaLabel={translate("etaLabel")}
+            etaUnit={translate("etaMinutesUnit")}
+            responderLine={responderHeroLine}
+            chips={heroChips}
+            aiListening={aiCompanionVisible}
+            highlightUpdate={statusHighlight}
+          />
+        </FadeInView>
+
+        <View style={styles.mapSlot}>
+          {isValidCoord(mapPatientAnchor) ? (
+            <FadeInView style={styles.mapFade}>
+              <GlassSurface radius={AI_RADIUS.card} style={styles.mapGlass}>
+                <MapPanel height={168} style={styles.mapPanel}>
+                  <MapView
+                    ref={mapRef}
+                    style={styles.mapFill}
+                    initialRegion={{
+                      latitude: mapPatientAnchor.latitude,
+                      longitude: mapPatientAnchor.longitude,
+                      latitudeDelta: 0.014,
+                      longitudeDelta: 0.014,
+                    }}
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    pitchEnabled={false}
+                    rotateEnabled={false}
+                  >
+                    {isValidCoord(ambulanceCoordsLive) ? (
+                      <Polyline
+                        coordinates={[ambulanceCoordsLive, mapPatientAnchor]}
+                        strokeColor={tokens.color.aiBlue}
+                        strokeWidth={3}
+                        lineCap="round"
+                      />
+                    ) : null}
+                    <Marker coordinate={mapPatientAnchor} pinColor={tokens.color.danger} />
+                    {isValidCoord(ambulanceCoordsLive) ? (
+                      <Marker coordinate={ambulanceCoordsLive} pinColor={tokens.color.aiBlue} />
+                    ) : null}
+                  </MapView>
+                </MapPanel>
+              </GlassSurface>
+            </FadeInView>
+          ) : (
+            <View style={styles.mapPlaceholder}>
+              <ActivityIndicator color={tokens.color.primary} />
+              <Text style={styles.mapPlaceholderTitle}>
+                {translate("locationLoading", "Locating you…")}
+              </Text>
+              <Text style={styles.mapPlaceholderSub}>
+                {translate("mapWillAppear", "Map will appear when your position is ready.")}
+              </Text>
+            </View>
+          )}
+        </View>
 
         <AiEmergencyActionsGrid
           title={translate("aiQuickActions", "Quick emergency actions")}
@@ -1177,10 +1324,71 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: tokens.space.lg,
+    gap: tokens.space.md,
+  },
+  bootScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: tokens.space.xl,
+    gap: tokens.space.md,
+    backgroundColor: tokens.color.aiBgSoft,
+  },
+  bootText: {
+    fontSize: tokens.font.body,
+    color: tokens.color.textMuted,
+    fontWeight: tokens.fontWeight.medium,
+    textAlign: "center",
+  },
+  offlineBanner: {
+    backgroundColor: tokens.color.warningBg,
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.warningBorder,
+    borderRadius: tokens.radius.lg,
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    marginBottom: tokens.space.sm,
+  },
+  offlineBannerText: {
+    flex: 1,
+    fontSize: tokens.font.caption,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.warningText,
+    lineHeight: 18,
+  },
+  mapSlot: {
+    minHeight: 168,
+    marginBottom: tokens.space.lg,
+  },
+  mapFade: {
+    flex: 1,
+  },
+  mapPlaceholder: {
+    minHeight: 168,
+    borderRadius: AI_RADIUS.card,
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+    borderWidth: tokens.hairline,
+    borderColor: tokens.color.border,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: tokens.space.lg,
     gap: tokens.space.sm,
   },
+  mapPlaceholderTitle: {
+    fontSize: tokens.font.label,
+    fontWeight: tokens.fontWeight.semibold,
+    color: tokens.color.textPrimary,
+    textAlign: "center",
+  },
+  mapPlaceholderSub: {
+    fontSize: tokens.font.caption,
+    fontWeight: tokens.fontWeight.medium,
+    color: tokens.color.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
+  },
   mapGlass: {
-    marginBottom: tokens.space.lg,
+    marginBottom: 0,
     overflow: "hidden",
   },
   mapPanel: {
