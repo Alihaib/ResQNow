@@ -210,7 +210,7 @@ components/
 ### Clone Repository
 
 ```bash
-git clone https://github.com/HasanMosa12/ResQNow.git
+git clone https://github.com/Alihaib/ResQNow.git
 cd ResQNow
 ```
 
